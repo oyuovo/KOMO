@@ -1,0 +1,8 @@
+{
+  "name": "komo-frontend",
+  "private": true,
+  "workspaces": [
+    "packages/shared",
+    "packages/web"
+  ]
+}

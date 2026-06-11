@@ -1,0 +1,11 @@
+// KOMO/proto/knowledge_ai.proto
+// Phase 1 占位，Phase 2 定义完整 gRPC 接口
+syntax = "proto3";
+
+package komo.ai;
+
+option java_package = "com.komo.proto";
+option java_multiple_files = true;
+
+// 占位 — Phase 2 细化
+service KnowledgeAI {}

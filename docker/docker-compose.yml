@@ -1,0 +1,68 @@
+# docker/docker-compose.yml
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: komo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-komo}
+      POSTGRES_USER: ${DB_USER:-komo}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-komo}
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U komo"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - komo-net
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: komo-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+      - ./qdrant/config.yaml:/qdrant/config/production.yaml
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__GRPC_PORT: 6334
+    networks:
+      - komo-net
+
+  ai-service:
+    build:
+      context: ./python
+      dockerfile: Dockerfile
+    container_name: komo-ai
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - QDRANT_URL=http://qdrant:6333
+    volumes:
+      - ../KOMO/ai-service:/app
+    depends_on:
+      qdrant:
+        condition: service_started
+    networks:
+      - komo-net
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+
+volumes:
+  postgres_data:
+  qdrant_data:
+
+networks:
+  komo-net:
+    driver: bridge

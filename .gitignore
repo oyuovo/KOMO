@@ -1,0 +1,44 @@
+# IDE
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+# Java
+target/
+*.class
+*.jar
+*.war
+
+# Node
+node_modules/
+.next/
+dist/
+.turbo/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+venv/
+.venv/
+
+# Docker
+docker/data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Internal / Claude
+.superpowers/
+.claude/
+CLAUDE.md
+AGENTS.md
+
+# Environment
+.env
+.env.local
+*.log

@@ -1,0 +1,131 @@
+.root {
+  font-size: var(--komo-text-base);
+  line-height: 1.75;
+  color: var(--komo-text);
+}
+
+/* Headings */
+.root h1, .root h2, .root h3, .root h4, .root h5, .root h6 {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 1.2em 0 0.5em;
+}
+.root h1:first-child, .root h2:first-child, .root h3:first-child {
+  margin-top: 0;
+}
+.root h1 { font-size: var(--komo-text-xl); }
+.root h2 { font-size: var(--komo-text-lg); }
+.root h3 { font-size: var(--komo-text-md); }
+.root h4 { font-size: var(--komo-text-base); }
+
+/* Paragraphs */
+.root p {
+  margin: 0.5em 0;
+}
+
+/* Lists */
+.root ul, .root ol {
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+.root li {
+  margin: 0.25em 0;
+}
+
+/* Inline Code */
+.inlineCode {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--komo-surface-hover);
+  font-family: var(--komo-font-mono);
+  font-size: 0.9em;
+  color: var(--komo-accent);
+}
+
+/* Code Block */
+.codeBlock {
+  padding: 14px 18px;
+  border-radius: var(--komo-radius-md);
+  background: #1e1e1e;
+  color: #d4d4d4;
+  overflow-x: auto;
+  margin: 1em 0;
+  font-family: var(--komo-font-mono);
+  font-size: var(--komo-text-sm);
+  line-height: 1.6;
+}
+.codeBlock code {
+  background: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+/* Links */
+.link {
+  color: var(--komo-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.link:hover {
+  color: var(--komo-link-hover);
+}
+
+/* Images */
+.image {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--komo-radius-sm);
+  margin: 1em 0;
+}
+
+/* Blockquote */
+.blockquote {
+  border-left: 3px solid var(--komo-accent);
+  padding: 8px 16px;
+  margin: 1em 0;
+  background: var(--komo-accent-soft);
+  border-radius: 0 var(--komo-radius-sm) var(--komo-radius-sm) 0;
+  color: var(--komo-text-secondary);
+}
+
+/* Table */
+.tableWrapper {
+  overflow-x: auto;
+  margin: 1em 0;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--komo-text-sm);
+}
+.table th,
+.table td {
+  padding: 8px 14px;
+  border: 1px solid var(--komo-border);
+  text-align: left;
+}
+.table th {
+  background: var(--komo-surface-hover);
+  font-weight: 600;
+}
+.table tr:nth-child(even) {
+  background: var(--komo-bg);
+}
+
+/* Horizontal Rule */
+.root hr {
+  border: none;
+  border-top: 1px solid var(--komo-border);
+  margin: 1.5em 0;
+}
+
+/* Strong / Bold */
+.root strong {
+  font-weight: 700;
+}
+
+/* Strikethrough */
+.root del {
+  color: var(--komo-text-tertiary);
+}

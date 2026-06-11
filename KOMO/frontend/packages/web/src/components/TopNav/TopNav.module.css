@@ -1,0 +1,86 @@
+.nav {
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  height: var(--komo-topnav-height);
+  background: var(--komo-surface);
+  border-bottom: 1px solid var(--komo-border);
+  gap: 4px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.logo {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 32px;
+  text-decoration: none;
+  color: var(--komo-text);
+}
+
+.logoDot {
+  width: 7px;
+  height: 7px;
+  background: var(--komo-accent);
+  border-radius: 50%;
+}
+
+.navItem {
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--komo-text-secondary);
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.navItem:hover {
+  color: var(--komo-text);
+  background: var(--komo-surface-hover);
+}
+
+.navItemActive {
+  color: var(--komo-accent);
+  background: var(--komo-accent-soft);
+}
+
+.right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.email {
+  font-size: 13px;
+  color: var(--komo-text-tertiary);
+}
+
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--komo-accent-soft);
+  color: var(--komo-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.badge {
+  background: var(--komo-accent-soft);
+  color: var(--komo-accent);
+  padding: 2px 7px;
+  border-radius: 8px;
+  font-size: 12px;
+  margin-left: 4px;
+}
