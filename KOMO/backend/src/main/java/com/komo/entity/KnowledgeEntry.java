@@ -69,6 +69,10 @@ public class KnowledgeEntry extends BaseEntity {
     @Column(name = "category_id")
     private UUID categoryId;
 
+    /** 标签（逗号分隔，简单存储） */
+    @Column(name = "tag_names", length = 500)
+    private String tagNames;
+
     @Column(name = "embedding_id")
     private UUID embeddingId;
 

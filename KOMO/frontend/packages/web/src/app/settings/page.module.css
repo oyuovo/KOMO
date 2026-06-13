@@ -83,3 +83,40 @@
   color: var(--komo-text-tertiary);
   margin: 0;
 }
+
+/* Reindex */
+.reindexBtn {
+  padding: 8px 16px;
+  border: 1px solid var(--komo-border);
+  border-radius: var(--komo-radius-sm);
+  background: var(--komo-surface);
+  color: var(--komo-text-primary);
+  font-size: var(--komo-text-sm);
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.reindexBtn:hover:not(:disabled) { background: var(--komo-bg-hover); }
+.reindexBtn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.hint {
+  display: block;
+  font-size:  var(--komo-text-xs);
+  color: var(--komo-text-tertiary);
+  margin-top: 2px;
+}
+
+.reindexSuccess {
+  margin: 0;
+  padding: 8px 20px 12px;
+  font-size: var(--komo-text-xs);
+  color: #16a34a;
+}
+
+.reindexError {
+  margin: 0;
+  padding: 8px 20px 12px;
+  font-size: var(--komo-text-xs);
+  color: var(--komo-danger);
+}

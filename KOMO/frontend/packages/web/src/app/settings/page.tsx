@@ -2,19 +2,23 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { clearToken, getToken, listDrafts, listKnowledge } from '@komo/shared/api-client';
+import { clearTokens, getToken, getUser, listDrafts, listKnowledge, reindexKnowledge, type UserInfo } from '@komo/shared/api-client';
 import styles from './page.module.css';
 
 export default function SettingsPage() {
   const router = useRouter();
   const [draftCount, setDraftCount] = useState(0);
   const [articleCount, setArticleCount] = useState(0);
+  const [user, setUser] = useState<UserInfo | null>(null);
+  const [reindexState, setReindexState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [reindexCount, setReindexCount] = useState(0);
 
   useEffect(() => {
     if (!getToken()) {
       router.push('/');
       return;
     }
+    setUser(getUser());
     Promise.all([
       listDrafts().then((d) => setDraftCount(d.length)).catch(() => {}),
       listKnowledge().then((r) => setArticleCount(r.totalElements)).catch(() => {}),
@@ -22,8 +26,21 @@ export default function SettingsPage() {
   }, []);
 
   const handleLogout = () => {
-    clearToken();
+    clearTokens();
     router.push('/');
+  };
+
+  const handleReindex = async () => {
+    setReindexState('loading');
+    try {
+      const result = await reindexKnowledge();
+      setReindexCount(result.indexed);
+      setReindexState('success');
+      setTimeout(() => setReindexState('idle'), 3000);
+    } catch {
+      setReindexState('error');
+      setTimeout(() => setReindexState('idle'), 3000);
+    }
   };
 
   return (
@@ -35,11 +52,11 @@ export default function SettingsPage() {
         <div className={styles.card}>
           <div className={styles.row}>
             <span className={styles.label}>邮箱</span>
-            <span className={styles.value}>test@komo.dev</span>
+            <span className={styles.value}>{user?.email || '-'}</span>
           </div>
           <div className={styles.row}>
             <span className={styles.label}>昵称</span>
-            <span className={styles.value}>TestUser</span>
+            <span className={styles.value}>{user?.nickname || '-'}</span>
           </div>
           <div className={styles.divider} />
           <button className={styles.logoutBtn} onClick={handleLogout}>
@@ -59,6 +76,31 @@ export default function SettingsPage() {
             <span className={styles.label}>待处理草稿</span>
             <span className={styles.value}>{draftCount} 条</span>
           </div>
+        </div>
+      </div>
+
+      <div className={styles.section}>
+        <h2 className={styles.sectionTitle}>维护</h2>
+        <div className={styles.card}>
+          <div className={styles.row}>
+            <div>
+              <span className={styles.label}>重建搜索索引</span>
+              <span className={styles.hint}>搜索不到最新内容时可重建</span>
+            </div>
+            <button
+              className={styles.reindexBtn}
+              onClick={handleReindex}
+              disabled={reindexState === 'loading'}
+            >
+              {reindexState === 'loading' ? '重建中...' : '重建索引'}
+            </button>
+          </div>
+          {reindexState === 'success' && (
+            <p className={styles.reindexSuccess}>已重建 {reindexCount} 条索引</p>
+          )}
+          {reindexState === 'error' && (
+            <p className={styles.reindexError}>重建失败，请检查后端服务</p>
+          )}
         </div>
       </div>
 

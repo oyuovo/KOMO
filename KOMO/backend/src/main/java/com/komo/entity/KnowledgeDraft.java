@@ -97,6 +97,10 @@ public class KnowledgeDraft extends BaseEntity {
         /** 编辑后入库 */
         EDITED,
         /** 已驳回 */
-        REJECTED
+        REJECTED,
+        /** 待异步 LLM 去重处理 */
+        PENDING_DEDUP,
+        /** 自动驳回（去重判定为重复） */
+        REJECTED_AUTO
     }
 }

@@ -39,4 +39,8 @@ public interface KnowledgeRepository extends JpaRepository<KnowledgeEntry, UUID>
 
     /** 用于知识导出 */
     List<KnowledgeEntry> findAllByUserIdAndDeletedAtIsNull(UUID userId);
+
+    /** 查询所有未删除条目（用于 ES 索引重建） */
+    @Query("SELECT k FROM KnowledgeEntry k WHERE k.deletedAt IS NULL")
+    List<KnowledgeEntry> findAllActive();
 }

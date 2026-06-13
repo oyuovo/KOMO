@@ -9,7 +9,7 @@ services:
     environment:
       POSTGRES_DB: ${DB_NAME:-komo}
       POSTGRES_USER: ${DB_USER:-komo}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-komo}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-komo_secret}
     ports:
       - "5434:5432"
     volumes:
@@ -59,9 +59,25 @@ services:
       - komo-net
     command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
+    container_name: komo-es
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9201:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    networks:
+      - komo-net
+
 volumes:
   postgres_data:
   qdrant_data:
+  es_data:
 
 networks:
   komo-net:

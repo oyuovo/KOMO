@@ -4,38 +4,43 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   login,
-  setToken,
   getToken,
+  getUser,
+  clearTokens,
   listKnowledge,
   deleteKnowledge,
+  ApiError,
   type KnowledgeItem,
+  type UserInfo,
   type PageData,
 } from '@komo/shared/api-client';
 import styles from './page.module.css';
 
 export default function HomePage() {
-  const [token, setTokenState] = useState<string | null>(null);
+  const [user, setUser] = useState<UserInfo | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [articles, setArticles] = useState<KnowledgeItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Login form state
   const [searchQuery, setSearchQuery] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
 
-  // On mount, check for existing token
+  // On mount, check localStorage for existing session
   useEffect(() => {
-    const existing = getToken();
-    if (existing) {
-      setTokenState(existing);
+    const existingToken = getToken();
+    const existingUser = getUser();
+    if (existingToken && existingUser) {
+      setUser(existingUser);
     }
+    setAuthChecked(true);
   }, []);
 
-  // Fetch articles when token or search changes
+  // Fetch articles when user is authenticated
   useEffect(() => {
-    if (token) {
+    if (user) {
       setLoading(true);
       const timer = setTimeout(() => {
         listKnowledge({ q: searchQuery || undefined })
@@ -43,26 +48,35 @@ export default function HomePage() {
             setArticles(data.content);
           })
           .catch((err: Error) => {
-            setError(err.message);
+            if ((err as ApiError).code === 401) {
+              setUser(null); // session expired
+            } else {
+              setError(err.message);
+            }
           })
           .finally(() => setLoading(false));
-      }, searchQuery ? 300 : 0); // 搜索时 300ms 防抖
+      }, searchQuery ? 300 : 0);
       return () => clearTimeout(timer);
     }
-  }, [token, searchQuery]);
+  }, [user, searchQuery]);
 
   const handleLogin = async () => {
     setLoggingIn(true);
     setError(null);
     try {
       const auth = await login({ email, password });
-      setToken(auth.accessToken);
-      setTokenState(auth.accessToken);
+      setUser(auth.user);
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setLoggingIn(false);
     }
+  };
+
+  const handleLogout = () => {
+    clearTokens();
+    setUser(null);
+    setArticles([]);
   };
 
   const handleDeleteArticle = async (id: string, e: React.MouseEvent) => {
@@ -77,8 +91,19 @@ export default function HomePage() {
     }
   };
 
+  // Auth check loading state
+  if (!authChecked) {
+    return (
+      <div className={styles.page}>
+        <p style={{ textAlign: 'center', padding: 80, color: 'var(--komo-text-tertiary)' }}>
+          验证登录状态...
+        </p>
+      </div>
+    );
+  }
+
   // Show login if not authenticated
-  if (!token) {
+  if (!user) {
     return (
       <div className={styles.page}>
         <div className={styles.startConvo} style={{ maxWidth: 420, margin: '60px auto' }}>

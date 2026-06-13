@@ -7,7 +7,11 @@ import {
   getKnowledge,
   getToken,
   listKnowledge,
+  getLinks,
+  addLink,
+  removeLink,
   type KnowledgeItem,
+  type KnowledgeLinkData,
 } from '@komo/shared/api-client';
 import MarkdownRenderer from '@/components/MarkdownRenderer/MarkdownRenderer';
 import styles from './page.module.css';
@@ -18,9 +22,17 @@ export default function ArticlePage() {
 
   const [article, setArticle] = useState<KnowledgeItem | null>(null);
   const [relatedArticles, setRelatedArticles] = useState<KnowledgeItem[]>([]);
+  const [links, setLinks] = useState<KnowledgeLinkData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [needsAuth, setNeedsAuth] = useState(!getToken());
+
+  const fetchLinks = async (entryId: string) => {
+    try {
+      const l = await getLinks(entryId);
+      setLinks(l);
+    } catch { /* ignore */ }
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -40,9 +52,8 @@ export default function ArticlePage() {
           setError('文章不存在或无权访问');
         } else {
           setArticle(articleData);
-          setRelatedArticles(
-            listData.content.filter((a) => a.id !== id)
-          );
+          setRelatedArticles(listData.content.filter((a) => a.id !== id));
+          fetchLinks(articleData.id);
         }
       })
       .catch((err) => {
@@ -175,7 +186,24 @@ export default function ArticlePage() {
           <p>来源: {article.source}</p>
           <p>创建: {new Date(article.createdAt).toLocaleDateString('zh-CN')}</p>
           <p>更新: {new Date(article.updatedAt).toLocaleDateString('zh-CN')}</p>
+          {article.tags && (
+            <p>标签: {article.tags}</p>
+          )}
         </div>
+
+        {links.length > 0 && (
+          <div className={styles.sourceCard}>
+            <div className={styles.sourceLabel}>知识关联 ({links.length})</div>
+            {links.map((link) => (
+              <p key={link.id} style={{ fontSize: 13 }}>
+                {link.relation === 'RELATED' ? '🔗' :
+                 link.relation === 'EXTENDS' ? '📖' :
+                 link.relation === 'CONTRADICTS' ? '⚠️' : '💡'}
+                {' '}{link.targetTitle || link.targetEntryId.slice(0, 8)}
+              </p>
+            ))}
+          </div>
+        )}
       </aside>
     </div>
   );

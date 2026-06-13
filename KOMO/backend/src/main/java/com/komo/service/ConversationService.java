@@ -1,13 +1,12 @@
 package com.komo.service;
 
+import com.komo.dto.DedupResult;
 import com.komo.entity.Conversation;
 import com.komo.entity.KnowledgeDraft;
 import com.komo.entity.Message;
 import com.komo.exception.BusinessException;
 import com.komo.exception.ErrorCode;
-import com.komo.entity.KnowledgeEntry;
 import com.komo.repository.ConversationRepository;
-import com.komo.repository.KnowledgeRepository;
 import com.komo.repository.MessageRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -18,6 +17,12 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,7 +36,7 @@ public class ConversationService {
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
     private final KnowledgeDraftService knowledgeDraftService;
-    private final KnowledgeRepository knowledgeRepository;
+    private final KnowledgeIndexService knowledgeIndexService;
 
     /** 创建新对话 */
     @Transactional
@@ -55,11 +60,12 @@ public class ConversationService {
         return messageRepository.findAllByConversationIdOrderByCreatedAtAsc(conversationId);
     }
 
-    /** 删除对话及其所有消息 */
+    /** 删除对话及其所有消息和关联草稿 */
     @Transactional
     public void delete(UUID conversationId, UUID userId) {
         Conversation convo = conversationRepository.findByIdAndUserId(conversationId, userId)
             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "对话不存在"));
+        knowledgeDraftService.deleteByConversation(conversationId);
         messageRepository.deleteByConversationId(conversationId);
         conversationRepository.delete(convo);
     }
@@ -82,26 +88,20 @@ public class ConversationService {
         List<Message> history = messageRepository.findAllByConversationIdOrderByCreatedAtAsc(conversationId);
         List<Map<String, String>> aiMessages = new ArrayList<>();
 
-        // 2a. RAG 检索 — 从知识库搜索相关内容作为 AI 上下文
-        List<KnowledgeEntry> relevantEntries = knowledgeRepository.findByUserIdAndFilters(
-            userId, null, content, PageRequest.of(0, 3)
-        ).getContent();
-
+        // 2a. RAG 检索 — ES 全文搜索知识库
+        List<Map<String, Object>> relevantEntries = knowledgeIndexService.search(userId, content, 3);
         if (!relevantEntries.isEmpty()) {
             StringBuilder context = new StringBuilder();
             context.append("以下是用户知识库中与当前问题相关的知识条目，请在回答时参考：\n\n");
-            for (KnowledgeEntry entry : relevantEntries) {
-                context.append("### ").append(entry.getTitle()).append("\n");
-                String snippet = entry.getContentPlain() != null
-                    ? entry.getContentPlain()
-                    : entry.getContent();
-                if (snippet.length() > 500) {
+            for (Map<String, Object> entry : relevantEntries) {
+                context.append("### ").append(entry.getOrDefault("title", "")).append("\n");
+                String snippet = (String) entry.getOrDefault("contentPlain", "");
+                if (snippet != null && snippet.length() > 500) {
                     snippet = snippet.substring(0, 500) + "...";
                 }
                 context.append(snippet).append("\n\n");
             }
             context.append("---\n请基于以上知识库内容回答用户问题。如果知识库内容不足以回答，请如实告知并提供你自己的知识。");
-
             aiMessages.add(Map.of("role", "system", "content", context.toString()));
         }
 
@@ -161,7 +161,138 @@ public class ConversationService {
         return assistantMsg;
     }
 
-    /** 调用 Python 提取知识，保存为草稿 */
+    /** SSE 流式对话 */
+    public SseEmitter streamMessage(UUID conversationId, UUID userId, String content) {
+        Conversation convo = conversationRepository.findByIdAndUserId(conversationId, userId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "对话不存在"));
+
+        // 1. 保存用户消息
+        Message userMsg = Message.builder()
+            .conversationId(conversationId)
+            .role(Message.MessageRole.USER)
+            .content(content)
+            .build();
+        messageRepository.save(userMsg);
+
+        // 2. 构建消息历史（RAG 上下文）
+        List<Message> history = messageRepository.findAllByConversationIdOrderByCreatedAtAsc(conversationId);
+        List<Map<String, String>> aiMessages = new ArrayList<>();
+        // RAG — ES 全文搜索
+        List<Map<String, Object>> relevant = knowledgeIndexService.search(userId, content, 3);
+        if (!relevant.isEmpty()) {
+            StringBuilder ctx = new StringBuilder("参考用户知识库：\n");
+            for (Map<String, Object> e : relevant) {
+                String s = (String) e.getOrDefault("contentPlain", "");
+                if (s != null && s.length() > 300) s = s.substring(0, 300) + "...";
+                ctx.append("- ").append(e.getOrDefault("title", "")).append(": ").append(s).append("\n");
+            }
+            aiMessages.add(Map.of("role", "system", "content", ctx.toString()));
+        }
+        history.forEach(m -> aiMessages.add(Map.of(
+            "role", m.getRole() == Message.MessageRole.USER ? "user" : "assistant",
+            "content", m.getContent())));
+
+        // 3. 创建 SSE 发射器（超时 120s）
+        SseEmitter emitter = new SseEmitter(120_000L);
+
+        Thread.startVirtualThread(() -> {
+            StringBuilder fullResponse = new StringBuilder();
+            try {
+                ObjectMapper om = new ObjectMapper();
+                String jsonBody = om.writeValueAsString(Map.of("messages", aiMessages));
+
+                HttpURLConnection conn = (HttpURLConnection) URI.create(
+                    "http://localhost:8001/api/chat/stream").toURL().openConnection();
+                conn.setRequestMethod("POST");
+                conn.setDoOutput(true);
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setConnectTimeout(10000);
+                conn.setReadTimeout(60000);
+
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(jsonBody.getBytes(StandardCharsets.UTF_8));
+                }
+
+                // 缓冲读取 SSE，按 \n\n 分割事件，保留内容内部换行
+                java.io.BufferedInputStream bis = new java.io.BufferedInputStream(conn.getInputStream());
+                java.io.ByteArrayOutputStream eventBuf = new java.io.ByteArrayOutputStream();
+                byte[] buf = new byte[4096];
+                int n;
+                while ((n = bis.read(buf)) != -1) {
+                    for (int i = 0; i < n; i++) {
+                        eventBuf.write(buf[i]);
+                        // 检测 \n\n (事件边界)
+                        if (eventBuf.size() >= 2) {
+                            byte[] raw = eventBuf.toByteArray();
+                            int len = raw.length;
+                            if (raw[len - 2] == '\n' && raw[len - 1] == '\n') {
+                                String event = new String(raw, 0, len - 2, StandardCharsets.UTF_8);
+                                eventBuf.reset();
+
+                                if (event.isEmpty()) continue;
+                                // 提取 data: 字段（可能跨多行）
+                                StringBuilder dataContent = new StringBuilder();
+                                for (String line : event.split("\n")) {
+                                    if (line.startsWith("data: ")) {
+                                        if (dataContent.length() > 0) dataContent.append("\n");
+                                        dataContent.append(line.substring(6));
+                                    }
+                                }
+                                String data = dataContent.toString();
+
+                                if ("[DONE]".equals(data)) { n = -1; break; }
+                                if (data.startsWith("[ERROR]")) {
+                                    emitter.send(SseEmitter.event().name("error").data(data));
+                                    n = -1; break;
+                                }
+                                if (!data.isEmpty()) {
+                                    fullResponse.append(data);
+                                    emitter.send(SseEmitter.event().name("token").data(data));
+                                }
+                            }
+                        }
+                    }
+                    if (n == -1) break;
+                }
+                bis.close();
+                conn.disconnect();
+
+                // 4. 保存 AI 回复
+                Message assistantMsg = Message.builder()
+                    .conversationId(conversationId)
+                    .role(Message.MessageRole.ASSISTANT)
+                    .content(fullResponse.toString())
+                    .build();
+                messageRepository.save(assistantMsg);
+
+                // 标题
+                if ((convo.getTitle() == null || convo.getTitle().equals("新对话")) && history.size() <= 2) {
+                    String t = content.length() > 30 ? content.substring(0, 30) + "..." : content;
+                    convo.setTitle(t);
+                    conversationRepository.save(convo);
+                }
+
+                // 知识提取
+                try {
+                    extractAndSaveDrafts(userId, conversationId, assistantMsg.getId(), aiMessages);
+                } catch (Exception ignored) {}
+
+                emitter.send(SseEmitter.event().name("done")
+                    .data(Map.of("messageId", assistantMsg.getId().toString())));
+
+            } catch (Exception e) {
+                try {
+                    emitter.send(SseEmitter.event().name("error")
+                        .data("AI 服务暂时不可用: " + e.getMessage()));
+                } catch (Exception ignored) {}
+            }
+            emitter.complete();
+        });
+
+        return emitter;
+    }
+
+    /** 调用 Python 提取知识，三层去重后保存为草稿 */
     private void extractAndSaveDrafts(
         UUID userId, UUID conversationId, UUID messageId,
         List<Map<String, String>> messages
@@ -191,14 +322,33 @@ public class ConversationService {
             List<Map<String, Object>> points =
                 (List<Map<String, Object>>) response.get("knowledge_points");
 
+            DedupService dedupService = new DedupService(knowledgeIndexService, knowledgeDraftService);
             List<KnowledgeDraft> drafts = new ArrayList<>();
             for (Map<String, Object> point : points) {
+                String title = (String) point.get("title");
+                String content = (String) point.get("content");
+                double confidence = point.get("confidence") instanceof Number
+                    ? ((Number) point.get("confidence")).doubleValue() : 0.7;
+
+                // Layer 1+2: ES MLT + 标题 LCS 去重（同时查知识库和草稿）
+                DedupResult result = dedupService.checkDuplicate(userId, title,
+                    content != null ? content : "");
+
                 KnowledgeDraft draft = KnowledgeDraft.builder()
-                    .title((String) point.get("title"))
-                    .content((String) point.get("content"))
-                    .confidence(point.get("confidence") instanceof Number
-                        ? ((Number) point.get("confidence")).doubleValue() : 0.7)
+                    .title(title).content(content).confidence(confidence)
                     .build();
+
+                if (dedupService.shouldAutoReject(result)) {
+                    // 高分重复 -> 静默丢弃（不生成草稿）
+                    continue;
+                } else if (dedupService.needsLlmReview(result)) {
+                    draft.setStatus(KnowledgeDraft.DraftStatus.PENDING_DEDUP);
+                    draft.setRelationType(KnowledgeDraft.RelationType.SUPPLEMENTS);
+                } else {
+                    draft.setStatus(KnowledgeDraft.DraftStatus.PENDING);
+                    draft.setRelationType(KnowledgeDraft.RelationType.NEW);
+                }
+
                 drafts.add(draft);
             }
 
@@ -206,7 +356,7 @@ public class ConversationService {
                 knowledgeDraftService.saveExtractedDrafts(userId, conversationId, messageId, drafts);
             }
         } catch (Exception e) {
-            System.err.println("[extraction] 知识提取调用失败: " + e.getMessage());
+            System.err.println("[extraction] 草稿提取失败: " + e.getMessage());
         }
     }
 }

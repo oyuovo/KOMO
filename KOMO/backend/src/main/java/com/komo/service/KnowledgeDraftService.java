@@ -26,13 +26,15 @@ public class KnowledgeDraftService {
 
     private final KnowledgeDraftRepository draftRepository;
     private final KnowledgeRepository knowledgeRepository;
+    private final KnowledgeIndexService indexService;
 
-    /** 获取当前用户的待处理草稿列表 */
+    /** 获取当前用户的待处理草稿列表（排除 PENDING_DEDUP） */
     public List<KnowledgeDraft> listPending() {
         UUID userId = SecurityContext.getCurrentUserId();
         return draftRepository.findByUserIdOrderByCreatedAtDesc(userId)
             .stream()
-            .filter(d -> d.getStatus() == KnowledgeDraft.DraftStatus.PENDING)
+            .filter(d -> d.getStatus() == KnowledgeDraft.DraftStatus.PENDING
+                      || d.getStatus() == KnowledgeDraft.DraftStatus.PENDING_DEDUP)
             .toList();
     }
 
@@ -60,6 +62,7 @@ public class KnowledgeDraftService {
             .entryType(KnowledgeEntry.KnowledgeType.FACT)
             .build();
         entry = knowledgeRepository.save(entry);
+        indexService.indexEntry(entry.getId(), entry.getUserId(), entry.getTitle(), entry.getContentPlain());
 
         draft.setStatus(KnowledgeDraft.DraftStatus.CONFIRMED);
         draft.setConfirmedEntryId(entry.getId());
@@ -87,6 +90,7 @@ public class KnowledgeDraftService {
             .entryType(KnowledgeEntry.KnowledgeType.FACT)
             .build();
         entry = knowledgeRepository.save(entry);
+        indexService.indexEntry(entry.getId(), entry.getUserId(), entry.getTitle(), entry.getContentPlain());
 
         if (title != null) draft.setTitle(title);
         if (content != null) draft.setContent(content);
@@ -157,6 +161,25 @@ public class KnowledgeDraftService {
             d.setStatus(KnowledgeDraft.DraftStatus.PENDING);
             return draftRepository.save(d);
         }).toList();
+    }
+
+    /** 查询某个对话的所有草稿（用于去重） */
+    public List<KnowledgeDraft> listByConversation(UUID conversationId) {
+        return draftRepository.findByConversationId(conversationId);
+    }
+
+    /** 获取用户所有待处理草稿（全局去重） */
+    public List<KnowledgeDraft> listAllPending(UUID userId) {
+        return draftRepository.findByUserIdOrderByCreatedAtDesc(userId)
+            .stream()
+            .filter(d -> d.getStatus() == KnowledgeDraft.DraftStatus.PENDING)
+            .toList();
+    }
+
+    /** 删除对话关联的所有草稿 */
+    @Transactional
+    public void deleteByConversation(UUID conversationId) {
+        draftRepository.deleteByConversationId(conversationId);
     }
 
     /** 安全查询：校验草稿归属 */

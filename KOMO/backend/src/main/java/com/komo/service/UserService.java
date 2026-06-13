@@ -1,5 +1,7 @@
 package com.komo.service;
 
+import java.util.UUID;
+
 import com.komo.config.JwtConfig;
 import com.komo.dto.request.LoginRequest;
 import com.komo.dto.request.RegisterRequest;
@@ -58,6 +60,18 @@ public class UserService {
 
         User user = userRepository.findByEmail(request.getEmail())
             .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CREDENTIALS));
+
+        return buildAuthResponse(user);
+    }
+
+    public AuthResponse refreshToken(String refreshToken) {
+        if (!jwtTokenProvider.validateToken(refreshToken)) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "refreshToken 无效或已过期");
+        }
+
+        UUID userId = jwtTokenProvider.getUserIdFromToken(refreshToken);
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED, "用户不存在"));
 
         return buildAuthResponse(user);
     }

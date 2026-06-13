@@ -3,13 +3,16 @@ server:
   port: 8081
 
 spring:
+  mvc:
+    async:
+      request-timeout: 180000  # SSE 长连接，3 分钟超时
   application:
     name: komo-backend
 
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5434}/komo
     username: ${DB_USER:komo}
-    password: ${DB_PASSWORD:komo}
+    password: ${DB_PASSWORD:komo_secret}
     driver-class-name: org.postgresql.Driver
 
   jpa:

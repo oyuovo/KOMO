@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.chat import router as chat_router
 from app.api.extraction import router as extraction_router
+from app.api.dedup import router as dedup_router
 
 app = FastAPI(title="KOMO AI Service")
 
@@ -17,6 +18,7 @@ app.add_middleware(
 
 app.include_router(chat_router)
 app.include_router(extraction_router)
+app.include_router(dedup_router)
 
 
 @app.get("/health")

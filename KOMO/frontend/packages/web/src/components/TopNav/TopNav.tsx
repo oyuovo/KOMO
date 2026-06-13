@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { listDrafts, getToken } from '@komo/shared/api-client';
+import { listDrafts, getToken, getUser, type UserInfo } from '@komo/shared/api-client';
 import styles from './TopNav.module.css';
 
 const navItems = [
@@ -16,13 +16,17 @@ const navItems = [
 export default function TopNav() {
   const pathname = usePathname();
   const [draftCount, setDraftCount] = useState(0);
+  const [user, setUser] = useState<UserInfo | null>(null);
 
-  // 每次路由切换时刷新草稿数量
+  // 每次路由切换时刷新用户信息和草稿数量
   useEffect(() => {
-    if (!getToken()) return;
+    const token = getToken();
+    if (!token) return;
+    const u = getUser();
+    if (u) setUser(u);
     listDrafts()
       .then((drafts) => setDraftCount(drafts.length))
-      .catch(() => { /* 忽略错误 */ });
+      .catch(() => {});
   }, [pathname]);
 
   return (
@@ -37,7 +41,6 @@ export default function TopNav() {
           ? pathname === '/'
           : pathname.startsWith(item.href);
 
-        // 草稿数量 badge
         const badge = item.href === '/drafts' && draftCount > 0
           ? draftCount
           : undefined;
@@ -54,10 +57,14 @@ export default function TopNav() {
         );
       })}
 
-      <div className={styles.right}>
-        <span className={styles.email}>KOMO</span>
-        <div className={styles.avatar}>T</div>
-      </div>
+      {user && (
+        <div className={styles.right}>
+          <span className={styles.email}>{user.email}</span>
+          <div className={styles.avatar}>
+            {user.nickname ? user.nickname[0].toUpperCase() : 'U'}
+          </div>
+        </div>
+      )}
     </nav>
   );
 }

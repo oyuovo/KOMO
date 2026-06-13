@@ -22,6 +22,7 @@ public class KnowledgeResponse {
     private String status;
     private UUID categoryId;
     private String categoryName;
+    private String tags;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -34,6 +35,7 @@ public class KnowledgeResponse {
             .entryType(entry.getEntryType() != null ? entry.getEntryType().name() : null)
             .status(entry.getStatus() != null ? entry.getStatus().name() : null)
             .categoryId(entry.getCategoryId())
+            .tags(entry.getTagNames())
             .createdAt(entry.getCreatedAt())
             .updatedAt(entry.getUpdatedAt())
             .build();

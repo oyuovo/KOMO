@@ -7,6 +7,7 @@ import com.komo.security.SecurityContext;
 import com.komo.service.ConversationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 import java.util.Map;
@@ -68,5 +70,21 @@ public class ConversationController {
         UUID userId = SecurityContext.getCurrentUserId();
         conversationService.delete(id, userId);
         return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    /** SSE 流式对话 */
+    @PostMapping(value = "/{id}/messages/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamMessage(
+        @PathVariable UUID id,
+        @RequestBody Map<String, String> body
+    ) {
+        UUID userId = SecurityContext.getCurrentUserId();
+        String content = body.get("content");
+        if (content == null || content.isBlank()) {
+            SseEmitter errorEmitter = new SseEmitter();
+            errorEmitter.completeWithError(new IllegalArgumentException("消息内容不能为空"));
+            return errorEmitter;
+        }
+        return conversationService.streamMessage(id, userId, content);
     }
 }

@@ -7,7 +7,6 @@ import MarkdownRenderer from '@/components/MarkdownRenderer/MarkdownRenderer';
 import {
   getToken,
   getMessages,
-  sendMessage,
   listConversations,
   createConversation,
   listDrafts,
@@ -89,28 +88,121 @@ export default function ConversationDetailPage() {
       tokensUsed: null,
       createdAt: new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, tempUserMsg]);
+    // 创建占位 AI 消息用于流式更新
+    const aiMsgId = `ai-${Date.now()}`;
+    const tempAiMsg: MessageData = {
+      id: aiMsgId,
+      conversationId,
+      role: 'ASSISTANT',
+      content: '',
+      tokensUsed: null,
+      createdAt: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, tempUserMsg, tempAiMsg]);
 
     try {
-      const reply = await sendMessage(conversationId, content);
-      // 移除临时的用户消息，替换为真实数据
-      setMessages((prev) => {
-        const filtered = prev.filter((m) => m.id !== tempUserMsg.id);
-        const userMsg: MessageData = {
-          ...tempUserMsg,
-          id: `user-${reply.id}`,
-        };
-        return [...filtered, userMsg, reply];
-      });
+      const token = getToken();
+      const response = await fetch(
+        `http://localhost:8081/api/conversations/${conversationId}/messages/stream`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ content }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('AI 服务请求失败');
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response body');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let fullContent = '';
+      let streamError: string | null = null;
+
+      // 逐块读取 SSE 流
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        let currentEvent = '';
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7).trim();
+          } else if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (currentEvent === 'error') {
+              streamError = data;
+            } else if (currentEvent !== 'done') {
+              fullContent += data;
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === aiMsgId ? { ...m, content: fullContent } : m
+                )
+              );
+            }
+            currentEvent = '';
+          }
+        }
+      }
+
+      // 流结束 — 刷新 decoder 和 buffer 中残留的数据
+      buffer += decoder.decode(); // stream: false, flush final bytes
+      if (buffer.trim()) {
+        const lines = buffer.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ') && !line.startsWith('data: [DONE]')) {
+            fullContent += line.slice(6);
+          }
+        }
+      }
+      // 最终更新
+      if (fullContent) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === aiMsgId ? { ...m, content: fullContent } : m
+          )
+        );
+      }
+
+      // 流结束 — 用已接收的内容更新 AI 消息，不依赖 getMessages
+      if (fullContent) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === tempUserMsg.id
+              ? { ...m, id: `user-${Date.now()}` } // 去掉 temp 前缀
+              : m
+          )
+        );
+        checkDraftCount();
+      }
+      if (streamError) {
+        setError('AI 服务提示: ' + streamError);
+      }
     } catch (err) {
-      setError((err as Error).message);
-      // 移除失败的用户消息
-      setMessages((prev) => prev.filter((m) => m.id !== tempUserMsg.id));
-      setInput(content); // 恢复输入
+      // 只有在完全没有收到流内容时才是真正的网络错误
+      setMessages((prev) => {
+        const aiMsg = prev.find((m) => m.id === aiMsgId);
+        if (aiMsg && aiMsg.content.length > 0) {
+          return prev; // 已经有内容了，保留不删
+        }
+        // 真的失败了才回滚
+        setError((err as Error).message);
+        setInput(content);
+        return prev.filter((m) => m.id !== tempUserMsg.id && m.id !== aiMsgId);
+      });
     } finally {
       setSending(false);
-      // 检查是否有新提取的草稿
-      checkDraftCount();
     }
   };
 

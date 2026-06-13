@@ -29,11 +29,14 @@ import java.util.UUID;
 public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepository> {
 
     private final KnowledgeLinkRepository knowledgeLinkRepository;
+    private final KnowledgeIndexService indexService;
 
     public KnowledgeService(KnowledgeRepository repository,
-                            KnowledgeLinkRepository knowledgeLinkRepository) {
+                            KnowledgeLinkRepository knowledgeLinkRepository,
+                            KnowledgeIndexService indexService) {
         super(repository);
         this.knowledgeLinkRepository = knowledgeLinkRepository;
+        this.indexService = indexService;
     }
 
     @Override
@@ -68,9 +71,12 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
             .source(KnowledgeSource.MANUAL)
             .entryType(request.getEntryType() != null ? request.getEntryType() : KnowledgeEntry.KnowledgeType.FACT)
             .categoryId(request.getCategoryId())
+            .tagNames(request.getTags())
             .build();
 
-        return repository.save(entry);
+        entry = repository.save(entry);
+        indexService.indexEntry(entry.getId(), entry.getUserId(), entry.getTitle(), entry.getContentPlain());
+        return entry;
     }
 
     @Transactional
@@ -81,7 +87,10 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
         entry.setContentPlain(stripMarkdown(request.getContent()));
         entry.setEntryType(request.getEntryType());
         entry.setCategoryId(request.getCategoryId());
-        return repository.save(entry);
+        entry.setTagNames(request.getTags());
+        entry = repository.save(entry);
+        indexService.updateEntry(entry.getId(), entry.getTitle(), entry.getContentPlain());
+        return entry;
     }
 
     @Transactional
@@ -89,6 +98,7 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
         KnowledgeEntry entry = findByIdOrThrow(id);
         entry.setDeletedAt(LocalDateTime.now());
         repository.save(entry);
+        indexService.deleteEntry(id);
     }
 
     @Transactional
@@ -133,6 +143,12 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
     /** 导出当前用户全部知识 */
     public List<KnowledgeEntry> exportAll() {
         return repository.findAllByUserIdAndDeletedAtIsNull(getCurrentUserId());
+    }
+
+    /** 手动重建 ES 索引：从 DB 全量回填所有未删除条目。返回索引条数。 */
+    public int reindexAll() {
+        List<KnowledgeEntry> allActive = repository.findAllActive();
+        return indexService.reindexAll(allActive);
     }
 
     /**

@@ -20,4 +20,7 @@ public class KnowledgeCreateRequest {
     private KnowledgeType entryType;
 
     private UUID categoryId;
+
+    /** 逗号分隔的标签 */
+    private String tags;
 }

@@ -22,4 +22,7 @@ public interface KnowledgeDraftRepository extends JpaRepository<KnowledgeDraft, 
 
     /** 安全查询：必须校验 userId */
     List<KnowledgeDraft> findByIdInAndUserId(List<UUID> ids, UUID userId);
+
+    /** 删除对话关联的所有草稿 */
+    void deleteByConversationId(UUID conversationId);
 }
