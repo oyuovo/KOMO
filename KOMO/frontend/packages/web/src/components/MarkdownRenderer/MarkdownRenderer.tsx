@@ -9,6 +9,25 @@ interface Props {
 }
 
 /**
+ * 预处理中文 markdown，修复 CommonMark 对标点相邻的格式化标记拒识问题。
+ * 在 ** 等标记与相邻标点（引号、冒号等）之间插入零宽空格，使其通过 CommonMark 定界符检测。
+ */
+function normalizeChineseMarkdown(text: string): string {
+  // 常见中文标点 + ASCII 引号
+  const PUNCT = '"' +
+    '“”‘’' +  // 弯引号
+    '、。，：；' +  // 、。，：；
+    '—…';  // —— …
+  const markers = ['**', '__', '~~'];
+  for (const m of markers) {
+    const esc = m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    text = text.replace(new RegExp(esc + '([' + PUNCT + '])', 'g'), m + '​$1');
+    text = text.replace(new RegExp('([' + PUNCT + '])' + esc, 'g'), '$1​' + m);
+  }
+  return text;
+}
+
+/**
  * Markdown 渲染组件。
  * 支持 GFM 扩展（表格、任务列表、删除线等），
  * 样式与 KOMO Design Tokens 对齐。
@@ -77,7 +96,7 @@ export default function MarkdownRenderer({ content }: Props) {
           },
         }}
       >
-        {content}
+        {normalizeChineseMarkdown(content)}
       </ReactMarkdown>
     </div>
   );
