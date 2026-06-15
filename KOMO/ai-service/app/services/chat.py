@@ -8,8 +8,7 @@ from ..core.config import DEEPSEEK_MODEL
 async def chat_stream(
     messages: list[dict[str, str]],
 ) -> AsyncGenerator[str, None]:
-    """流式对话，逐 token 产出。
-    将 token 缓冲后批量发送，避免单独的 \\n token 与 SSE 协议分隔符冲突。"""
+    """流式对话，逐 token 产出。"""
     response = deepseek.chat.completions.create(
         model=DEEPSEEK_MODEL,
         messages=messages,
@@ -17,17 +16,10 @@ async def chat_stream(
         temperature=0.7,
         max_tokens=4096,
     )
-    buf = ""
     for chunk in response:
         delta = chunk.choices[0].delta
         if delta.content:
-            buf += delta.content
-            # 积累到含换行或达到阈值时刷出，避免单独 \\n 破坏 SSE
-            if len(buf) >= 24 or '\n' in buf:
-                yield buf
-                buf = ""
-    if buf:
-        yield buf
+            yield delta.content
 
 
 async def chat_sync(
