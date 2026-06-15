@@ -5,6 +5,7 @@ import com.komo.entity.Conversation;
 import com.komo.entity.Message;
 import com.komo.security.SecurityContext;
 import com.komo.service.ConversationService;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -16,8 +17,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -72,19 +73,28 @@ public class ConversationController {
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
-    /** SSE 流式对话 */
+    /** SSE 流式对话 — 直接写 OutputStream，不用 SseEmitter */
     @PostMapping(value = "/{id}/messages/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter streamMessage(
+    public void streamMessage(
         @PathVariable UUID id,
-        @RequestBody Map<String, String> body
-    ) {
+        @RequestBody Map<String, String> body,
+        HttpServletResponse response
+    ) throws IOException {
         UUID userId = SecurityContext.getCurrentUserId();
         String content = body.get("content");
         if (content == null || content.isBlank()) {
-            SseEmitter errorEmitter = new SseEmitter();
-            errorEmitter.completeWithError(new IllegalArgumentException("消息内容不能为空"));
-            return errorEmitter;
+            response.setStatus(400);
+            response.getWriter().write("{\"error\":\"消息内容不能为空\"}");
+            return;
         }
-        return conversationService.streamMessage(id, userId, content);
+        // 设置 SSE 响应头
+        response.setContentType("text/event-stream");
+        response.setCharacterEncoding("UTF-8");
+        response.setHeader("Cache-Control", "no-cache");
+        response.setHeader("Connection", "keep-alive");
+        response.setHeader("X-Accel-Buffering", "no");
+        response.flushBuffer();
+
+        conversationService.streamMessage(id, userId, content, response);
     }
 }

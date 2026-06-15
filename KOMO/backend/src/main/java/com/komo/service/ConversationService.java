@@ -8,6 +8,7 @@ import com.komo.exception.BusinessException;
 import com.komo.exception.ErrorCode;
 import com.komo.repository.ConversationRepository;
 import com.komo.repository.MessageRepository;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -17,8 +18,8 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
@@ -161,8 +162,9 @@ public class ConversationService {
         return assistantMsg;
     }
 
-    /** SSE 流式对话 */
-    public SseEmitter streamMessage(UUID conversationId, UUID userId, String content) {
+    /** SSE 流式对话 — 直接写 HttpServletResponse OutputStream */
+    public void streamMessage(UUID conversationId, UUID userId, String content,
+                               HttpServletResponse response) throws IOException {
         Conversation convo = conversationRepository.findByIdAndUserId(conversationId, userId)
             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "对话不存在"));
 
@@ -174,10 +176,9 @@ public class ConversationService {
             .build();
         messageRepository.save(userMsg);
 
-        // 2. 构建消息历史（RAG 上下文）
+        // 2. 构建消息历史 + RAG 上下文
         List<Message> history = messageRepository.findAllByConversationIdOrderByCreatedAtAsc(conversationId);
         List<Map<String, String>> aiMessages = new ArrayList<>();
-        // RAG — ES 全文搜索
         List<Map<String, Object>> relevant = knowledgeIndexService.search(userId, content, 3);
         if (!relevant.isEmpty()) {
             StringBuilder ctx = new StringBuilder("参考用户知识库：\n");
@@ -192,104 +193,108 @@ public class ConversationService {
             "role", m.getRole() == Message.MessageRole.USER ? "user" : "assistant",
             "content", m.getContent())));
 
-        // 3. 创建 SSE 发射器（超时 120s）
-        SseEmitter emitter = new SseEmitter(120_000L);
+        // 3. 获取 OutputStream
+        OutputStream out = response.getOutputStream();
+        StringBuilder fullResponse = new StringBuilder();
+        try {
+            ObjectMapper om = new ObjectMapper();
+            String jsonBody = om.writeValueAsString(Map.of("messages", aiMessages));
 
-        Thread.startVirtualThread(() -> {
-            StringBuilder fullResponse = new StringBuilder();
-            try {
-                ObjectMapper om = new ObjectMapper();
-                String jsonBody = om.writeValueAsString(Map.of("messages", aiMessages));
+            HttpURLConnection conn = (HttpURLConnection) URI.create(
+                "http://localhost:8001/api/chat/stream").toURL().openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(60000);
 
-                HttpURLConnection conn = (HttpURLConnection) URI.create(
-                    "http://localhost:8001/api/chat/stream").toURL().openConnection();
-                conn.setRequestMethod("POST");
-                conn.setDoOutput(true);
-                conn.setRequestProperty("Content-Type", "application/json");
-                conn.setConnectTimeout(10000);
-                conn.setReadTimeout(60000);
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(jsonBody.getBytes(StandardCharsets.UTF_8));
+            }
 
-                try (OutputStream os = conn.getOutputStream()) {
-                    os.write(jsonBody.getBytes(StandardCharsets.UTF_8));
-                }
+            java.io.BufferedInputStream bis = new java.io.BufferedInputStream(conn.getInputStream());
+            java.io.ByteArrayOutputStream eventBuf = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = bis.read(buf)) != -1) {
+                for (int i = 0; i < n; i++) {
+                    eventBuf.write(buf[i]);
+                    if (eventBuf.size() >= 2) {
+                        byte[] raw = eventBuf.toByteArray();
+                        int len = raw.length;
+                        if (raw[len - 2] == '\n' && raw[len - 1] == '\n') {
+                            String event = new String(raw, 0, len - 2, StandardCharsets.UTF_8);
+                            eventBuf.reset();
 
-                // 缓冲读取 SSE，按 \n\n 分割事件，保留内容内部换行
-                java.io.BufferedInputStream bis = new java.io.BufferedInputStream(conn.getInputStream());
-                java.io.ByteArrayOutputStream eventBuf = new java.io.ByteArrayOutputStream();
-                byte[] buf = new byte[4096];
-                int n;
-                while ((n = bis.read(buf)) != -1) {
-                    for (int i = 0; i < n; i++) {
-                        eventBuf.write(buf[i]);
-                        // 检测 \n\n (事件边界)
-                        if (eventBuf.size() >= 2) {
-                            byte[] raw = eventBuf.toByteArray();
-                            int len = raw.length;
-                            if (raw[len - 2] == '\n' && raw[len - 1] == '\n') {
-                                String event = new String(raw, 0, len - 2, StandardCharsets.UTF_8);
-                                eventBuf.reset();
-
-                                if (event.isEmpty()) continue;
-                                // 提取 data: 字段（可能跨多行）
-                                StringBuilder dataContent = new StringBuilder();
-                                for (String line : event.split("\n")) {
-                                    if (line.startsWith("data: ")) {
-                                        if (dataContent.length() > 0) dataContent.append("\n");
-                                        dataContent.append(line.substring(6));
-                                    }
+                            if (event.isEmpty()) continue;
+                            StringBuilder dataContent = new StringBuilder();
+                            for (String line : event.split("\n")) {
+                                if (line.startsWith("data: ")) {
+                                    if (dataContent.length() > 0) dataContent.append("\n");
+                                    dataContent.append(line.substring(6));
                                 }
-                                String data = dataContent.toString();
+                            }
+                            String data = dataContent.toString();
 
-                                if ("[DONE]".equals(data)) { n = -1; break; }
-                                if (data.startsWith("[ERROR]")) {
-                                    emitter.send(SseEmitter.event().name("error").data(data));
-                                    n = -1; break;
-                                }
-                                if (!data.isEmpty()) {
-                                    fullResponse.append(data);
-                                    emitter.send(SseEmitter.event().name("token").data(data));
-                                }
+                            if ("[DONE]".equals(data)) { n = -1; break; }
+                            if (data.startsWith("[ERROR]")) {
+                                writeSseEvent(out, "error", data);
+                                out.flush();
+                                n = -1; break;
+                            }
+                            if (!data.isEmpty()) {
+                                fullResponse.append(data);
+                                writeSseEvent(out, "token", data);
                             }
                         }
                     }
-                    if (n == -1) break;
                 }
-                bis.close();
-                conn.disconnect();
-
-                // 4. 保存 AI 回复
-                Message assistantMsg = Message.builder()
-                    .conversationId(conversationId)
-                    .role(Message.MessageRole.ASSISTANT)
-                    .content(fullResponse.toString())
-                    .build();
-                messageRepository.save(assistantMsg);
-
-                // 标题
-                if ((convo.getTitle() == null || convo.getTitle().equals("新对话")) && history.size() <= 2) {
-                    String t = content.length() > 30 ? content.substring(0, 30) + "..." : content;
-                    convo.setTitle(t);
-                    conversationRepository.save(convo);
-                }
-
-                // 知识提取
-                try {
-                    extractAndSaveDrafts(userId, conversationId, assistantMsg.getId(), aiMessages);
-                } catch (Exception ignored) {}
-
-                emitter.send(SseEmitter.event().name("done")
-                    .data(Map.of("messageId", assistantMsg.getId().toString())));
-
-            } catch (Exception e) {
-                try {
-                    emitter.send(SseEmitter.event().name("error")
-                        .data("AI 服务暂时不可用: " + e.getMessage()));
-                } catch (Exception ignored) {}
+                out.flush(); // 每个 chunk 后强制 flush
+                if (n == -1) break;
             }
-            emitter.complete();
-        });
+            bis.close();
+            conn.disconnect();
 
-        return emitter;
+            // 4. 保存 AI 回复
+            Message assistantMsg = Message.builder()
+                .conversationId(conversationId)
+                .role(Message.MessageRole.ASSISTANT)
+                .content(fullResponse.toString())
+                .build();
+            messageRepository.save(assistantMsg);
+
+            // 标题
+            if ((convo.getTitle() == null || convo.getTitle().equals("新对话")) && history.size() <= 2) {
+                String t = content.length() > 30 ? content.substring(0, 30) + "..." : content;
+                convo.setTitle(t);
+                conversationRepository.save(convo);
+            }
+
+            // 知识提取
+            try {
+                extractAndSaveDrafts(userId, conversationId, assistantMsg.getId(), aiMessages);
+            } catch (Exception ignored) {}
+
+            // done 事件
+            String doneData = om.writeValueAsString(Map.of("messageId", assistantMsg.getId().toString()));
+            writeSseEvent(out, "done", doneData);
+            out.flush();
+
+        } catch (Exception e) {
+            writeSseEvent(out, "error", "AI 服务暂时不可用: " + e.getMessage());
+            out.flush();
+        }
+    }
+
+    /** 写一条 SSE 事件到 OutputStream，正确处理 data 中的 \\n */
+    private void writeSseEvent(OutputStream out, String eventName, String data) throws IOException {
+        StringBuilder sb = new StringBuilder();
+        sb.append("event:").append(eventName).append("\n");
+        for (String line : data.split("\n", -1)) {
+            sb.append("data:").append(line).append("\n");
+        }
+        sb.append("\n");
+        out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
     }
 
     /** 调用 Python 提取知识，三层去重后保存为草稿 */
