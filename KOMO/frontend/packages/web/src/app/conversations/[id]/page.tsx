@@ -125,6 +125,8 @@ export default function ConversationDetailPage() {
       let buffer = '';
       let fullContent = '';
       let streamError: string | null = null;
+      let readCount = 0;
+      let doneReceived = false;
 
       // SSE 解析状态
       let currentEvent = '';
@@ -132,7 +134,11 @@ export default function ConversationDetailPage() {
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        readCount++;
+        if (done) {
+          console.log('[SSE] reader done after', readCount, 'reads,', fullContent.length, 'chars, doneEvent:', doneReceived);
+          break;
+        }
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
@@ -146,8 +152,10 @@ export default function ConversationDetailPage() {
             const data = line.slice(6);
             if (currentEvent === 'error') {
               streamError = data;
+              console.log('[SSE] error event:', data);
             } else if (currentEvent === 'done') {
-              // done 事件的 data 忽略（含 messageId 等元信息）
+              doneReceived = true;
+              console.log('[SSE] done event received');
             } else {
               // 多行 data: 用 \n 连接，还原原始换行
               if (firstDataLine) {

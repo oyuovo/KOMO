@@ -196,6 +196,7 @@ public class ConversationService {
         // 3. 获取 OutputStream
         OutputStream out = response.getOutputStream();
         StringBuilder fullResponse = new StringBuilder();
+        int eventCount = 0;
         try {
             ObjectMapper om = new ObjectMapper();
             String jsonBody = om.writeValueAsString(Map.of("messages", aiMessages));
@@ -245,6 +246,7 @@ public class ConversationService {
                             if (!data.isEmpty()) {
                                 fullResponse.append(data);
                                 writeSseEvent(out, "token", data);
+                                eventCount++;
                             }
                         }
                     }
@@ -281,8 +283,14 @@ public class ConversationService {
             out.flush();
 
         } catch (Exception e) {
-            writeSseEvent(out, "error", "AI 服务暂时不可用: " + e.getMessage());
-            out.flush();
+            System.err.println("[SSE] Error after " + eventCount + " events: " + e.getMessage());
+            try {
+                writeSseEvent(out, "error", "AI 服务暂时不可用: " + e.getMessage());
+                out.flush();
+            } catch (Exception ignored) {}
+        } finally {
+            System.out.println("[SSE] Stream ended: " + eventCount + " token events, "
+                + fullResponse.length() + " chars total");
         }
     }
 
