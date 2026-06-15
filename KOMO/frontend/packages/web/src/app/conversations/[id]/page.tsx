@@ -126,7 +126,10 @@ export default function ConversationDetailPage() {
       let fullContent = '';
       let streamError: string | null = null;
 
-      // 逐块读取 SSE 流
+      // SSE 解析状态
+      let currentEvent = '';
+      let firstDataLine = true; // 当前事件的首个 data: 行不加 \n 前缀
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -135,25 +138,38 @@ export default function ConversationDetailPage() {
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
-        let currentEvent = '';
         for (const line of lines) {
           if (line.startsWith('event: ')) {
             currentEvent = line.slice(7).trim();
+            firstDataLine = true;
           } else if (line.startsWith('data: ')) {
             const data = line.slice(6);
             if (currentEvent === 'error') {
               streamError = data;
-            } else if (currentEvent !== 'done') {
-              fullContent += data;
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === aiMsgId ? { ...m, content: fullContent } : m
-                )
-              );
+            } else if (currentEvent === 'done') {
+              // done 事件的 data 忽略（含 messageId 等元信息）
+            } else {
+              // 多行 data: 用 \n 连接，还原原始换行
+              if (firstDataLine) {
+                fullContent += data;
+                firstDataLine = false;
+              } else {
+                fullContent += '\n' + data;
+              }
             }
+          } else if (line === '') {
+            // 空行 = SSE 事件边界，重置状态
             currentEvent = '';
+            firstDataLine = true;
           }
         }
+
+        // 每个 chunk 更新一次 UI，避免过多重渲染
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === aiMsgId ? { ...m, content: fullContent } : m
+          )
+        );
       }
 
       // 流结束 — 刷新 decoder 和 buffer 中残留的数据

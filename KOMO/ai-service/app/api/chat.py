@@ -12,6 +12,16 @@ class ChatRequest(BaseModel):
     messages: list[dict[str, str]]
 
 
+def _sse_encode(data: str) -> str:
+    """将文本编码为 SSE data 字段。
+    文本中的 \\n 用多行 data: 格式编码，避免和 SSE 协议分隔符 \\n\\n 冲突。"""
+    if not data:
+        return "data: \n\n"
+    lines = data.split('\n')
+    encoded = '\n'.join(f'data: {line}' for line in lines)
+    return encoded + '\n\n'
+
+
 @router.post("/stream")
 async def stream_chat(req: ChatRequest):
     """SSE 流式对话"""
@@ -21,7 +31,7 @@ async def stream_chat(req: ChatRequest):
     async def generate():
         try:
             async for token in chat_stream(req.messages):
-                yield f"data: {token}\n\n"
+                yield _sse_encode(token)
             yield "data: [DONE]\n\n"
         except Exception as e:
             yield f"data: [ERROR] {str(e)}\n\n"
