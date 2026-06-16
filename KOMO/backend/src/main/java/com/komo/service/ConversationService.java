@@ -240,7 +240,7 @@ public class ConversationService {
                             if ("[DONE]".equals(data)) { n = -1; break; }
                             if (data.startsWith("[ERROR]")) {
                                 writeSseEvent(out, "error", data);
-                                out.flush();
+                                response.flushBuffer();
                                 n = -1; break;
                             }
                             if (!data.isEmpty()) {
@@ -251,7 +251,7 @@ public class ConversationService {
                         }
                     }
                 }
-                out.flush(); // 每个 chunk 后强制 flush
+                response.flushBuffer(); // 每个 chunk 后强制 flush
                 if (n == -1) break;
             }
             bis.close();
@@ -280,15 +280,16 @@ public class ConversationService {
             // done 事件
             String doneData = om.writeValueAsString(Map.of("messageId", assistantMsg.getId().toString()));
             writeSseEvent(out, "done", doneData);
-            out.flush();
+            response.flushBuffer();
 
         } catch (Exception e) {
             System.err.println("[SSE] Error after " + eventCount + " events: " + e.getMessage());
             try {
                 writeSseEvent(out, "error", "AI 服务暂时不可用: " + e.getMessage());
-                out.flush();
+                response.flushBuffer();
             } catch (Exception ignored) {}
         } finally {
+            try { response.flushBuffer(); } catch (IOException ignored) {}
             System.out.println("[SSE] Stream ended: " + eventCount + " token events, "
                 + fullResponse.length() + " chars total");
         }

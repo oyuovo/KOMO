@@ -5,6 +5,8 @@ import com.komo.entity.Conversation;
 import com.komo.entity.Message;
 import com.komo.security.SecurityContext;
 import com.komo.service.ConversationService;
+import jakarta.servlet.AsyncContext;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -73,11 +75,12 @@ public class ConversationController {
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
-    /** SSE 流式对话 — 直接写 OutputStream，不用 SseEmitter */
+    /** SSE 流式对话 — AsyncContext 异步处理，Tomcat NIO 正确 flush */
     @PostMapping(value = "/{id}/messages/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public void streamMessage(
         @PathVariable UUID id,
         @RequestBody Map<String, String> body,
+        HttpServletRequest request,
         HttpServletResponse response
     ) throws IOException {
         UUID userId = SecurityContext.getCurrentUserId();
@@ -87,14 +90,26 @@ public class ConversationController {
             response.getWriter().write("{\"error\":\"消息内容不能为空\"}");
             return;
         }
-        // 设置 SSE 响应头
+        // 响应头
         response.setContentType("text/event-stream");
         response.setCharacterEncoding("UTF-8");
         response.setHeader("Cache-Control", "no-cache");
         response.setHeader("Connection", "keep-alive");
         response.setHeader("X-Accel-Buffering", "no");
-        response.flushBuffer();
 
-        conversationService.streamMessage(id, userId, content, response);
+        // ★ 关键：启动异步上下文，handler 线程立即返回
+        AsyncContext asyncCtx = request.startAsync();
+        asyncCtx.setTimeout(180_000); // 3 分钟
+
+        // 在虚拟线程中处理 SSE 流
+        Thread.startVirtualThread(() -> {
+            try {
+                conversationService.streamMessage(id, userId, content, response);
+            } catch (Exception e) {
+                System.err.println("[SSE] Fatal: " + e.getMessage());
+            } finally {
+                asyncCtx.complete();
+            }
+        });
     }
 }

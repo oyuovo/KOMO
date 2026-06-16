@@ -136,11 +136,14 @@ export default function ConversationDetailPage() {
         const { done, value } = await reader.read();
         readCount++;
         if (done) {
-          console.log('[SSE] reader done after', readCount, 'reads,', fullContent.length, 'chars, doneEvent:', doneReceived);
+          console.log('[SSE] DONE after', readCount, 'reads,', fullContent.length, 'chars, doneEvent:', doneReceived);
+          console.log('[SSE] fullContent:', JSON.stringify(fullContent.substring(0, 200)));
           break;
         }
 
-        buffer += decoder.decode(value, { stream: true });
+        const rawText = decoder.decode(value, { stream: true });
+        console.log('[SSE] read #' + readCount, 'size=' + value!.length, 'preview=' + JSON.stringify(rawText.substring(0, 80)));
+        buffer += rawText;
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
