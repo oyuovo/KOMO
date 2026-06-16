@@ -125,25 +125,16 @@ export default function ConversationDetailPage() {
       let buffer = '';
       let fullContent = '';
       let streamError: string | null = null;
-      let readCount = 0;
-      let doneReceived = false;
 
       // SSE 解析状态
       let currentEvent = '';
-      let firstDataLine = true; // 当前事件的首个 data: 行不加 \n 前缀
+      let firstDataLine = true;
 
       while (true) {
         const { done, value } = await reader.read();
-        readCount++;
-        if (done) {
-          console.log('[SSE] DONE after', readCount, 'reads,', fullContent.length, 'chars, doneEvent:', doneReceived);
-          console.log('[SSE] fullContent:', JSON.stringify(fullContent.substring(0, 200)));
-          break;
-        }
+        if (done) break;
 
-        const rawText = decoder.decode(value, { stream: true });
-        console.log('[SSE] read #' + readCount, 'size=' + value!.length, 'preview=' + JSON.stringify(rawText.substring(0, 80)));
-        buffer += rawText;
+        buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
@@ -155,10 +146,8 @@ export default function ConversationDetailPage() {
             const data = line.slice(6);
             if (currentEvent === 'error') {
               streamError = data;
-              console.log('[SSE] error event:', data);
             } else if (currentEvent === 'done') {
-              doneReceived = true;
-              console.log('[SSE] done event received');
+              // done 事件的 data 忽略
             } else {
               // 多行 data: 用 \n 连接，还原原始换行
               if (firstDataLine) {

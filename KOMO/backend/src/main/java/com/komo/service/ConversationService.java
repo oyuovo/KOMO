@@ -196,7 +196,6 @@ public class ConversationService {
         // 3. 获取 OutputStream
         OutputStream out = response.getOutputStream();
         StringBuilder fullResponse = new StringBuilder();
-        int eventCount = 0;
         try {
             ObjectMapper om = new ObjectMapper();
             String jsonBody = om.writeValueAsString(Map.of("messages", aiMessages));
@@ -246,7 +245,6 @@ public class ConversationService {
                             if (!data.isEmpty()) {
                                 fullResponse.append(data);
                                 writeSseEvent(out, "token", data);
-                                eventCount++;
                             }
                         }
                     }
@@ -283,24 +281,19 @@ public class ConversationService {
             response.flushBuffer();
 
         } catch (Exception e) {
-            System.err.println("[SSE] Error after " + eventCount + " events: " + e.getMessage());
             try {
                 writeSseEvent(out, "error", "AI 服务暂时不可用: " + e.getMessage());
                 response.flushBuffer();
             } catch (Exception ignored) {}
-        } finally {
-            try { response.flushBuffer(); } catch (IOException ignored) {}
-            System.out.println("[SSE] Stream ended: " + eventCount + " token events, "
-                + fullResponse.length() + " chars total");
         }
     }
 
     /** 写一条 SSE 事件到 OutputStream，正确处理 data 中的 \\n */
     private void writeSseEvent(OutputStream out, String eventName, String data) throws IOException {
         StringBuilder sb = new StringBuilder();
-        sb.append("event:").append(eventName).append("\n");
+        sb.append("event: ").append(eventName).append("\n");
         for (String line : data.split("\n", -1)) {
-            sb.append("data:").append(line).append("\n");
+            sb.append("data: ").append(line).append("\n");
         }
         sb.append("\n");
         out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
