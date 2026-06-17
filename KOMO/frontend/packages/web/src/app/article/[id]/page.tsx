@@ -307,6 +307,10 @@ export default function ArticlePage() {
             <Link href={`/article/${article.id}/edit`} className={styles.editLink}>
               编辑
             </Link>
+            <span>·</span>
+            <button className={styles.deleteLink} onClick={handleDelete}>
+              删除
+            </button>
           </div>
 
           <h1 className={styles.articleTitle}>{article.title}</h1>
@@ -375,9 +379,6 @@ export default function ArticlePage() {
               )}
             </div>
 
-            <button className={styles.deleteBtn} onClick={handleDelete}>
-              删除文章
-            </button>
           </footer>
         </article>
       </main>
