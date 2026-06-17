@@ -7,26 +7,24 @@ import {
   getToken,
   getUser,
   clearTokens,
-  listKnowledge,
-  deleteKnowledge,
-  ApiError,
-  type KnowledgeItem,
   type UserInfo,
-  type PageData,
+  type KnowledgeBaseData,
 } from '@komo/shared/api-client';
+import KnowledgeList from '@/components/KnowledgeList/KnowledgeList';
+import KnowledgeBaseSidebar from '@/components/KnowledgeBaseSidebar/KnowledgeBaseSidebar';
 import styles from './page.module.css';
 
 export default function HomePage() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const [articles, setArticles] = useState<KnowledgeItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedKb, setSelectedKb] = useState<KnowledgeBaseData | null>(null);
+  const [stats, setStats] = useState({ count: 0, latestDate: null as string | null });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   // On mount, check localStorage for existing session
   useEffect(() => {
@@ -38,36 +36,14 @@ export default function HomePage() {
     setAuthChecked(true);
   }, []);
 
-  // Fetch articles when user is authenticated
-  useEffect(() => {
-    if (user) {
-      setLoading(true);
-      const timer = setTimeout(() => {
-        listKnowledge({ q: searchQuery || undefined })
-          .then((data: PageData<KnowledgeItem>) => {
-            setArticles(data.content);
-          })
-          .catch((err: Error) => {
-            if ((err as ApiError).code === 401) {
-              setUser(null); // session expired
-            } else {
-              setError(err.message);
-            }
-          })
-          .finally(() => setLoading(false));
-      }, searchQuery ? 300 : 0);
-      return () => clearTimeout(timer);
-    }
-  }, [user, searchQuery]);
-
   const handleLogin = async () => {
     setLoggingIn(true);
-    setError(null);
+    setLoginError(null);
     try {
       const auth = await login({ email, password });
       setUser(auth.user);
     } catch (err) {
-      setError((err as Error).message);
+      setLoginError((err as Error).message || '登录失败');
     } finally {
       setLoggingIn(false);
     }
@@ -76,19 +52,6 @@ export default function HomePage() {
   const handleLogout = () => {
     clearTokens();
     setUser(null);
-    setArticles([]);
-  };
-
-  const handleDeleteArticle = async (id: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!confirm('确定要删除这篇文章吗？')) return;
-    try {
-      await deleteKnowledge(id);
-      setArticles((prev) => prev.filter((a) => a.id !== id));
-    } catch (err) {
-      setError((err as Error).message);
-    }
   };
 
   // Auth check loading state
@@ -134,8 +97,8 @@ export default function HomePage() {
             >
               {loggingIn ? '登录中...' : '登录 / 注册'}
             </button>
-            {error && (
-              <p style={{ color: 'var(--komo-danger)', fontSize: 13 }}>{error}</p>
+            {loginError && (
+              <p style={{ color: 'var(--komo-danger)', fontSize: 13 }}>{loginError}</p>
             )}
           </div>
         </div>
@@ -143,118 +106,77 @@ export default function HomePage() {
     );
   }
 
-  const latestDate =
-    articles.length > 0
-      ? new Date(
-          Math.max(...articles.map((a) => new Date(a.updatedAt).getTime()))
-        ).toLocaleDateString('zh-CN')
-      : null;
-
   return (
-    <div className={styles.page}>
-      {/* Welcome Row */}
-      <div className={styles.welcomeRow}>
-        <div>
-          <h1 className={styles.greeting}>知识库</h1>
-          <p className={styles.greetingSub}>
-            {articles.length} 篇文章
-            {latestDate && ` · 最近更新 ${latestDate}`}
-          </p>
-        </div>
-        <div className={styles.quickActions}>
-          <button className={styles.btnSecondary} disabled title="功能开发中">
-            导入
-          </button>
-          <Link href="/knowledge/create" className={styles.btnPrimary}>
-            + 新建文章
-          </Link>
-        </div>
-      </div>
+    <div className={styles.layout}>
+      {/* KB Sidebar */}
+      <KnowledgeBaseSidebar
+        selectedId={selectedKb?.id ?? null}
+        onSelect={setSelectedKb}
+      />
 
-      {/* Search Bar */}
-      <div className={styles.searchBar}>
-        <span className={styles.searchIcon}>⌕</span>
-        <input
-          type="text"
-          placeholder="搜索文章标题或内容..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-      </div>
-
-      {/* Article List Header */}
-      <div className={styles.sectionHeader}>
-        <span className={styles.sectionTitle}>全部文章</span>
-      </div>
-
-      {/* Article List — Real API Data */}
-      <div className={styles.articleList}>
-        {loading && (
-          <p style={{ color: 'var(--komo-text-tertiary)', padding: 24, textAlign: 'center' }}>
-            加载中...
-          </p>
-        )}
-        {error && (
-          <p style={{ color: 'var(--komo-danger)', padding: 24 }}>加载失败: {error}</p>
-        )}
-        {!loading && articles.length === 0 && (
-          <p style={{ color: 'var(--komo-text-tertiary)', padding: 24, textAlign: 'center' }}>
-            还没有文章。开始一次 AI 对话来创建你的第一条知识。
-          </p>
-        )}
-        {articles.map((article) => (
-          <div key={article.id} className={styles.articleRow}>
-            <Link
-              href={`/article/${article.id}`}
-              className={styles.articleLink}
-            >
-              <span
-                className={`${styles.badge} ${
-                  article.status === 'PUBLISHED'
-                    ? styles.badgePublished
-                    : styles.badgeDraft
-                }`}
-              >
-                {article.status === 'PUBLISHED' ? '已发布' : '草稿'}
-              </span>
-              <span className={styles.articleTitle}>{article.title}</span>
-              <span className={styles.articleReadingTime}>{article.entryType}</span>
-              <span className={styles.articleMeta}>
-                {new Date(article.createdAt).toLocaleDateString('zh-CN')}
-              </span>
-            </Link>
-            <button
-              className={styles.articleDelete}
-              onClick={(e) => handleDeleteArticle(article.id, e)}
-              title="删除文章"
-            >
-              删除
-            </button>
+      {/* Main Content */}
+      <div className={styles.page}>
+        {/* Welcome Row */}
+        <div className={styles.welcomeRow}>
+          <div>
+            <h1 className={styles.greeting}>
+              {selectedKb ? selectedKb.name : '全部文章'}
+            </h1>
+            <p className={styles.greetingSub}>
+              {stats.count} 篇文章
+              {stats.latestDate && ` · 最近更新 ${stats.latestDate}`}
+            </p>
           </div>
-        ))}
-      </div>
+          <div className={styles.quickActions}>
+            <Link href="/knowledge/import" className={styles.btnSecondary}>
+              导入
+            </Link>
+            <Link href="/knowledge/create" className={styles.btnPrimary}>
+              + 新建文章
+            </Link>
+          </div>
+        </div>
 
-      {/* Draft Hint — only shown when drafts API is ready */}
-      <div className={styles.draftHint}>
-        <span className={styles.draftHintMsg}>
-          💡 草稿功能开发中。AI 对话完成后知识点会自动提取到草稿。
-        </span>
-        <div className={styles.draftHintActions}>
-          <Link href="/drafts" className={styles.draftHintLink}>
-            查看草稿
+        {/* Search Bar */}
+        <div className={styles.searchBar}>
+          <span className={styles.searchIcon}>⌕</span>
+          <input
+            type="text"
+            placeholder="搜索文章标题或内容..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+
+        {/* Article List — filtered by selected KB */}
+        <KnowledgeList
+          searchQuery={searchQuery}
+          knowledgeBaseId={selectedKb?.id ?? null}
+          onStatsChange={setStats}
+        />
+
+        {/* Draft Hint */}
+        <div className={styles.draftHint}>
+          <span className={styles.draftHintMsg}>
+            💡 AI 对话完成后知识点会自动提取到草稿，前往审核。
+          </span>
+          <div className={styles.draftHintActions}>
+            <Link href="/drafts" className={styles.draftHintLink}>
+              查看草稿
+            </Link>
+          </div>
+        </div>
+
+        {/* Start Conversation */}
+        <div className={styles.startConvo}>
+          <h3 className={styles.startConvoTitle}>通过对话发现知识</h3>
+          <p className={styles.startConvoDesc}>
+            与 DeepSeek AI 对话，系统会自动从回复中提取知识要点。
+          </p>
+          <Link href="/conversations" className={styles.btnPrimary}>
+            开始对话
           </Link>
         </div>
-      </div>
-
-      {/* Start Conversation */}
-      <div className={styles.startConvo}>
-        <h3 className={styles.startConvoTitle}>通过对话发现知识</h3>
-        <p className={styles.startConvoDesc}>
-          与 DeepSeek AI 对话，系统会自动从回复中提取知识要点。
-        </p>
-        <Link href="/conversations" className={styles.btnPrimary}>
-          开始对话
-        </Link>
       </div>
     </div>
   );
