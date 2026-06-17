@@ -276,55 +276,6 @@ export default function ArticlePage() {
         </Link>
       </aside>
 
-      {/* Floating TOC + Embed */}
-      {(tocItems.length > 0 || isInFragmentsKb) && (
-        <aside className={styles.tocFloat}>
-          {tocItems.length > 0 && (
-            <>
-              <div className={styles.tocFloatTitle}>📑 在本页中</div>
-              {tocItems.map((item) => (
-                <button
-                  key={item.id}
-                  className={`${styles.tocFloatItem} ${
-                    item.level === 3 ? styles.tocFloatItemH3 : ''
-                  } ${activeTocId === item.id ? styles.tocFloatItemActive : ''}`}
-                  onClick={() => scrollToHeading(item.id)}
-                >
-                  {item.text}
-                </button>
-              ))}
-            </>
-          )}
-
-          {isInFragmentsKb && (
-            <div className={styles.tocFloatEmbed}>
-              <div className={styles.tocFloatTitle}>合并进文章</div>
-              <input
-                className={styles.tocFloatEmbedInput}
-                type="text"
-                placeholder="搜索目标文章..."
-                value={embedSearch}
-                onChange={(e) => handleEmbedSearch(e.target.value)}
-              />
-              {embedResults.length > 0 && (
-                <div className={styles.tocFloatEmbedDropdown}>
-                  {embedResults.map((item) => (
-                    <button
-                      key={item.id}
-                      className={styles.tocFloatEmbedItem}
-                      onClick={() => handleEmbed(item.id)}
-                      disabled={embedding}
-                    >
-                      {item.title}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </aside>
-      )}
-
       {/* Center: Article Content */}
       <main className={styles.main}>
         <article className={styles.articleContainer}>
@@ -386,6 +337,55 @@ export default function ArticlePage() {
           </footer>
         </article>
       </main>
+
+      {/* Right TOC sidebar */}
+      {(tocItems.length > 0 || isInFragmentsKb) && (
+        <aside className={styles.tocFloat}>
+          {tocItems.length > 0 && (
+            <>
+              <div className={styles.tocFloatTitle}>📑 在本页中</div>
+              {tocItems.map((item) => (
+                <button
+                  key={item.id}
+                  className={`${styles.tocFloatItem} ${
+                    item.level === 3 ? styles.tocFloatItemH3 : ''
+                  } ${activeTocId === item.id ? styles.tocFloatItemActive : ''}`}
+                  onClick={() => scrollToHeading(item.id)}
+                >
+                  {item.text}
+                </button>
+              ))}
+            </>
+          )}
+
+          {isInFragmentsKb && (
+            <div className={styles.tocFloatEmbed}>
+              <div className={styles.tocFloatTitle}>合并进文章</div>
+              <input
+                className={styles.tocFloatEmbedInput}
+                type="text"
+                placeholder="搜索目标文章..."
+                value={embedSearch}
+                onChange={(e) => handleEmbedSearch(e.target.value)}
+              />
+              {embedResults.length > 0 && (
+                <div className={styles.tocFloatEmbedDropdown}>
+                  {embedResults.map((item) => (
+                    <button
+                      key={item.id}
+                      className={styles.tocFloatEmbedItem}
+                      onClick={() => handleEmbed(item.id)}
+                      disabled={embedding}
+                    >
+                      {item.title}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </aside>
+      )}
     </div>
   );
 }
