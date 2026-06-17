@@ -17,6 +17,7 @@ import {
   type KnowledgeLinkData,
 } from '@komo/shared/api-client';
 import MarkdownRenderer from '@/components/MarkdownRenderer/MarkdownRenderer';
+import { slugifyHeading } from '@/lib/slugify';
 import styles from './page.module.css';
 
 interface TocItem {
@@ -33,15 +34,8 @@ function extractToc(content: string): TocItem[] {
   while ((m = re.exec(content)) !== null) {
     const level = m[1].length === 2 ? 2 : 3;
     const text = m[2].trim();
-    const id = text
-      .toLowerCase()
-      .replace(/[（(]([^)）]+)[)）]/g, '')
-      .replace(/[^\w一-鿿\s-]/g, '')
-      .trim()
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '');
-    items.push({ level, text, id } as TocItem);
+    const id = slugifyHeading(text);
+    items.push({ level, text, id });
   }
   return items;
 }
