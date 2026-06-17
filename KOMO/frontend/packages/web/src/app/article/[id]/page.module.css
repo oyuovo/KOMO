@@ -246,10 +246,10 @@
   color: var(--komo-danger);
 }
 
-/* Floating TOC — left side, between sidebar and content */
+/* Floating TOC — right side */
 .tocFloat {
   position: fixed;
-  left: calc(var(--komo-sidebar-width) + 28px);
+  right: max(24px, calc((100vw - var(--komo-sidebar-width) - var(--komo-content-max)) / 2 - 200px));
   top: calc(var(--komo-topnav-height) + 32px);
   width: 180px;
   max-height: calc(100vh - var(--komo-topnav-height) - 80px);
