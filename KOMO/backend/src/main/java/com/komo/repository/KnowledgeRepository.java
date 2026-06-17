@@ -21,14 +21,16 @@ public interface KnowledgeRepository extends JpaRepository<KnowledgeEntry, UUID>
     /** 单条查询：必须带 userId — 这是安全基线 */
     Optional<KnowledgeEntry> findByIdAndUserId(UUID id, UUID userId);
 
-    /** 分页列表（排除已删除），支持分类和关键词过滤 */
+    /** 分页列表（排除已删除），支持分类、知识库、关键词过滤 */
     @Query("SELECT k FROM KnowledgeEntry k WHERE k.userId = :userId AND k.deletedAt IS NULL "
          + "AND (:categoryId IS NULL OR k.categoryId = :categoryId) "
+         + "AND (:knowledgeBaseId IS NULL OR k.knowledgeBaseId = :knowledgeBaseId) "
          + "AND (:query IS NULL OR lower(k.contentPlain) LIKE lower(concat('%', cast(:query as text), '%'))) "
          + "ORDER BY k.updatedAt DESC")
     Page<KnowledgeEntry> findByUserIdAndFilters(
         @Param("userId") UUID userId,
         @Param("categoryId") UUID categoryId,
+        @Param("knowledgeBaseId") UUID knowledgeBaseId,
         @Param("query") String query,
         Pageable pageable
     );

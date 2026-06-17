@@ -129,8 +129,8 @@ async function request<T>(
     throw new ApiError(0, '无法连接服务器，请检查后端是否启动');
   }
 
-  // 401 → 尝试刷新 token 后重试一次
-  if (res.status === 401) {
+  // 401/403 → 尝试刷新 token 后重试一次
+  if (res.status === 401 || res.status === 403) {
     const refreshed = await refreshAuth();
     if (refreshed) {
       const newToken = getToken();
@@ -155,6 +155,20 @@ async function request<T>(
     json = await res.json();
   } catch {
     if (res.status === 401 || res.status === 403) {
+      // Token 可能过期，尝试静默刷新
+      const refreshed = await refreshAuth();
+      if (refreshed) {
+        // 重试请求
+        const newToken = getToken();
+        if (newToken) {
+          headers['Authorization'] = `Bearer ${newToken}`;
+          try {
+            res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+            json = await res.json();
+            if (json.code === 0) return json.data;
+          } catch {}
+        }
+      }
       redirectToLogin();
       throw new ApiError(401, '登录已过期，请重新登录');
     }
@@ -225,6 +239,7 @@ export interface KnowledgeItem {
   source: string;
   entryType: string;
   status: string;
+  knowledgeBaseId: string | null;
   categoryId: string | null;
   categoryName: string | null;
   tags: string | null;
@@ -244,18 +259,21 @@ export interface KnowledgeCreateRequest {
   title: string;
   content: string;
   entryType?: string;
+  knowledgeBaseId?: string;
   categoryId?: string;
   tags?: string;
 }
 
 export async function listKnowledge(params?: {
   category?: string;
+  kb?: string;
   q?: string;
   page?: number;
   size?: number;
 }): Promise<PageData<KnowledgeItem>> {
   const searchParams = new URLSearchParams();
   if (params?.category) searchParams.set('category', params.category);
+  if (params?.kb) searchParams.set('kb', params.kb);
   if (params?.q) searchParams.set('q', params.q);
   if (params?.page !== undefined) searchParams.set('page', String(params.page));
   if (params?.size !== undefined) searchParams.set('size', String(params.size));
@@ -293,6 +311,16 @@ export async function deleteKnowledge(id: string): Promise<void> {
   return del(`/knowledge/${id}`);
 }
 
+export interface BatchDeleteResult {
+  deleted: number;
+  failed: number;
+  total: number;
+}
+
+export async function batchDeleteKnowledge(ids: string[]): Promise<BatchDeleteResult> {
+  return del('/knowledge/batch', { ids });
+}
+
 /** 手动重建 ES 索引（从数据库全量回填） */
 export async function reindexKnowledge(): Promise<{ indexed: number; message: string }> {
   return post('/knowledge/reindex', {});
@@ -325,6 +353,16 @@ export async function removeLink(entryId: string, linkId: string): Promise<void>
   return del(`/knowledge/${entryId}/links/${linkId}`);
 }
 
+/** 将知识条目嵌入到目标文章（软关联） */
+export async function embedInto(entryId: string, targetEntryId: string): Promise<KnowledgeLinkData> {
+  return post(`/knowledge/${entryId}/embed/${targetEntryId}`, {});
+}
+
+/** 将碎片内容合并进目标文章（内容级合并） */
+export async function mergeInto(entryId: string, targetEntryId: string): Promise<KnowledgeItem> {
+  return post(`/knowledge/${entryId}/merge/${targetEntryId}`, {});
+}
+
 // ===== HTTP methods =====
 
 async function get<T>(path: string): Promise<T> {
@@ -345,8 +383,11 @@ async function put<T>(path: string, body: unknown): Promise<T> {
   });
 }
 
-async function del<T>(path: string): Promise<T> {
-  return request<T>(path, { method: 'DELETE' });
+async function del<T>(path: string, body?: unknown): Promise<T> {
+  return request<T>(path, {
+    method: 'DELETE',
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
 }
 
 // ===== Conversations =====
@@ -390,6 +431,10 @@ export async function deleteConversation(id: string): Promise<void> {
   await del(`/conversations/${id}`);
 }
 
+export async function batchDeleteConversations(ids: string[]): Promise<BatchDeleteResult> {
+  return del('/conversations/batch', { ids });
+}
+
 // ===== Drafts =====
 
 export interface DraftData {
@@ -400,6 +445,7 @@ export interface DraftData {
   content: string;
   sourceQuote: string | null;
   confidence: number;
+  extractType: 'ARTICLE' | 'FRAGMENT' | 'SUPPLEMENT' | null;
   relationType: 'NEW' | 'SUPPLEMENTS' | 'CONTRADICTS' | 'DUPLICATE' | null;
   relationDetail: string | null;
   status: 'PENDING' | 'CONFIRMED' | 'EDITED' | 'REJECTED';
@@ -410,16 +456,26 @@ export async function listDrafts(): Promise<DraftData[]> {
   return get('/drafts');
 }
 
-export async function confirmDraft(id: string): Promise<unknown> {
-  return post(`/drafts/${id}/confirm`, {});
+export async function confirmDraft(
+  id: string,
+  knowledgeBaseId?: string,
+  parentEntryId?: string
+): Promise<unknown> {
+  const body: Record<string, string> = {};
+  if (knowledgeBaseId) body.knowledgeBaseId = knowledgeBaseId;
+  if (parentEntryId) body.parentEntryId = parentEntryId;
+  return post(`/drafts/${id}/confirm`, body);
 }
 
 export async function editAndConfirmDraft(
   id: string,
   title: string,
-  content: string
+  content: string,
+  knowledgeBaseId?: string
 ): Promise<unknown> {
-  return post(`/drafts/${id}/edit`, { title, content });
+  const body: Record<string, string> = { title, content };
+  if (knowledgeBaseId) body.knowledgeBaseId = knowledgeBaseId;
+  return post(`/drafts/${id}/edit`, body);
 }
 
 export async function rejectDraft(id: string): Promise<void> {
@@ -432,4 +488,32 @@ export async function batchConfirmDrafts(ids: string[]): Promise<{ confirmed: nu
 
 export async function batchRejectDrafts(ids: string[]): Promise<{ rejected: number }> {
   return post('/drafts/batch-reject', { ids });
+}
+
+// ===== Knowledge Bases =====
+
+export interface KnowledgeBaseData {
+  id: string;
+  userId: string;
+  name: string;
+  type: 'SYSTEM_FRAGMENTS' | 'DEFAULT' | 'USER';
+  isDeletable: boolean;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export async function listKnowledgeBases(): Promise<KnowledgeBaseData[]> {
+  return get('/knowledge-bases');
+}
+
+export async function createKnowledgeBase(name: string): Promise<KnowledgeBaseData> {
+  return post('/knowledge-bases', { name });
+}
+
+export async function renameKnowledgeBase(id: string, name: string): Promise<KnowledgeBaseData> {
+  return put(`/knowledge-bases/${id}`, { name });
+}
+
+export async function deleteKnowledgeBase(id: string): Promise<void> {
+  return del(`/knowledge-bases/${id}`);
 }

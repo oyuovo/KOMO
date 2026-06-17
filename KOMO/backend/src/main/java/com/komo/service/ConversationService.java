@@ -1,5 +1,6 @@
 package com.komo.service;
 
+import com.komo.dto.BatchDeleteResult;
 import com.komo.dto.DedupResult;
 import com.komo.entity.Conversation;
 import com.komo.entity.KnowledgeDraft;
@@ -38,6 +39,7 @@ public class ConversationService {
     private final MessageRepository messageRepository;
     private final KnowledgeDraftService knowledgeDraftService;
     private final KnowledgeIndexService knowledgeIndexService;
+    private final KnowledgeBaseService knowledgeBaseService;
 
     /** 创建新对话 */
     @Transactional
@@ -69,6 +71,23 @@ public class ConversationService {
         knowledgeDraftService.deleteByConversation(conversationId);
         messageRepository.deleteByConversationId(conversationId);
         conversationRepository.delete(convo);
+    }
+
+    /** 批量删除对话。逐条处理，单条失败不影响其他。 */
+    @Transactional
+    public BatchDeleteResult batchDelete(List<UUID> ids, UUID userId) {
+        int deleted = 0;
+        int failed = 0;
+        for (UUID id : ids) {
+            try {
+                delete(id, userId);
+                deleted++;
+            } catch (Exception e) {
+                failed++;
+                System.err.println("[batchDelete] 删除对话 " + id + " 失败: " + e.getMessage());
+            }
+        }
+        return new BatchDeleteResult(deleted, failed, ids.size());
     }
 
     /** 发送消息并获取 AI 回复 */
@@ -299,7 +318,7 @@ public class ConversationService {
         out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
     }
 
-    /** 调用 Python 提取知识，三层去重后保存为草稿 */
+    /** 调用 Python 提取知识，按类型路由后保存为草稿 */
     private void extractAndSaveDrafts(
         UUID userId, UUID conversationId, UUID messageId,
         List<Map<String, String>> messages
@@ -336,24 +355,58 @@ public class ConversationService {
                 String content = (String) point.get("content");
                 double confidence = point.get("confidence") instanceof Number
                     ? ((Number) point.get("confidence")).doubleValue() : 0.7;
+                String typeStr = (String) point.getOrDefault("type", "FRAGMENT");
 
-                // Layer 1+2: ES MLT + 标题 LCS 去重（同时查知识库和草稿）
+                // 解析提取类型
+                KnowledgeDraft.ExtractType extractType;
+                try {
+                    extractType = KnowledgeDraft.ExtractType.valueOf(typeStr);
+                } catch (IllegalArgumentException e) {
+                    extractType = KnowledgeDraft.ExtractType.FRAGMENT;
+                }
+
+                // Layer 1+2: ES MLT + 标题 LCS 去重
                 DedupResult result = dedupService.checkDuplicate(userId, title,
                     content != null ? content : "");
 
                 KnowledgeDraft draft = KnowledgeDraft.builder()
                     .title(title).content(content).confidence(confidence)
+                    .extractType(extractType)
                     .build();
 
+                // 根据提取类型 + 去重结果决定处理方式
                 if (dedupService.shouldAutoReject(result)) {
-                    // 高分重复 -> 静默丢弃（不生成草稿）
-                    continue;
-                } else if (dedupService.needsLlmReview(result)) {
-                    draft.setStatus(KnowledgeDraft.DraftStatus.PENDING_DEDUP);
-                    draft.setRelationType(KnowledgeDraft.RelationType.SUPPLEMENTS);
-                } else {
+                    continue; // 高分重复，静默丢弃
+                }
+
+                if (extractType == KnowledgeDraft.ExtractType.SUPPLEMENT) {
+                    // SUPPLEMENT：尝试匹配父文章
+                    if (result.isDuplicate() && result.getMatchedEntryId() != null) {
+                        draft.setRelationType(KnowledgeDraft.RelationType.SUPPLEMENTS);
+                        draft.setRelationDetail("{\"parentEntryId\":\"" + result.getMatchedEntryId() + "\"}");
+                    }
                     draft.setStatus(KnowledgeDraft.DraftStatus.PENDING);
-                    draft.setRelationType(KnowledgeDraft.RelationType.NEW);
+                } else if (extractType == KnowledgeDraft.ExtractType.ARTICLE) {
+                    // ARTICLE：高质量新知，待确认后进入默认知识库
+                    if (dedupService.needsLlmReview(result)) {
+                        draft.setStatus(KnowledgeDraft.DraftStatus.PENDING_DEDUP);
+                        draft.setRelationType(KnowledgeDraft.RelationType.SUPPLEMENTS);
+                    } else {
+                        draft.setStatus(KnowledgeDraft.DraftStatus.PENDING);
+                        draft.setRelationType(KnowledgeDraft.RelationType.NEW);
+                    }
+                } else {
+                    // FRAGMENT：碎片知识。如果有强匹配文章 → 默认嵌入；否则 → 碎片库兜底
+                    double matchScore = result.getScore();
+                    if (result.isDuplicate() && result.getMatchedEntryId() != null && matchScore > 0.4) {
+                        // 强匹配已有文章 → 默认嵌入
+                        draft.setRelationType(KnowledgeDraft.RelationType.SUPPLEMENTS);
+                        draft.setRelationDetail("{\"parentEntryId\":\"" + result.getMatchedEntryId()
+                            + "\",\"score\":" + String.format("%.2f", matchScore) + "}");
+                    } else {
+                        draft.setRelationType(KnowledgeDraft.RelationType.NEW);
+                    }
+                    draft.setStatus(KnowledgeDraft.DraftStatus.PENDING);
                 }
 
                 drafts.add(draft);

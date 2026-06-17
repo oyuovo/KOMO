@@ -19,6 +19,9 @@ public class KnowledgeCreateRequest {
 
     private KnowledgeType entryType;
 
+    /** 目标知识库 ID */
+    private UUID knowledgeBaseId;
+
     private UUID categoryId;
 
     /** 逗号分隔的标签 */

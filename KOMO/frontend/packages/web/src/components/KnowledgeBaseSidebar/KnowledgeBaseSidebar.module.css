@@ -1,0 +1,210 @@
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  padding: 16px 12px;
+  border-right: 1px solid var(--komo-border);
+  background: var(--komo-surface);
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--komo-topnav-height));
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding: 0 8px;
+}
+
+.title {
+  font-size: var(--komo-text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--komo-text-tertiary);
+}
+
+.addBtn {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--komo-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--komo-text-tertiary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.addBtn:hover {
+  background: var(--komo-surface-hover);
+  color: var(--komo-text);
+}
+
+/* Create Row */
+.createRow {
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px;
+  margin-bottom: 4px;
+}
+
+.createInput {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--komo-accent);
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  background: var(--komo-bg);
+  color: var(--komo-text);
+}
+
+.createConfirm {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 4px;
+  background: var(--komo-accent);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* List */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+  transition: background 0.1s ease;
+}
+.item:hover { background: var(--komo-surface-hover); }
+.item:hover .itemActions { opacity: 1; }
+
+.itemActive {
+  background: var(--komo-accent-soft);
+}
+.itemActive:hover {
+  background: var(--komo-accent-soft);
+}
+
+.itemSystem {
+  /* 系统库样式微妙区分 */
+}
+
+.itemBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--komo-text-secondary);
+  font-size: var(--komo-text-sm);
+  font-family: inherit;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  transition: color 0.1s ease;
+}
+.itemActive .itemBtn {
+  color: var(--komo-accent);
+  font-weight: 600;
+}
+
+.itemIcon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.itemName {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.systemBadge {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--komo-border);
+  color: var(--komo-text-tertiary);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+/* Item Actions */
+.itemActions {
+  display: flex;
+  gap: 2px;
+  padding-right: 4px;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.actionBtn {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--komo-text-tertiary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.actionBtn:hover {
+  background: var(--komo-surface-hover);
+  color: var(--komo-text);
+}
+
+/* Edit Row */
+.editRow {
+  padding: 4px 8px;
+  width: 100%;
+}
+
+.editInput {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--komo-accent);
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  background: var(--komo-bg);
+  color: var(--komo-text);
+}
+
+/* Footer */
+.footer {
+  padding-top: 8px;
+  border-top: 1px solid var(--komo-border);
+  margin-top: 8px;
+}
+
+.empty {
+  padding: 16px 8px;
+  font-size: 12px;
+  color: var(--komo-text-tertiary);
+  text-align: center;
+}

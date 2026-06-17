@@ -82,7 +82,7 @@ public class KnowledgeIndexService {
     }
 
     /** 更新索引 */
-    public void updateEntry(UUID entryId, String title, String contentPlain) {
+    public void updateEntry(UUID entryId, UUID userId, String title, String contentPlain) {
         try {
             Map<String, Object> doc = new HashMap<>();
             doc.put("title", title);
@@ -98,7 +98,7 @@ public class KnowledgeIndexService {
             if (e.status() == 404) {
                 // 文档不存在，回退为新建索引
                 System.err.println("[ES] Update not found, creating instead: " + entryId);
-                indexEntry(entryId, null, title, contentPlain);
+                indexEntry(entryId, userId, title, contentPlain);
             } else {
                 System.err.println("[ES] Update failed for " + entryId + ": status=" + e.status() + " " + e.getMessage());
             }

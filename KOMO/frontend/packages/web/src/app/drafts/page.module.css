@@ -78,6 +78,30 @@
   flex-shrink: 0;
 }
 
+.badgeArticle {
+  font-size: var(--komo-text-xs);
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-weight: 600;
+  background: var(--komo-accent-soft);
+  color: var(--komo-accent);
+}
+.badgeFragment {
+  font-size: var(--komo-text-xs);
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-weight: 500;
+  background: var(--komo-surface-hover);
+  color: var(--komo-text-secondary);
+}
+.badgeExtSupplement {
+  font-size: var(--komo-text-xs);
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-weight: 500;
+  background: #f0f8f0;
+  color: #2c7a3f;
+}
 .badgeNew {
   font-size: var(--komo-text-xs);
   padding: 2px 8px;
@@ -120,6 +144,119 @@
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* KB Selector */
+.kbRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 12px 0;
+}
+.kbLabel {
+  font-size: var(--komo-text-xs);
+  color: var(--komo-text-tertiary);
+  white-space: nowrap;
+}
+.kbSelect {
+  padding: 4px 8px;
+  border: 1px solid var(--komo-border);
+  border-radius: var(--komo-radius-sm);
+  font-size: var(--komo-text-xs);
+  font-family: inherit;
+  background: var(--komo-bg);
+  color: var(--komo-text);
+  cursor: pointer;
+  outline: none;
+  flex: 1;
+  max-width: 200px;
+}
+.kbSelect:focus {
+  border-color: var(--komo-accent);
+}
+
+.parentHint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--komo-text-xs);
+  color: var(--komo-text-secondary);
+  background: var(--komo-accent-soft);
+  padding: 4px 10px;
+  border-radius: var(--komo-radius-sm);
+}
+
+.parentId {
+  font-family: var(--komo-font-mono);
+  color: var(--komo-accent);
+  font-weight: 600;
+}
+
+.parentClear {
+  margin-left: 4px;
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--komo-text-tertiary);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+.parentClear:hover {
+  color: var(--komo-danger);
+}
+
+/* Embed Search */
+.embedRow {
+  position: relative;
+  padding: 0 0 8px 0;
+}
+
+.embedSearch {
+  width: 100%;
+  padding: 5px 10px;
+  border: 1px dashed var(--komo-border);
+  border-radius: var(--komo-radius-sm);
+  font-size: var(--komo-text-xs);
+  font-family: inherit;
+  background: transparent;
+  color: var(--komo-text-tertiary);
+  outline: none;
+}
+.embedSearch:focus {
+  border-color: var(--komo-accent);
+  color: var(--komo-text);
+}
+
+.embedResults {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: var(--komo-surface);
+  border: 1px solid var(--komo-border);
+  border-radius: var(--komo-radius-sm);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.embedResultItem {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--komo-text);
+  font-size: var(--komo-text-sm);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.embedResultItem:hover {
+  background: var(--komo-surface-hover);
 }
 
 .cardActions {

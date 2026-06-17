@@ -1,5 +1,6 @@
 package com.komo.controller;
 
+import com.komo.dto.BatchDeleteResult;
 import com.komo.dto.request.KnowledgeCreateRequest;
 import com.komo.dto.request.KnowledgeUpdateRequest;
 import com.komo.dto.response.ApiResponse;
@@ -36,12 +37,13 @@ public class KnowledgeController {
     @GetMapping
     public ResponseEntity<ApiResponse<PageResponse<KnowledgeResponse>>> list(
         @RequestParam(required = false) UUID category,
+        @RequestParam(required = false, name = "kb") UUID knowledgeBaseId,
         @RequestParam(required = false) String q,
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "20") int size
     ) {
         return ResponseEntity.ok(
-            ApiResponse.success(knowledgeService.list(category, q, page, size))
+            ApiResponse.success(knowledgeService.list(category, knowledgeBaseId, q, page, size))
         );
     }
 
@@ -73,6 +75,16 @@ public class KnowledgeController {
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID id) {
         knowledgeService.softDelete(id);
         return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    /** 批量软删除知识条目 */
+    @DeleteMapping("/batch")
+    public ResponseEntity<ApiResponse<BatchDeleteResult>> batchDelete(@RequestBody Map<String, List<String>> body) {
+        List<UUID> ids = body.get("ids").stream()
+            .map(UUID::fromString)
+            .toList();
+        BatchDeleteResult result = knowledgeService.batchSoftDelete(ids);
+        return ResponseEntity.ok(ApiResponse.success(result));
     }
 
     @GetMapping("/{id}/links")
@@ -107,6 +119,26 @@ public class KnowledgeController {
             .map(KnowledgeResponse::from)
             .toList();
         return ResponseEntity.ok(ApiResponse.success(items));
+    }
+
+    /** 将知识条目嵌入到目标文章（创建关联 + 移入目标文章的知识库） */
+    @PostMapping("/{id}/embed/{targetId}")
+    public ResponseEntity<ApiResponse<KnowledgeLink>> embedInto(
+        @PathVariable UUID id,
+        @PathVariable UUID targetId
+    ) {
+        KnowledgeLink link = knowledgeService.embedInto(id, targetId);
+        return ResponseEntity.ok(ApiResponse.success(link));
+    }
+
+    /** 将碎片内容合并进目标文章（内容级合并 + 删除碎片 + 创建关联） */
+    @PostMapping("/{id}/merge/{targetId}")
+    public ResponseEntity<ApiResponse<KnowledgeResponse>> mergeInto(
+        @PathVariable UUID id,
+        @PathVariable UUID targetId
+    ) {
+        KnowledgeEntry merged = knowledgeService.mergeInto(id, targetId);
+        return ResponseEntity.ok(ApiResponse.success(KnowledgeResponse.from(merged)));
     }
 
     /** 手动重建 ES 索引（从 DB 全量回填） */

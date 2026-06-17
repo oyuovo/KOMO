@@ -21,6 +21,7 @@ public class KnowledgeResponse {
     private String entryType;
     private String status;
     private UUID categoryId;
+    private UUID knowledgeBaseId;
     private String categoryName;
     private String tags;
     private LocalDateTime createdAt;
@@ -35,6 +36,7 @@ public class KnowledgeResponse {
             .entryType(entry.getEntryType() != null ? entry.getEntryType().name() : null)
             .status(entry.getStatus() != null ? entry.getStatus().name() : null)
             .categoryId(entry.getCategoryId())
+            .knowledgeBaseId(entry.getKnowledgeBaseId())
             .tags(entry.getTagNames())
             .createdAt(entry.getCreatedAt())
             .updatedAt(entry.getUpdatedAt())

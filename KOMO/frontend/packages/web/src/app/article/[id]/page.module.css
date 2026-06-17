@@ -229,49 +229,6 @@
   margin-bottom: 6px;
 }
 
-.embedInput {
-  width: 100%;
-  padding: 6px 10px;
-  border: 1px solid var(--komo-border);
-  border-radius: var(--komo-radius-sm);
-  font-size: 12px;
-  font-family: inherit;
-  background: var(--komo-bg);
-  color: var(--komo-text);
-  outline: none;
-  margin-top: 6px;
-}
-.embedInput:focus {
-  border-color: var(--komo-accent);
-}
-
-.embedDropdown {
-  margin-top: 4px;
-  border: 1px solid var(--komo-border);
-  border-radius: var(--komo-radius-sm);
-  max-height: 160px;
-  overflow-y: auto;
-}
-
-.embedItem {
-  display: block;
-  width: 100%;
-  padding: 6px 10px;
-  border: none;
-  background: transparent;
-  color: var(--komo-text);
-  font-size: 12px;
-  font-family: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.embedItem:hover {
-  background: var(--komo-surface-hover);
-}
-.embedItem:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
 
 .deleteLink {
   font-size: var(--komo-text-sm);
@@ -350,4 +307,58 @@
   .tocFloat {
     display: none;
   }
+}
+
+/* Embed widget inside floating panel */
+.tocFloatEmbed {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--komo-border);
+}
+
+.tocFloatEmbedInput {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--komo-border);
+  border-radius: var(--komo-radius-sm);
+  font-size: 12px;
+  font-family: inherit;
+  background: var(--komo-bg);
+  color: var(--komo-text);
+  outline: none;
+  margin-top: 8px;
+}
+.tocFloatEmbedInput:focus {
+  border-color: var(--komo-accent);
+}
+
+.tocFloatEmbedDropdown {
+  margin-top: 4px;
+  border: 1px solid var(--komo-border);
+  border-radius: var(--komo-radius-sm);
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.tocFloatEmbedItem {
+  display: block;
+  width: 100%;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: var(--komo-text);
+  font-size: 11px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tocFloatEmbedItem:hover {
+  background: var(--komo-surface-hover);
+}
+.tocFloatEmbedItem:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

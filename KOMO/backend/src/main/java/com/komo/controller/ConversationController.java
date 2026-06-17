@@ -1,5 +1,6 @@
 package com.komo.controller;
 
+import com.komo.dto.BatchDeleteResult;
 import com.komo.dto.response.ApiResponse;
 import com.komo.entity.Conversation;
 import com.komo.entity.Message;
@@ -73,6 +74,17 @@ public class ConversationController {
         UUID userId = SecurityContext.getCurrentUserId();
         conversationService.delete(id, userId);
         return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    /** 批量删除对话（含消息和关联草稿） */
+    @DeleteMapping("/batch")
+    public ResponseEntity<ApiResponse<BatchDeleteResult>> batchDelete(@RequestBody Map<String, List<String>> body) {
+        UUID userId = SecurityContext.getCurrentUserId();
+        List<UUID> ids = body.get("ids").stream()
+            .map(UUID::fromString)
+            .toList();
+        BatchDeleteResult result = conversationService.batchDelete(ids, userId);
+        return ResponseEntity.ok(ApiResponse.success(result));
     }
 
     /** SSE 流式对话 — AsyncContext 异步处理，Tomcat NIO 正确 flush */

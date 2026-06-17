@@ -33,5 +33,5 @@ spring:
 komo:
   jwt:
     secret: ${JWT_SECRET:CHANGE-ME-IN-PRODUCTION-USE-256-BIT-KEY}
-    access-token-expiration: 900000      # 15 min (ms)
+    access-token-expiration: 3600000     # 1 hour (ms)
     refresh-token-expiration: 604800000  # 7 days (ms)

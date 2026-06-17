@@ -11,15 +11,16 @@
 | Operation | ES Action |
 |-----------|-----------|
 | `KnowledgeService.create()` | `indexEntry()` |
-| `KnowledgeService.update()` | `updateEntry()` (404 → re-index) |
+| `KnowledgeService.update()` | `updateEntry()` (404 → re-index with userId) |
 | `KnowledgeService.softDelete()` | `deleteEntry()` |
+| `KnowledgeService.mergeInto()` | `updateEntry()` (target) + `deleteEntry()` (fragment) |
 | `KnowledgeDraftService.confirm()` | `indexEntry()` |
 | `KnowledgeDraftService.editAndConfirm()` | `indexEntry()` |
 
 ## Error Handling
 
 - `deleteEntry()`: 404 → silent (already gone), other errors → stderr
-- `updateEntry()`: 404 → falls back to `indexEntry()` (re-create)
+- `updateEntry()`: 404 → falls back to `indexEntry()` with userId (fixed from previous null bug)
 - `POST /api/knowledge/reindex` → manual full rebuild from DB (accessible from Settings page)
 
 ## Search

@@ -1,0 +1,77 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  animation: fadeIn 0.15s ease;
+}
+
+.card {
+  background: var(--komo-surface);
+  border-radius: var(--komo-radius-lg);
+  padding: 40px 48px;
+  min-width: 320px;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+  animation: scaleIn 0.2s ease;
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--komo-border);
+  border-top-color: var(--komo-accent);
+  border-radius: 50%;
+  margin: 0 auto 16px;
+  animation: spin 0.7s linear infinite;
+}
+
+.title {
+  font-size: var(--komo-text-md);
+  font-weight: 600;
+  color: var(--komo-text);
+  margin-bottom: 8px;
+}
+
+.progress {
+  font-size: var(--komo-text-sm);
+  color: var(--komo-text-secondary);
+  margin-bottom: 16px;
+}
+
+.icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.track {
+  height: 4px;
+  background: var(--komo-surface-hover);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.bar {
+  height: 100%;
+  background: var(--komo-accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

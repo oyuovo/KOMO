@@ -37,22 +37,36 @@ async def extract_knowledge(
             messages=extraction_messages,
             stream=False,
             temperature=0.3,  # 低温度以获得更一致的提取结果
-            max_tokens=2048,
+            max_tokens=3072,  # 增加 token 以支持更长的文章提取
         )
         content = response.choices[0].message.content.strip()
 
         # 解析 JSON — 尝试提取 JSON 数组
         knowledge_points = _parse_json_response(content)
 
-        # 过滤低置信度
-        filtered = [
-            kp
-            for kp in knowledge_points
-            if isinstance(kp, dict)
-            and kp.get("title")
-            and kp.get("content")
-            and kp.get("confidence", 0) >= 0.6
-        ]
+        # 过滤低置信度 + 统计类型分布
+        filtered = []
+        type_counts = {"ARTICLE": 0, "FRAGMENT": 0, "SUPPLEMENT": 0}
+        for kp in knowledge_points:
+            if not isinstance(kp, dict):
+                continue
+            if not kp.get("title") or not kp.get("content"):
+                continue
+            if kp.get("confidence", 0) < 0.6:
+                continue
+            # 默认类型为 FRAGMENT
+            extract_type = kp.get("type", "FRAGMENT")
+            if extract_type not in type_counts:
+                extract_type = "FRAGMENT"
+            kp["type"] = extract_type
+            type_counts[extract_type] += 1
+            filtered.append(kp)
+
+        if filtered:
+            print(f"[extraction] 提取了 {len(filtered)} 条: "
+                  f"ARTICLE={type_counts['ARTICLE']}, "
+                  f"FRAGMENT={type_counts['FRAGMENT']}, "
+                  f"SUPPLEMENT={type_counts['SUPPLEMENT']}")
 
         return filtered
     except Exception as e:

@@ -11,6 +11,14 @@ import {
 import MarkdownRenderer from '@/components/MarkdownRenderer/MarkdownRenderer';
 import styles from './page.module.css';
 
+const ENTRY_TYPES = [
+  { value: 'FACT', label: '事实' },
+  { value: 'CONCEPT', label: '概念' },
+  { value: 'INSIGHT', label: '洞察' },
+  { value: 'METHOD', label: '方法论' },
+  { value: 'QUESTION', label: '问题' },
+];
+
 export default function EditKnowledgePage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -69,6 +77,19 @@ export default function EditKnowledgePage() {
             {saving ? '保存中...' : '保存修改'}
           </button>
         </div>
+      </div>
+
+      {/* 类型选择 */}
+      <div className={styles.typeSelector}>
+        {ENTRY_TYPES.map((t) => (
+          <button
+            key={t.value}
+            className={`${styles.typeBtn} ${entryType === t.value ? styles.typeBtnActive : ''}`}
+            onClick={() => setEntryType(t.value)}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       <input className={styles.titleInput} type="text" placeholder="标题"

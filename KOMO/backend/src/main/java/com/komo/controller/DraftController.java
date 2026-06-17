@@ -38,23 +38,41 @@ public class DraftController {
         }
     }
 
-    /** 确认草稿 → 转为知识条目 */
+    /** 确认草稿 → 转为知识条目。可选 knowledgeBaseId 和 parentEntryId。 */
     @PostMapping("/{id}/confirm")
-    public ResponseEntity<ApiResponse<KnowledgeEntry>> confirm(@PathVariable UUID id) {
-        KnowledgeEntry entry = draftService.confirm(id);
+    public ResponseEntity<ApiResponse<KnowledgeEntry>> confirm(
+        @PathVariable UUID id,
+        @RequestBody(required = false) Map<String, String> body
+    ) {
+        UUID overrideKbId = null;
+        UUID parentEntryId = null;
+        if (body != null) {
+            if (body.containsKey("knowledgeBaseId")) {
+                overrideKbId = UUID.fromString(body.get("knowledgeBaseId"));
+            }
+            if (body.containsKey("parentEntryId")) {
+                parentEntryId = UUID.fromString(body.get("parentEntryId"));
+            }
+        }
+        KnowledgeEntry entry = draftService.confirmWithParent(id, overrideKbId, parentEntryId);
         return ResponseEntity.ok(ApiResponse.success(entry));
     }
 
-    /** 编辑草稿并确认 */
+    /** 编辑草稿并确认。可选 knowledgeBaseId 覆盖默认去向。 */
     @PostMapping("/{id}/edit")
     public ResponseEntity<ApiResponse<KnowledgeEntry>> editAndConfirm(
         @PathVariable UUID id,
         @RequestBody Map<String, String> body
     ) {
+        UUID overrideKbId = null;
+        if (body != null && body.containsKey("knowledgeBaseId")) {
+            overrideKbId = UUID.fromString(body.get("knowledgeBaseId"));
+        }
         KnowledgeEntry entry = draftService.editAndConfirm(
             id,
-            body.get("title"),
-            body.get("content")
+            body != null ? body.get("title") : null,
+            body != null ? body.get("content") : null,
+            overrideKbId
         );
         return ResponseEntity.ok(ApiResponse.success(entry));
     }

@@ -276,22 +276,53 @@ export default function ArticlePage() {
         </Link>
       </aside>
 
-      {/* Floating TOC */}
-      {tocItems.length > 0 && (
-        <nav className={styles.tocFloat}>
-          <div className={styles.tocFloatTitle}>📑 在本页中</div>
-          {tocItems.map((item) => (
-            <button
-              key={item.id}
-              className={`${styles.tocFloatItem} ${
-                item.level === 3 ? styles.tocFloatItemH3 : ''
-              } ${activeTocId === item.id ? styles.tocFloatItemActive : ''}`}
-              onClick={() => scrollToHeading(item.id)}
-            >
-              {item.text}
-            </button>
-          ))}
-        </nav>
+      {/* Floating TOC + Embed */}
+      {(tocItems.length > 0 || isInFragmentsKb) && (
+        <aside className={styles.tocFloat}>
+          {tocItems.length > 0 && (
+            <>
+              <div className={styles.tocFloatTitle}>📑 在本页中</div>
+              {tocItems.map((item) => (
+                <button
+                  key={item.id}
+                  className={`${styles.tocFloatItem} ${
+                    item.level === 3 ? styles.tocFloatItemH3 : ''
+                  } ${activeTocId === item.id ? styles.tocFloatItemActive : ''}`}
+                  onClick={() => scrollToHeading(item.id)}
+                >
+                  {item.text}
+                </button>
+              ))}
+            </>
+          )}
+
+          {isInFragmentsKb && (
+            <div className={styles.tocFloatEmbed}>
+              <div className={styles.tocFloatTitle}>合并进文章</div>
+              <input
+                className={styles.tocFloatEmbedInput}
+                type="text"
+                placeholder="搜索目标文章..."
+                value={embedSearch}
+                onChange={(e) => handleEmbedSearch(e.target.value)}
+              />
+              {embedResults.length > 0 && (
+                <div className={styles.tocFloatEmbedDropdown}>
+                  {embedResults.map((item) => (
+                    <button
+                      key={item.id}
+                      className={styles.tocFloatEmbedItem}
+                      onClick={() => handleEmbed(item.id)}
+                      disabled={embedding}
+                    >
+                      {item.title}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </aside>
       )}
 
       {/* Center: Article Content */}
@@ -350,33 +381,6 @@ export default function ArticlePage() {
                 </div>
               )}
 
-              {/* 嵌入到文章（碎片库条目） */}
-              {isInFragmentsKb && (
-                <div className={styles.sourceCard}>
-                  <div className={styles.sourceLabel}>合并进文章</div>
-                  <input
-                    className={styles.embedInput}
-                    type="text"
-                    placeholder="搜索目标文章..."
-                    value={embedSearch}
-                    onChange={(e) => handleEmbedSearch(e.target.value)}
-                  />
-                  {embedResults.length > 0 && (
-                    <div className={styles.embedDropdown}>
-                      {embedResults.map((item) => (
-                        <button
-                          key={item.id}
-                          className={styles.embedItem}
-                          onClick={() => handleEmbed(item.id)}
-                          disabled={embedding}
-                        >
-                          {item.title}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
 
           </footer>

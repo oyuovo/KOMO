@@ -55,6 +55,11 @@ public class KnowledgeDraft extends BaseEntity {
     @Column(nullable = false)
     private Double confidence;
 
+    /** AI 提取类型：ARTICLE（新知文章）、FRAGMENT（知识碎片）、SUPPLEMENT（补充已有） */
+    @Column(name = "extract_type", length = 20)
+    @Enumerated(EnumType.STRING)
+    private ExtractType extractType;
+
     /** 与知识库内已有知识的关系 */
     @Column(name = "relation_type", length = 20)
     @Enumerated(EnumType.STRING)
@@ -77,6 +82,15 @@ public class KnowledgeDraft extends BaseEntity {
     /** 处理时间 */
     @Column(name = "processed_at")
     private LocalDateTime processedAt;
+
+    public enum ExtractType {
+        /** 新知文章 — 自成体系，可独立入库 */
+        ARTICLE,
+        /** 知识碎片 — 简短事实/定义，暂存碎片库 */
+        FRAGMENT,
+        /** 补充已有 — 嵌套进已有文章 */
+        SUPPLEMENT
+    }
 
     public enum RelationType {
         /** 新知 — 知识库中未涉及 */

@@ -1,11 +1,18 @@
 import Link from 'next/link';
 
-interface ComingSoonProps {
-  title: string;
+interface NotFoundProps {
+  title?: string;
   description?: string;
+  backHref?: string;
+  backLabel?: string;
 }
 
-export default function ComingSoon({ title, description }: ComingSoonProps) {
+export default function NotFound({
+  title = '页面不存在',
+  description = '你访问的页面不存在或已被移除。',
+  backHref = '/',
+  backLabel = '← 返回知识库',
+}: NotFoundProps) {
   return (
     <div style={{
       display: 'flex',
@@ -38,10 +45,10 @@ export default function ComingSoon({ title, description }: ComingSoonProps) {
         marginBottom: 24,
         maxWidth: 400,
       }}>
-        {description || '功能正在开发中，即将上线。'}
+        {description}
       </p>
       <Link
-        href="/"
+        href={backHref}
         style={{
           color: 'var(--komo-link)',
           fontSize: 14,
@@ -49,7 +56,7 @@ export default function ComingSoon({ title, description }: ComingSoonProps) {
           textDecoration: 'none',
         }}
       >
-        ← 返回知识库
+        {backLabel}
       </Link>
     </div>
   );

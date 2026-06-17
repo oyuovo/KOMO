@@ -25,6 +25,12 @@
   margin-top: 4px;
 }
 
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .btnNew {
   display: inline-flex;
   align-items: center;
@@ -42,6 +48,95 @@
 }
 .btnNew:hover { background: var(--komo-accent-hover); }
 .btnNew:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btnSelect {
+  padding: 6px 14px;
+  border: 1px solid var(--komo-border);
+  border-radius: var(--komo-radius-sm);
+  font-size: var(--komo-text-sm);
+  font-family: inherit;
+  background: var(--komo-surface);
+  color: var(--komo-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btnSelect:hover {
+  background: var(--komo-surface-hover);
+  color: var(--komo-text);
+}
+.btnSelect:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btnCancelSelect {
+  padding: 6px 14px;
+  border: 1px solid var(--komo-border);
+  border-radius: var(--komo-radius-sm);
+  font-size: var(--komo-text-sm);
+  font-family: inherit;
+  background: var(--komo-surface);
+  color: var(--komo-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btnCancelSelect:hover {
+  background: var(--komo-surface-hover);
+}
+
+.btnBatchDelete {
+  padding: 6px 16px;
+  border: none;
+  border-radius: var(--komo-radius-sm);
+  font-size: var(--komo-text-sm);
+  font-weight: 600;
+  font-family: inherit;
+  background: var(--komo-danger);
+  color: white;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btnBatchDelete:hover { opacity: 0.9; }
+.btnBatchDelete:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Selection Bar */
+.selectBar {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 0 0 0 2px;
+}
+
+.selectAllLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--komo-text-sm);
+  color: var(--komo-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--komo-accent);
+  cursor: pointer;
+}
+
+.checkboxCell {
+  display: flex;
+  align-items: center;
+  padding: 14px 0 14px 16px;
+  cursor: pointer;
+}
+
+.convContentSelect {
+  padding-left: 0 !important;
+}
 
 /* List */
 .list {

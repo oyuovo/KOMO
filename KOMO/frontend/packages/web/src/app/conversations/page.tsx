@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -10,6 +10,9 @@ import {
   getToken,
   type ConversationData,
 } from '@komo/shared/api-client';
+import BatchDeleteOverlay, {
+  type BatchDeleteState,
+} from '@/components/BatchDeleteOverlay/BatchDeleteOverlay';
 import styles from './page.module.css';
 
 export default function ConversationsPage() {
@@ -19,7 +22,19 @@ export default function ConversationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
-  // 验证登录状态（相当于 Vue 的 beforeMount + watch）
+  // 选择模式
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // 批量删除状态
+  const [batchState, setBatchState] = useState<BatchDeleteState>({
+    phase: 'idle',
+    total: 0,
+    current: 0,
+    deleted: 0,
+    failed: 0,
+  });
+
   useEffect(() => {
     const token = getToken();
     if (!token) {
@@ -66,8 +81,79 @@ export default function ConversationsPage() {
     }
   };
 
+  // 选择模式
+  const toggleSelectAll = () => {
+    if (selectedIds.size === conversations.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(conversations.map((c) => c.id)));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelectedIds(next);
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const handleBatchDelete = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (!confirm(`确定要删除选中的 ${ids.length} 个对话吗？消息记录将被永久删除。`)) return;
+
+    setBatchState({
+      phase: 'deleting',
+      total: ids.length,
+      current: 0,
+      deleted: 0,
+      failed: 0,
+    });
+
+    let deleted = 0;
+    let failed = 0;
+    for (let i = 0; i < ids.length; i++) {
+      try {
+        await deleteConversation(ids[i]);
+        deleted++;
+      } catch {
+        failed++;
+      }
+      setBatchState((prev) => ({
+        ...prev,
+        current: i + 1,
+        deleted,
+        failed,
+      }));
+    }
+
+    setBatchState((prev) => ({
+      ...prev,
+      phase: 'done',
+      deleted,
+      failed,
+    }));
+  };
+
+  const handleBatchClose = () => {
+    setBatchState({ phase: 'idle', total: 0, current: 0, deleted: 0, failed: 0 });
+    exitSelectMode();
+    fetchConversations();
+  };
+
   return (
     <div className={styles.page}>
+      {/* 批量删除遮罩 */}
+      <BatchDeleteOverlay state={batchState} onClose={handleBatchClose} />
+
       {/* Header Row */}
       <div className={styles.header}>
         <div>
@@ -76,14 +162,60 @@ export default function ConversationsPage() {
             {conversations.length} 个对话
           </p>
         </div>
-        <button
-          className={styles.btnNew}
-          onClick={handleCreate}
-          disabled={creating}
-        >
-          {creating ? '创建中...' : '+ 新对话'}
-        </button>
+        <div className={styles.headerActions}>
+          {!selectMode ? (
+            <>
+              <button
+                className={styles.btnSelect}
+                onClick={() => setSelectMode(true)}
+                disabled={conversations.length === 0}
+              >
+                选择
+              </button>
+              <button
+                className={styles.btnNew}
+                onClick={handleCreate}
+                disabled={creating}
+              >
+                {creating ? '创建中...' : '+ 新对话'}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                className={styles.btnCancelSelect}
+                onClick={exitSelectMode}
+              >
+                取消
+              </button>
+              <button
+                className={styles.btnBatchDelete}
+                onClick={handleBatchDelete}
+                disabled={selectedIds.size === 0}
+              >
+                批量删除
+              </button>
+            </>
+          )}
+        </div>
       </div>
+
+      {/* 全选栏（选择模式） */}
+      {selectMode && (
+        <div className={styles.selectBar}>
+          <label className={styles.selectAllLabel}>
+            <input
+              type="checkbox"
+              className={styles.checkbox}
+              checked={
+                conversations.length > 0 && selectedIds.size === conversations.length
+              }
+              onChange={toggleSelectAll}
+            />
+            <span>全选 · 已选 {selectedIds.size} 项</span>
+          </label>
+        </div>
+      )}
 
       {/* Conversation List */}
       <div className={styles.list}>
@@ -111,9 +243,24 @@ export default function ConversationsPage() {
         )}
         {conversations.map((conv) => (
           <div key={conv.id} className={styles.convRow}>
+            {selectMode && (
+              <label className={styles.checkboxCell}>
+                <input
+                  type="checkbox"
+                  className={styles.checkbox}
+                  checked={selectedIds.has(conv.id)}
+                  onChange={() => toggleSelect(conv.id)}
+                />
+              </label>
+            )}
             <Link
               href={`/conversations/${conv.id}`}
-              className={styles.convContent}
+              className={`${styles.convContent} ${
+                selectMode ? styles.convContentSelect : ''
+              }`}
+              onClick={(e) => {
+                if (selectMode) e.preventDefault();
+              }}
             >
               <span className={styles.convIcon}>💬</span>
               <span className={styles.convTitle}>{conv.title}</span>
@@ -121,13 +268,15 @@ export default function ConversationsPage() {
                 {new Date(conv.updatedAt).toLocaleDateString('zh-CN')}
               </span>
             </Link>
-            <button
-              className={styles.deleteBtn}
-              onClick={(e) => handleDelete(conv.id, e)}
-              title="删除对话"
-            >
-              删除
-            </button>
+            {!selectMode && (
+              <button
+                className={styles.deleteBtn}
+                onClick={(e) => handleDelete(conv.id, e)}
+                title="删除对话"
+              >
+                删除
+              </button>
+            )}
           </div>
         ))}
       </div>

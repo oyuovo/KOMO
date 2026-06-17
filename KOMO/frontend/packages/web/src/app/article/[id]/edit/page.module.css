@@ -49,6 +49,36 @@
 }
 .titleInput:focus { border-color: var(--komo-accent); box-shadow: 0 0 0 3px rgba(184, 92, 56, 0.08); }
 
+/* 类型选择器 */
+.typeSelector {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.typeBtn {
+  padding: 6px 16px;
+  border: 1px solid var(--komo-border);
+  border-radius: var(--komo-radius-sm);
+  background: var(--komo-surface);
+  color: var(--komo-text-secondary);
+  font-size: var(--komo-text-sm);
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.typeBtn:hover {
+  background: var(--komo-surface-hover);
+  color: var(--komo-text);
+}
+
+.typeBtnActive {
+  background: var(--komo-accent-soft);
+  color: var(--komo-accent);
+  border-color: var(--komo-accent);
+  font-weight: 600;
+}
+
 .contentInput {
   width: 100%;
   min-height: 420px;
