@@ -28,6 +28,9 @@ venv/
 # Docker
 docker/data/
 
+# Docs (working files, not product)
+docs/
+
 # OS
 .DS_Store
 Thumbs.db
