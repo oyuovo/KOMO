@@ -1,23 +1,54 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   getKnowledge,
+  deleteKnowledge,
   getToken,
   listKnowledge,
   getLinks,
   addLink,
   removeLink,
+  mergeInto,
+  listKnowledgeBases,
   type KnowledgeItem,
   type KnowledgeLinkData,
 } from '@komo/shared/api-client';
 import MarkdownRenderer from '@/components/MarkdownRenderer/MarkdownRenderer';
 import styles from './page.module.css';
 
+interface TocItem {
+  level: 2 | 3;
+  text: string;
+  id: string;
+}
+
+/** 从 markdown 提取 ## 和 ### 标题 */
+function extractToc(content: string): TocItem[] {
+  const re = /^(#{2,3})\s+(.+)$/gm;
+  const items: TocItem[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    const level = m[1].length === 2 ? 2 : 3;
+    const text = m[2].trim();
+    const id = text
+      .toLowerCase()
+      .replace(/[（(]([^)）]+)[)）]/g, '')
+      .replace(/[^\w一-鿿\s-]/g, '')
+      .trim()
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+    items.push({ level, text, id } as TocItem);
+  }
+  return items;
+}
+
 export default function ArticlePage() {
   const params = useParams();
+  const router = useRouter();
   const id = params.id as string;
 
   const [article, setArticle] = useState<KnowledgeItem | null>(null);
@@ -25,7 +56,61 @@ export default function ArticlePage() {
   const [links, setLinks] = useState<KnowledgeLinkData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [needsAuth, setNeedsAuth] = useState(!getToken());
+  const [needsAuth, setNeedsAuth] = useState(false);
+  // 嵌入搜索
+  const [embedSearch, setEmbedSearch] = useState('');
+  const [embedResults, setEmbedResults] = useState<KnowledgeItem[]>([]);
+  const [embedding, setEmbedding] = useState(false);
+  const [fragmentsKbId, setFragmentsKbId] = useState<string | null>(null);
+  const [tocItems, setTocItems] = useState<TocItem[]>([]);
+  const [activeTocId, setActiveTocId] = useState<string | null>(null);
+  const articleBodyRef = useRef<HTMLDivElement>(null);
+
+  const handleDelete = async () => {
+    if (!confirm('确定要删除这篇文章吗？')) return;
+    try {
+      await deleteKnowledge(id);
+      router.push('/');
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  // 加载碎片库 ID
+  useEffect(() => {
+    listKnowledgeBases().then((kbs) => {
+      const frag = kbs.find((kb) => kb.type === 'SYSTEM_FRAGMENTS');
+      if (frag) setFragmentsKbId(frag.id);
+    }).catch(() => {});
+  }, []);
+
+  // 嵌入搜索（排除自身 + 排除碎片库文章）
+  const handleEmbedSearch = async (q: string) => {
+    setEmbedSearch(q);
+    if (q.length < 2) { setEmbedResults([]); return; }
+    try {
+      const result = await listKnowledge({ q, size: 10 });
+      setEmbedResults(result.content.filter(
+        (item) => item.id !== id && item.knowledgeBaseId !== fragmentsKbId
+      ));
+    } catch { setEmbedResults([]); }
+  };
+
+  const handleEmbed = async (targetId: string) => {
+    setEmbedding(true);
+    try {
+      await mergeInto(id, targetId);
+      // 合并成功 → 跳转到目标文章（碎片已删除）
+      router.push(`/article/${targetId}`);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setEmbedding(false);
+    }
+  };
+
+  // 判断是否在碎片库中
+  const isInFragmentsKb = article?.knowledgeBaseId && article?.source === 'AI_EXTRACT';
 
   const fetchLinks = async (entryId: string) => {
     try {
@@ -43,24 +128,69 @@ export default function ArticlePage() {
     }
 
     setLoading(true);
-    Promise.all([
-      getKnowledge(id).catch(() => null),
-      listKnowledge({ size: 10 }).catch(() => ({ content: [], page: 0, size: 0, totalElements: 0, totalPages: 0 })),
-    ])
-      .then(([articleData, listData]) => {
+    getKnowledge(id)
+      .then((articleData) => {
         if (!articleData) {
           setError('文章不存在或无权访问');
-        } else {
-          setArticle(articleData);
-          setRelatedArticles(listData.content.filter((a) => a.id !== id));
-          fetchLinks(articleData.id);
+          return null;
+        }
+        setArticle(articleData);
+        setTocItems(extractToc(articleData.content));
+        fetchLinks(articleData.id);
+        // 加载同知识库下的文章
+        return listKnowledge({ kb: articleData.knowledgeBaseId ?? undefined, size: 10 });
+      })
+      .then((listData) => {
+        if (listData) {
+          setRelatedArticles(listData.content.filter((a: KnowledgeItem) => a.id !== id));
         }
       })
       .catch((err) => {
-        setError(err.message);
+        if (!error) setError(err.message);
       })
       .finally(() => setLoading(false));
   }, [id, needsAuth]);
+
+  // IntersectionObserver: track visible headings
+  useEffect(() => {
+    if (tocItems.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Find the heading with highest intersection ratio
+        let best: IntersectionObserverEntry | null = null;
+        for (const entry of entries) {
+          if (!best || entry.intersectionRatio > best.intersectionRatio) {
+            best = entry;
+          }
+        }
+        if (best && best.intersectionRatio > 0) {
+          setActiveTocId(best.target.id);
+        }
+      },
+      { rootMargin: '-80px 0px -60% 0px', threshold: [0, 0.25, 0.5, 0.75, 1] }
+    );
+
+    // Wait for render, then observe all h2/h3 in article body
+    const timer = setTimeout(() => {
+      const container = articleBodyRef.current;
+      if (!container) return;
+      const headings = container.querySelectorAll('h2[id], h3[id]');
+      headings.forEach((h) => observer.observe(h));
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [tocItems]);
+
+  const scrollToHeading = useCallback((id: string) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, []);
 
   // Not authenticated
   if (needsAuth) {
@@ -152,6 +282,24 @@ export default function ArticlePage() {
         </Link>
       </aside>
 
+      {/* Floating TOC */}
+      {tocItems.length > 0 && (
+        <nav className={styles.tocFloat}>
+          <div className={styles.tocFloatTitle}>📑 在本页中</div>
+          {tocItems.map((item) => (
+            <button
+              key={item.id}
+              className={`${styles.tocFloatItem} ${
+                item.level === 3 ? styles.tocFloatItemH3 : ''
+              } ${activeTocId === item.id ? styles.tocFloatItemActive : ''}`}
+              onClick={() => scrollToHeading(item.id)}
+            >
+              {item.text}
+            </button>
+          ))}
+        </nav>
+      )}
+
       {/* Center: Article Content */}
       <main className={styles.main}>
         <article className={styles.articleContainer}>
@@ -169,7 +317,7 @@ export default function ArticlePage() {
 
           <h1 className={styles.articleTitle}>{article.title}</h1>
 
-          <div className={styles.articleBody}>
+          <div className={styles.articleBody} ref={articleBodyRef}>
             <MarkdownRenderer content={article.content} />
           </div>
         </article>
@@ -204,6 +352,38 @@ export default function ArticlePage() {
             ))}
           </div>
         )}
+
+        {/* 嵌入到文章（碎片库条目） */}
+        {isInFragmentsKb && (
+          <div className={styles.sourceCard}>
+            <div className={styles.sourceLabel}>合并进文章</div>
+            <input
+              className={styles.embedInput}
+              type="text"
+              placeholder="搜索目标文章..."
+              value={embedSearch}
+              onChange={(e) => handleEmbedSearch(e.target.value)}
+            />
+            {embedResults.length > 0 && (
+              <div className={styles.embedDropdown}>
+                {embedResults.map((item) => (
+                  <button
+                    key={item.id}
+                    className={styles.embedItem}
+                    onClick={() => handleEmbed(item.id)}
+                    disabled={embedding}
+                  >
+                    {item.title}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <button className={styles.deleteBtn} onClick={handleDelete}>
+          删除文章
+        </button>
       </aside>
     </div>
   );
