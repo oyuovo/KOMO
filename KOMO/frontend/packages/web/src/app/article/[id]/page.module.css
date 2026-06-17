@@ -61,8 +61,6 @@
 /* Center: Article Content */
 .main {
   flex: 1;
-  display: flex;
-  justify-content: center;
   overflow-y: auto;
   height: calc(100vh - var(--komo-topnav-height));
   scroll-behavior: smooth;
@@ -70,7 +68,8 @@
 
 .articleContainer {
   width: 100%;
-  max-width: var(--komo-content-max);
+  max-width: 860px;
+  margin: 0 auto;
   padding: 48px 64px 96px;
 }
 
@@ -246,10 +245,10 @@
   color: var(--komo-danger);
 }
 
-/* Floating TOC — right side */
+/* Floating TOC — right side, aligned with content edge */
 .tocFloat {
   position: fixed;
-  right: max(24px, calc((100vw - var(--komo-sidebar-width) - var(--komo-content-max)) / 2 - 200px));
+  right: max(24px, calc((100vw - var(--komo-sidebar-width) - 860px) / 2 - 180px));
   top: calc(var(--komo-topnav-height) + 32px);
   width: 180px;
   max-height: calc(100vh - var(--komo-topnav-height) - 80px);
