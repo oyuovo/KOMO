@@ -8,6 +8,31 @@ interface Props {
   content: string;
 }
 
+/** 将标题文本转换为 URL 友好的 id */
+function slugifyHeading(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[（(]([^)）]+)[)）]/g, '')  // 移除中文/英文括号内容
+    .replace(/[^\w一-鿿\s-]/g, '') // 移除特殊符号，保留中文
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+/**
+ * 提取 React children 中的纯文本
+ */
+function extractText(children: React.ReactNode): string {
+  if (typeof children === 'string') return children;
+  if (typeof children === 'number') return String(children);
+  if (Array.isArray(children)) return children.map(extractText).join('');
+  if (children && typeof children === 'object' && 'props' in children) {
+    return extractText((children as React.ReactElement).props.children);
+  }
+  return '';
+}
+
 /**
  * 预处理中文 markdown，修复 CommonMark 对标点相邻的格式化标记拒识问题。
  * 在 ** 等标记与相邻标点（引号、冒号等）之间插入零宽空格，使其通过 CommonMark 定界符检测。
@@ -93,6 +118,16 @@ export default function MarkdownRenderer({ content }: Props) {
           // 引用块
           blockquote({ children }) {
             return <blockquote className={styles.blockquote}>{children}</blockquote>;
+          },
+          h2({ children, ...props }) {
+            const text = extractText(children);
+            const id = slugifyHeading(text);
+            return <h2 id={id} {...props}>{children}</h2>;
+          },
+          h3({ children, ...props }) {
+            const text = extractText(children);
+            const id = slugifyHeading(text);
+            return <h3 id={id} {...props}>{children}</h3>;
           },
         }}
       >
