@@ -30,8 +30,9 @@
 | `KnowledgeList` | Article list with selection mode, batch delete toolbar, KB filtering |
 | `BatchDeleteOverlay` | Reusable deletion progress overlay (spinner + progress bar + auto-dismiss) |
 | `TopNav` | Navigation bar with draft count badge |
-| `MarkdownRenderer` | Markdown rendering with Chinese quote bold fix |
+| `MarkdownRenderer` | Markdown rendering with Chinese quote bold fix, heading `id` attributes for TOC |
 | `ComingSoon` | 404 page (also used for `/_not-found` route) |
+| `@/lib/slugify` | Shared `slugifyHeading()` — used by MarkdownRenderer and TOC, must stay in sync |
 
 ## Key Pages
 
@@ -41,10 +42,22 @@
 | `app/conversations/page.tsx` | Conversation list with selection mode + batch delete |
 | `app/conversations/[id]/page.tsx` | Chat with SSE streaming (multi-line data parser) |
 | `app/drafts/page.tsx` | Drafts with extractType badges, KB selector, article embed search |
-| `app/article/[id]/page.tsx` | Article view: left sidebar (same-KB articles only), right panel with merge-to-article for fragments |
+| `app/article/[id]/page.tsx` | Three-column: left sidebar (article list) + main content + right TOC sidebar (sticky). Metadata in footer, edit/delete in top bar. TOC via IntersectionObserver. |
 | `app/article/[id]/edit/page.tsx` | Edit with type selector (FACT/CONCEPT/INSIGHT/METHOD/QUESTION) |
-| `app/settings/page.tsx` | Account info, data stats, ES reindex button |
+| `app/knowledge/import/page.tsx` | MD file import: FileReader, title auto-extract, local image detection, KB/type/tags config, preview, 2MB limit |
 | `app/knowledge/create/page.tsx` | Create article with type selector |
+| `app/settings/page.tsx` | Account info, data stats, ES reindex button |
+
+## Article Page Layout
+
+Three-column sticky layout (no overlap):
+```
+[Sidebar 240px]  [Main content (flex:1)]  [TOC 200px (sticky)]
+```
+- Left sidebar: article list within same KB, sticky
+- Center: article content + footer metadata, left-aligned (not centered)
+- Right TOC: `##`/`###` headings extracted from content, IntersectionObserver active tracking, click-to-scroll. Fragment entries also show embed/merge widget here.
+- TOC hidden at ≤1100px viewport
 
 ## Component Patterns
 
