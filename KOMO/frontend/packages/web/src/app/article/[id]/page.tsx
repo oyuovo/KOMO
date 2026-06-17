@@ -314,72 +314,72 @@ export default function ArticlePage() {
           <div className={styles.articleBody} ref={articleBodyRef}>
             <MarkdownRenderer content={article.content} />
           </div>
-        </article>
 
-        {/* Article Footer — metadata */}
-        <footer className={styles.articleFooter}>
-          <div className={styles.footerTitle}>文章信息</div>
+          {/* Article Footer — metadata */}
+          <footer className={styles.articleFooter}>
+            <div className={styles.footerTitle}>文章信息</div>
 
-          <div className={styles.footerGrid}>
-            <div className={styles.sourceCard}>
-              <div className={styles.sourceLabel}>元数据</div>
-              <p>类型: {article.entryType || '未分类'}</p>
-              <p>状态: {article.status === 'PUBLISHED' ? '已发布' : article.status}</p>
-              <p>来源: {article.source}</p>
-              <p>创建: {new Date(article.createdAt).toLocaleDateString('zh-CN')}</p>
-              <p>更新: {new Date(article.updatedAt).toLocaleDateString('zh-CN')}</p>
-              {article.tags && (
-                <p>标签: {article.tags}</p>
+            <div className={styles.footerGrid}>
+              <div className={styles.sourceCard}>
+                <div className={styles.sourceLabel}>元数据</div>
+                <p>类型: {article.entryType || '未分类'}</p>
+                <p>状态: {article.status === 'PUBLISHED' ? '已发布' : article.status}</p>
+                <p>来源: {article.source}</p>
+                <p>创建: {new Date(article.createdAt).toLocaleDateString('zh-CN')}</p>
+                <p>更新: {new Date(article.updatedAt).toLocaleDateString('zh-CN')}</p>
+                {article.tags && (
+                  <p>标签: {article.tags}</p>
+                )}
+              </div>
+
+              {links.length > 0 && (
+                <div className={styles.sourceCard}>
+                  <div className={styles.sourceLabel}>知识关联 ({links.length})</div>
+                  {links.map((link) => (
+                    <p key={link.id} style={{ fontSize: 13 }}>
+                      {link.relation === 'RELATED' ? '🔗' :
+                       link.relation === 'EXTENDS' ? '📖' :
+                       link.relation === 'CONTRADICTS' ? '⚠️' : '💡'}
+                      {' '}{link.targetTitle || link.targetEntryId.slice(0, 8)}
+                    </p>
+                  ))}
+                </div>
+              )}
+
+              {/* 嵌入到文章（碎片库条目） */}
+              {isInFragmentsKb && (
+                <div className={styles.sourceCard}>
+                  <div className={styles.sourceLabel}>合并进文章</div>
+                  <input
+                    className={styles.embedInput}
+                    type="text"
+                    placeholder="搜索目标文章..."
+                    value={embedSearch}
+                    onChange={(e) => handleEmbedSearch(e.target.value)}
+                  />
+                  {embedResults.length > 0 && (
+                    <div className={styles.embedDropdown}>
+                      {embedResults.map((item) => (
+                        <button
+                          key={item.id}
+                          className={styles.embedItem}
+                          onClick={() => handleEmbed(item.id)}
+                          disabled={embedding}
+                        >
+                          {item.title}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
-            {links.length > 0 && (
-              <div className={styles.sourceCard}>
-                <div className={styles.sourceLabel}>知识关联 ({links.length})</div>
-                {links.map((link) => (
-                  <p key={link.id} style={{ fontSize: 13 }}>
-                    {link.relation === 'RELATED' ? '🔗' :
-                     link.relation === 'EXTENDS' ? '📖' :
-                     link.relation === 'CONTRADICTS' ? '⚠️' : '💡'}
-                    {' '}{link.targetTitle || link.targetEntryId.slice(0, 8)}
-                  </p>
-                ))}
-              </div>
-            )}
-
-            {/* 嵌入到文章（碎片库条目） */}
-            {isInFragmentsKb && (
-              <div className={styles.sourceCard}>
-                <div className={styles.sourceLabel}>合并进文章</div>
-                <input
-                  className={styles.embedInput}
-                  type="text"
-                  placeholder="搜索目标文章..."
-                  value={embedSearch}
-                  onChange={(e) => handleEmbedSearch(e.target.value)}
-                />
-                {embedResults.length > 0 && (
-                  <div className={styles.embedDropdown}>
-                    {embedResults.map((item) => (
-                      <button
-                        key={item.id}
-                        className={styles.embedItem}
-                        onClick={() => handleEmbed(item.id)}
-                        disabled={embedding}
-                      >
-                        {item.title}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <button className={styles.deleteBtn} onClick={handleDelete}>
-            删除文章
-          </button>
-        </footer>
+            <button className={styles.deleteBtn} onClick={handleDelete}>
+              删除文章
+            </button>
+          </footer>
+        </article>
       </main>
     </div>
   );
