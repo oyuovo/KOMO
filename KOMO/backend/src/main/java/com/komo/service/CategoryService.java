@@ -5,21 +5,21 @@ import com.komo.entity.Category;
 import com.komo.exception.BusinessException;
 import com.komo.exception.ErrorCode;
 import com.komo.repository.CategoryRepository;
+import com.komo.repository.KnowledgeBaseRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
 
-/**
- * 分类服务。
- * 继承 BaseService 获得归属校验能力，使用 ltree 实现树形结构。
- */
 @Service
 public class CategoryService extends BaseService<Category, CategoryRepository> {
 
-    public CategoryService(CategoryRepository repository) {
+    private final KnowledgeBaseRepository knowledgeBaseRepository;
+
+    public CategoryService(CategoryRepository repository, KnowledgeBaseRepository knowledgeBaseRepository) {
         super(repository);
+        this.knowledgeBaseRepository = knowledgeBaseRepository;
     }
 
     @Override
@@ -27,20 +27,35 @@ public class CategoryService extends BaseService<Category, CategoryRepository> {
         return entity.getUserId();
     }
 
-    /** 获取当前用户的所有分类，按排序字段排列 */
-    public List<Category> listByUser() {
-        return repository.findAllByUserIdOrderBySortOrder(getCurrentUserId());
+    /** 获取当前用户指定知识库下的所有分类 */
+    public List<Category> listByUser(UUID knowledgeBaseId) {
+        return repository.findAllByUserIdAndKnowledgeBaseIdOrderBySortOrder(
+            getCurrentUserId(), knowledgeBaseId
+        );
     }
 
     @Transactional
     public Category create(CategoryRequest request) {
+        if (request.getKnowledgeBaseId() == null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "知识库不能为空");
+        }
+        // 验证知识库归属
+        knowledgeBaseRepository.findById(request.getKnowledgeBaseId())
+            .filter(kb -> kb.getUserId().equals(getCurrentUserId()))
+            .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "知识库不存在"));
+
         Category category = Category.builder()
             .userId(getCurrentUserId())
+            .knowledgeBaseId(request.getKnowledgeBaseId())
             .name(request.getName())
             .build();
 
         if (request.getParentId() != null) {
             Category parent = findByIdOrThrow(request.getParentId());
+            // 父分类必须在同一个知识库
+            if (!parent.getKnowledgeBaseId().equals(request.getKnowledgeBaseId())) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "父分类不属于该知识库");
+            }
             category.setPath(parent.getPath() + "." + sanitizeLtreeLabel(parent.getId().toString()));
         } else {
             category.setPath("root");
@@ -68,7 +83,6 @@ public class CategoryService extends BaseService<Category, CategoryRepository> {
         repository.delete(category);
     }
 
-    /** ltree 标签不允许连字符，将 UUID 中的 - 替换为 _ */
     private String sanitizeLtreeLabel(String uuid) {
         return uuid.replace("-", "_");
     }

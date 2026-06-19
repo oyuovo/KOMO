@@ -11,7 +11,7 @@ import java.util.UUID;
 
 public interface CategoryRepository extends JpaRepository<Category, UUID> {
 
-    List<Category> findAllByUserIdOrderBySortOrder(UUID userId);
+    List<Category> findAllByUserIdAndKnowledgeBaseIdOrderBySortOrder(UUID userId, UUID knowledgeBaseId);
 
     Optional<Category> findByIdAndUserId(UUID id, UUID userId);
 

@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -28,8 +29,14 @@ public class CategoryController {
     private final CategoryService categoryService;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<Category>>> list() {
-        return ResponseEntity.ok(ApiResponse.success(categoryService.listByUser()));
+    public ResponseEntity<ApiResponse<List<Category>>> list(
+        @RequestParam(required = false, name = "kb") UUID knowledgeBaseId
+    ) {
+        // kb 为可选参数，为空时返回空列表（前端按 KB 加载）
+        if (knowledgeBaseId == null) {
+            return ResponseEntity.ok(ApiResponse.success(List.of()));
+        }
+        return ResponseEntity.ok(ApiResponse.success(categoryService.listByUser(knowledgeBaseId)));
     }
 
     @PostMapping
