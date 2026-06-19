@@ -241,7 +241,6 @@ export interface KnowledgeItem {
   status: string;
   knowledgeBaseId: string | null;
   categoryId: string | null;
-  categoryName: string | null;
   tags: string | null;
   createdAt: string;
   updatedAt: string;

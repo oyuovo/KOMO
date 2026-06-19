@@ -18,7 +18,10 @@ public interface KnowledgeDraftRepository extends JpaRepository<KnowledgeDraft, 
     List<KnowledgeDraft> findByUserIdOrderByCreatedAtDesc(UUID userId);
 
     /** 查询指定对话的草稿（用于避免重复提取） */
-    List<KnowledgeDraft> findByConversationId(UUID conversationId);
+    List<KnowledgeDraft> findByConversationIdAndUserId(UUID conversationId, UUID userId);
+
+    /** RabbitMQ 可能重复投递，按来源消息和用户判断是否已生成草稿 */
+    boolean existsByMessageIdAndUserId(UUID messageId, UUID userId);
 
     /** 安全查询：必须校验 userId */
     List<KnowledgeDraft> findByIdInAndUserId(List<UUID> ids, UUID userId);

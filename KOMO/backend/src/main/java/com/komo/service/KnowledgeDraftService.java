@@ -12,10 +12,14 @@ import com.komo.security.SecurityContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * 知识草稿服务。
@@ -26,11 +30,19 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class KnowledgeDraftService {
 
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeDraftService.class);
+
     private final KnowledgeDraftRepository draftRepository;
     private final KnowledgeRepository knowledgeRepository;
     private final KnowledgeIndexService indexService;
     private final KnowledgeBaseService knowledgeBaseService;
     private final KnowledgeLinkRepository knowledgeLinkRepository;
+    private final TransactionTemplate transactionTemplate;
+
+    /** 判断某条 AI 消息是否已经生成过草稿，用于消息队列幂等消费。 */
+    public boolean hasDraftsForMessage(UUID messageId, UUID userId) {
+        return draftRepository.existsByMessageIdAndUserId(messageId, userId);
+    }
 
     /** 获取当前用户的待处理草稿列表（排除 PENDING_DEDUP） */
     public List<KnowledgeDraft> listPending() {
@@ -49,14 +61,20 @@ public class KnowledgeDraftService {
     }
 
     /** 确认草稿 — 按提取类型路由到对应知识库，可通过 overrideKbId 覆盖，可通过 parentEntryId 嵌入 */
-    @Transactional
     public KnowledgeEntry confirm(UUID draftId, UUID overrideKbId) {
         return confirmWithParent(draftId, overrideKbId, null);
     }
 
     /** 确认草稿并嵌入到指定父文章 */
-    @Transactional
     public KnowledgeEntry confirmWithParent(UUID draftId, UUID overrideKbId, UUID parentEntryId) {
+        KnowledgeEntry entry = transactionTemplate.execute(
+            status -> doConfirmWithParent(draftId, overrideKbId, parentEntryId));
+        indexService.indexEntry(
+            entry.getId(), entry.getUserId(), entry.getTitle(), entry.getContentPlain());
+        return entry;
+    }
+
+    private KnowledgeEntry doConfirmWithParent(UUID draftId, UUID overrideKbId, UUID parentEntryId) {
         KnowledgeDraft draft = findOwnDraft(draftId);
 
         if (draft.getStatus() != KnowledgeDraft.DraftStatus.PENDING) {
@@ -91,7 +109,6 @@ public class KnowledgeDraftService {
             .knowledgeBaseId(targetKbId)
             .build();
         entry = knowledgeRepository.save(entry);
-        indexService.indexEntry(entry.getId(), entry.getUserId(), entry.getTitle(), entry.getContentPlain());
 
         // 如果指定了父文章，创建知识关联
         if (parentEntryId != null) {
@@ -112,8 +129,15 @@ public class KnowledgeDraftService {
     }
 
     /** 编辑草稿内容后确认入库。可通过 overrideKbId 覆盖默认去向。 */
-    @Transactional
     public KnowledgeEntry editAndConfirm(UUID draftId, String title, String content, UUID overrideKbId) {
+        KnowledgeEntry entry = transactionTemplate.execute(
+            status -> doEditAndConfirm(draftId, title, content, overrideKbId));
+        indexService.indexEntry(
+            entry.getId(), entry.getUserId(), entry.getTitle(), entry.getContentPlain());
+        return entry;
+    }
+
+    private KnowledgeEntry doEditAndConfirm(UUID draftId, String title, String content, UUID overrideKbId) {
         KnowledgeDraft draft = findOwnDraft(draftId);
 
         if (draft.getStatus() != KnowledgeDraft.DraftStatus.PENDING) {
@@ -143,7 +167,6 @@ public class KnowledgeDraftService {
             .knowledgeBaseId(targetKbId)
             .build();
         entry = knowledgeRepository.save(entry);
-        indexService.indexEntry(entry.getId(), entry.getUserId(), entry.getTitle(), entry.getContentPlain());
 
         if (title != null) draft.setTitle(title);
         if (content != null) draft.setContent(content);
@@ -156,8 +179,11 @@ public class KnowledgeDraftService {
     }
 
     /** 驳回草稿 */
-    @Transactional
     public void reject(UUID draftId) {
+        transactionTemplate.executeWithoutResult(status -> doReject(draftId));
+    }
+
+    private void doReject(UUID draftId) {
         KnowledgeDraft draft = findOwnDraft(draftId);
 
         if (draft.getStatus() != KnowledgeDraft.DraftStatus.PENDING) {
@@ -170,7 +196,6 @@ public class KnowledgeDraftService {
     }
 
     /** 批量确认（使用智能默认去向） */
-    @Transactional
     public int batchConfirm(List<UUID> draftIds) {
         int count = 0;
         for (UUID id : draftIds) {
@@ -178,14 +203,13 @@ public class KnowledgeDraftService {
                 confirm(id, null);
                 count++;
             } catch (Exception e) {
-                // 跳过已处理或无权访问的
+                log.warn("批量确认草稿失败 id={}", id, e);
             }
         }
         return count;
     }
 
     /** 批量驳回 */
-    @Transactional
     public int batchReject(List<UUID> draftIds) {
         int count = 0;
         for (UUID id : draftIds) {
@@ -193,7 +217,7 @@ public class KnowledgeDraftService {
                 reject(id);
                 count++;
             } catch (Exception e) {
-                // skip
+                log.warn("批量驳回草稿失败 id={}", id, e);
             }
         }
         return count;
@@ -218,7 +242,8 @@ public class KnowledgeDraftService {
 
     /** 查询某个对话的所有草稿（用于去重） */
     public List<KnowledgeDraft> listByConversation(UUID conversationId) {
-        return draftRepository.findByConversationId(conversationId);
+        UUID userId = SecurityContext.getCurrentUserId();
+        return draftRepository.findByConversationIdAndUserId(conversationId, userId);
     }
 
     /** 获取用户所有待处理草稿（全局去重） */

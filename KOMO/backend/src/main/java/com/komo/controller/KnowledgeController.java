@@ -27,10 +27,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @RestController
 @RequestMapping("/api/knowledge")
 @RequiredArgsConstructor
 public class KnowledgeController {
+
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeController.class);
 
     private final KnowledgeService knowledgeService;
 
@@ -115,9 +120,11 @@ public class KnowledgeController {
 
     @GetMapping("/export")
     public ResponseEntity<ApiResponse<List<KnowledgeResponse>>> exportAll() {
+        java.util.UUID userId = com.komo.security.SecurityContext.getCurrentUserId();
         List<KnowledgeResponse> items = knowledgeService.exportAll().stream()
             .map(KnowledgeResponse::from)
             .toList();
+        log.info("[AUDIT] action=EXPORT_DATA userId={} count={}", userId, items.size());
         return ResponseEntity.ok(ApiResponse.success(items));
     }
 

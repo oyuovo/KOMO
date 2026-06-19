@@ -5,10 +5,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Index;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.JoinTable;
-import jakarta.persistence.ManyToMany;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -16,8 +14,6 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -40,9 +36,6 @@ public class KnowledgeEntry extends BaseEntity {
 
     @Column(name = "user_id", nullable = false)
     private UUID userId;
-
-    @Column(name = "workspace_id")
-    private UUID workspaceId;
 
     @Column(nullable = false, length = 500)
     private String title;
@@ -83,14 +76,8 @@ public class KnowledgeEntry extends BaseEntity {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
-    @ManyToMany
-    @JoinTable(
-        name = "knowledge_tags",
-        joinColumns = @JoinColumn(name = "entry_id"),
-        inverseJoinColumns = @JoinColumn(name = "tag_id")
-    )
-    @Builder.Default
-    private Set<Tag> tags = new HashSet<>();
+    @Version
+    private Long version;
 
     /** 知识来源 */
     public enum KnowledgeSource {

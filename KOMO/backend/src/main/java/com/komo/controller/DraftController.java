@@ -1,9 +1,14 @@
 package com.komo.controller;
 
+import com.komo.dto.request.DraftConfirmRequest;
+import com.komo.dto.request.DraftEditRequest;
 import com.komo.dto.response.ApiResponse;
 import com.komo.entity.KnowledgeDraft;
 import com.komo.entity.KnowledgeEntry;
+import com.komo.exception.BusinessException;
+import com.komo.exception.ErrorCode;
 import com.komo.service.KnowledgeDraftService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,10 +23,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @RestController
 @RequestMapping("/api/drafts")
 @RequiredArgsConstructor
 public class DraftController {
+
+    private static final Logger log = LoggerFactory.getLogger(DraftController.class);
 
     private final KnowledgeDraftService draftService;
 
@@ -32,9 +42,8 @@ public class DraftController {
             List<KnowledgeDraft> drafts = draftService.listPending();
             return ResponseEntity.ok(ApiResponse.success(drafts));
         } catch (Exception e) {
-            // 临时：打印错误细节以便调试
-            e.printStackTrace();
-            throw e;
+            log.error("获取草稿列表失败", e);
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "获取草稿列表失败");
         }
     }
 
@@ -42,18 +51,10 @@ public class DraftController {
     @PostMapping("/{id}/confirm")
     public ResponseEntity<ApiResponse<KnowledgeEntry>> confirm(
         @PathVariable UUID id,
-        @RequestBody(required = false) Map<String, String> body
+        @Valid @RequestBody(required = false) DraftConfirmRequest body
     ) {
-        UUID overrideKbId = null;
-        UUID parentEntryId = null;
-        if (body != null) {
-            if (body.containsKey("knowledgeBaseId")) {
-                overrideKbId = UUID.fromString(body.get("knowledgeBaseId"));
-            }
-            if (body.containsKey("parentEntryId")) {
-                parentEntryId = UUID.fromString(body.get("parentEntryId"));
-            }
-        }
+        UUID overrideKbId = body != null ? body.getKnowledgeBaseId() : null;
+        UUID parentEntryId = body != null ? body.getParentEntryId() : null;
         KnowledgeEntry entry = draftService.confirmWithParent(id, overrideKbId, parentEntryId);
         return ResponseEntity.ok(ApiResponse.success(entry));
     }
@@ -62,16 +63,13 @@ public class DraftController {
     @PostMapping("/{id}/edit")
     public ResponseEntity<ApiResponse<KnowledgeEntry>> editAndConfirm(
         @PathVariable UUID id,
-        @RequestBody Map<String, String> body
+        @Valid @RequestBody DraftEditRequest body
     ) {
-        UUID overrideKbId = null;
-        if (body != null && body.containsKey("knowledgeBaseId")) {
-            overrideKbId = UUID.fromString(body.get("knowledgeBaseId"));
-        }
+        UUID overrideKbId = body.getKnowledgeBaseId();
         KnowledgeEntry entry = draftService.editAndConfirm(
             id,
-            body != null ? body.get("title") : null,
-            body != null ? body.get("content") : null,
+            body.getTitle(),
+            body.getContent(),
             overrideKbId
         );
         return ResponseEntity.ok(ApiResponse.success(entry));

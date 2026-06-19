@@ -15,6 +15,7 @@ public class KnowledgeUpdateRequest {
     private String title;
 
     @NotBlank(message = "内容不能为空")
+    @Size(max = 2_000_000, message = "内容最长2,000,000字符")
     private String content;
 
     private KnowledgeType entryType;

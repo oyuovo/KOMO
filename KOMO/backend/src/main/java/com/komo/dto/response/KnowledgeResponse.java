@@ -22,7 +22,6 @@ public class KnowledgeResponse {
     private String status;
     private UUID categoryId;
     private UUID knowledgeBaseId;
-    private String categoryName;
     private String tags;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

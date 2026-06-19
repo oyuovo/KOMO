@@ -12,7 +12,7 @@ spring:
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5434}/komo
     username: ${DB_USER:komo}
-    password: ${DB_PASSWORD:komo_secret}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -24,6 +24,21 @@ spring:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
+  # RabbitMQ — 异步知识提取队列
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:komo}
+    password: ${RABBITMQ_PASS}
+    listener:
+      simple:
+        retry:
+          enabled: true
+          initial-interval: 3000ms
+          max-attempts: 3
+          multiplier: 2.0
+        default-requeue-rejected: false
+
   # 虚拟线程 — JDK 21 特性，SSE 长连接不再吃满线程池
   threads:
     virtual:
@@ -32,6 +47,10 @@ spring:
 # JWT 配置
 komo:
   jwt:
-    secret: ${JWT_SECRET:CHANGE-ME-IN-PRODUCTION-USE-256-BIT-KEY}
+    secret: ${JWT_SECRET}
     access-token-expiration: 3600000     # 1 hour (ms)
     refresh-token-expiration: 604800000  # 7 days (ms)
+  # Elasticsearch 认证
+  es:
+    username: ${ES_USERNAME:elastic}
+    password: ${ES_PASSWORD}

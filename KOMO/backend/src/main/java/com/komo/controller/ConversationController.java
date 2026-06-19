@@ -7,6 +7,8 @@ import com.komo.entity.Message;
 import com.komo.security.SecurityContext;
 import com.komo.service.ConversationService;
 import jakarta.servlet.AsyncContext;
+import jakarta.servlet.AsyncEvent;
+import jakarta.servlet.AsyncListener;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -26,10 +28,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @RestController
 @RequestMapping("/api/conversations")
 @RequiredArgsConstructor
 public class ConversationController {
+
+    private static final Logger log = LoggerFactory.getLogger(ConversationController.class);
 
     private final ConversationService conversationService;
 
@@ -112,13 +119,23 @@ public class ConversationController {
         // ★ 关键：启动异步上下文，handler 线程立即返回
         AsyncContext asyncCtx = request.startAsync();
         asyncCtx.setTimeout(180_000); // 3 分钟
+        asyncCtx.addListener(new AsyncListener() {
+            @Override public void onComplete(AsyncEvent event) { /* virtual thread已完成 */ }
+            @Override public void onTimeout(AsyncEvent event) {
+                log.warn("[SSE] 客户端连接超时");
+            }
+            @Override public void onError(AsyncEvent event) {
+                log.warn("[SSE] 客户端连接错误", event.getThrowable());
+            }
+            @Override public void onStartAsync(AsyncEvent event) { /* 无需处理 */ }
+        });
 
         // 在虚拟线程中处理 SSE 流
         Thread.startVirtualThread(() -> {
             try {
                 conversationService.streamMessage(id, userId, content, response);
-            } catch (Exception e) {
-                System.err.println("[SSE] Fatal: " + e.getMessage());
+            } catch (Throwable t) {
+                log.error("[SSE] 流式对话致命错误", t);
             } finally {
                 asyncCtx.complete();
             }

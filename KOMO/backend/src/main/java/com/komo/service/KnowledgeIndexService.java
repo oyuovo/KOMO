@@ -11,8 +11,11 @@ import co.elastic.clients.elasticsearch._types.ElasticsearchException;
 import co.elastic.clients.json.JsonData;
 import com.komo.entity.KnowledgeEntry;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import jakarta.annotation.PostConstruct;
 import java.util.*;
 
 /**
@@ -23,9 +26,17 @@ import java.util.*;
 @RequiredArgsConstructor
 public class KnowledgeIndexService {
 
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeIndexService.class);
+
     public static final String INDEX_NAME = "komo_knowledge";
 
     private final ElasticsearchClient esClient;
+
+    /** 应用启动时确保 ES 索引存在 */
+    @PostConstruct
+    public void init() {
+        ensureIndex();
+    }
 
     /** 创建索引（含 SmartCN 中文分词器配置） */
     public void ensureIndex() {
@@ -57,28 +68,51 @@ public class KnowledgeIndexService {
                 ));
             }
         } catch (Exception e) {
-            System.err.println("[ES] Failed to ensure index: " + e.getMessage());
+            log.error("[ES] 创建索引失败", e);
+        }
+    }
+
+    /** 简易重试：最多尝试 3 次，指数退避 */
+    private void retry(String op, Runnable action) {
+        for (int i = 0; i < 3; i++) {
+            try {
+                action.run();
+                return;
+            } catch (Exception e) {
+                if (i == 2) {
+                    log.error("[ES] {} 重试耗尽", op, e);
+                } else {
+                    try {
+                        Thread.sleep((long) Math.pow(2, i) * 200);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        log.warn("[ES] {} 重试等待被中断", op, ie);
+                        return;
+                    }
+                }
+            }
         }
     }
 
     /** 索引一条知识条目 */
     public void indexEntry(UUID entryId, UUID userId, String title, String contentPlain) {
-        try {
-            ensureIndex();
-            Map<String, Object> doc = new HashMap<>();
-            doc.put("userId", userId.toString());
-            doc.put("title", title);
-            doc.put("contentPlain", contentPlain != null ? contentPlain : "");
-            doc.put("createdAt", System.currentTimeMillis());
+        retry("索引 entryId=" + entryId, () -> {
+            try {
+                Map<String, Object> doc = new HashMap<>();
+                doc.put("userId", userId.toString());
+                doc.put("title", title);
+                doc.put("contentPlain", contentPlain != null ? contentPlain : "");
+                doc.put("createdAt", System.currentTimeMillis());
 
-            esClient.index(IndexRequest.of(i -> i
-                .index(INDEX_NAME)
-                .id(entryId.toString())
-                .document(doc)
-            ));
-        } catch (Exception e) {
-            System.err.println("[ES] Index failed for " + entryId + ": " + e.getMessage());
-        }
+                esClient.index(IndexRequest.of(i -> i
+                    .index(INDEX_NAME)
+                    .id(entryId.toString())
+                    .document(doc)
+                ));
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
     }
 
     /** 更新索引 */
@@ -97,13 +131,13 @@ public class KnowledgeIndexService {
         } catch (ElasticsearchException e) {
             if (e.status() == 404) {
                 // 文档不存在，回退为新建索引
-                System.err.println("[ES] Update not found, creating instead: " + entryId);
+                log.info("[ES] 更新时未找到文档，回退为新建 entryId={}", entryId);
                 indexEntry(entryId, userId, title, contentPlain);
             } else {
-                System.err.println("[ES] Update failed for " + entryId + ": status=" + e.status() + " " + e.getMessage());
+                log.error("[ES] 更新失败 entryId={} status={}", entryId, e.status(), e);
             }
         } catch (Exception e) {
-            System.err.println("[ES] Update failed for " + entryId + ": " + e.getMessage());
+            log.error("[ES] 更新失败 entryId={}", entryId, e);
         }
     }
 
@@ -119,9 +153,9 @@ public class KnowledgeIndexService {
                 // 文档本来就不存在，无需告警
                 return;
             }
-            System.err.println("[ES] Delete failed for " + entryId + ": status=" + e.status() + " " + e.getMessage());
+            log.error("[ES] 删除失败 entryId={} status={}", entryId, e.status(), e);
         } catch (Exception e) {
-            System.err.println("[ES] Delete failed for " + entryId + ": " + e.getMessage());
+            log.error("[ES] 删除失败 entryId={}", entryId, e);
         }
     }
 
@@ -153,7 +187,7 @@ public class KnowledgeIndexService {
             }
             return results;
         } catch (Exception e) {
-            System.err.println("[ES] Search failed: " + e.getMessage());
+            log.error("[ES] 搜索失败 query={}", query, e);
             return List.of();
         }
     }
@@ -196,7 +230,7 @@ public class KnowledgeIndexService {
             }
             return results;
         } catch (Exception e) {
-            System.err.println("[ES] MLT failed: " + e.getMessage());
+            log.error("[ES] MLT查询失败 title={}", title, e);
             return List.of();
         }
     }
@@ -205,7 +239,9 @@ public class KnowledgeIndexService {
     public int reindexAll(List<KnowledgeEntry> entries) {
         try {
             esClient.indices().delete(DeleteIndexRequest.of(d -> d.index(INDEX_NAME)));
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.debug("[ES] reindex删除索引时索引不存在或删除失败", e);
+        }
         ensureIndex();
         int count = 0;
         for (KnowledgeEntry entry : entries) {

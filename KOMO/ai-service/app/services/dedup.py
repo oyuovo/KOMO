@@ -2,9 +2,12 @@
 
 import json
 import re
+import logging
 from ..core.clients import deepseek
 from ..core.config import DEEPSEEK_MODEL
 from ..prompts.dedup import DEDUP_SYSTEM_PROMPT
+
+logger = logging.getLogger(__name__)
 
 
 async def check_semantic_duplicate(
@@ -54,9 +57,14 @@ async def check_semantic_duplicate(
         )
         content = response.choices[0].message.content.strip()
         return _parse_json_response(content)
-    except Exception as e:
-        print(f"[dedup] Error: {e}")
-        return {"verdict": "NEW", "confidence": 0.5, "reason": f"调用失败: {e}", "matched_index": -1}
+    except Exception:
+        logger.exception("[dedup] Semantic duplicate check failed")
+        return {
+            "verdict": "NEW",
+            "confidence": 0.5,
+            "reason": "LLM 去重服务暂时不可用",
+            "matched_index": -1,
+        }
 
 
 def _parse_json_response(text: str) -> dict:

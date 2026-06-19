@@ -1,6 +1,4 @@
 # docker/docker-compose.yml
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -9,7 +7,7 @@ services:
     environment:
       POSTGRES_DB: ${DB_NAME:-komo}
       POSTGRES_USER: ${DB_USER:-komo}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-komo_secret}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in docker/.env}
     ports:
       - "5434:5432"
     volumes:
@@ -59,13 +57,34 @@ services:
       - komo-net
     command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: komo-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-komo}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:?Set RABBITMQ_PASS in docker/.env}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - komo-net
+
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
     container_name: komo-es
     restart: unless-stopped
     environment:
       - discovery.type=single-node
-      - xpack.security.enabled=false
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=${ES_PASSWORD:?Set ES_PASSWORD in docker/.env}
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
     ports:
       - "9201:9200"
@@ -77,6 +96,7 @@ services:
 volumes:
   postgres_data:
   qdrant_data:
+  rabbitmq_data:
   es_data:
 
 networks:

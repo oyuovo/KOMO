@@ -8,6 +8,7 @@ import com.komo.repository.KnowledgeBaseRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -24,15 +25,14 @@ public class KnowledgeBaseService extends BaseService<KnowledgeBase, KnowledgeBa
     }
 
     /** 获取用户所有知识库（按排序+创建时间升序） */
+    @Transactional
     public List<KnowledgeBase> listForUser() {
         UUID userId = getCurrentUserId();
         List<KnowledgeBase> list = repository.findAllByUserIdOrderBySortOrderAscCreatedAtAsc(userId);
-        // 首次访问 → 自动创建系统知识库
-        if (list.isEmpty()) {
-            ensureSystemBases(userId);
-            list = repository.findAllByUserIdOrderBySortOrderAscCreatedAtAsc(userId);
+        if (hasBothSystemBases(list)) {
+            return list;
         }
-        return list;
+        return ensureSystemBases(userId);
     }
 
     /** 创建用户自定义知识库 */
@@ -81,6 +81,7 @@ public class KnowledgeBaseService extends BaseService<KnowledgeBase, KnowledgeBa
     }
 
     /** 获取用户的系统碎片库（不可删除） */
+    @Transactional
     public KnowledgeBase getFragmentsBase(UUID userId) {
         List<KnowledgeBase> list = repository.findAllByUserIdAndType(userId, KnowledgeBaseType.SYSTEM_FRAGMENTS);
         if (list.isEmpty()) {
@@ -92,6 +93,7 @@ public class KnowledgeBaseService extends BaseService<KnowledgeBase, KnowledgeBa
     }
 
     /** 获取用户的默认知识库 */
+    @Transactional
     public KnowledgeBase getDefaultBase(UUID userId) {
         List<KnowledgeBase> list = repository.findAllByUserIdAndType(userId, KnowledgeBaseType.DEFAULT);
         if (list.isEmpty()) {
@@ -103,31 +105,49 @@ public class KnowledgeBaseService extends BaseService<KnowledgeBase, KnowledgeBa
     }
 
     /** 确保用户的系统知识库存在（默认库 + 碎片库）。已存在则跳过。 */
-    @Transactional
     List<KnowledgeBase> ensureSystemBases(UUID userId) {
+        repository.acquireSystemBaseLock(userId);
         List<KnowledgeBase> existing = repository.findAllByUserIdOrderBySortOrderAscCreatedAtAsc(userId);
-        if (!existing.isEmpty()) return existing; // 已有库，不重复创建
+        List<KnowledgeBase> result = new ArrayList<>(existing);
 
-        // 创建默认知识库
-        KnowledgeBase defaultKb = KnowledgeBase.builder()
-            .userId(userId)
-            .name("我的知识库")
-            .type(KnowledgeBaseType.DEFAULT)
-            .isDeletable(true)
-            .sortOrder(0)
-            .build();
-        repository.save(defaultKb);
+        boolean hasDefault = existing.stream()
+            .anyMatch(kb -> kb.getType() == KnowledgeBaseType.DEFAULT);
+        if (!hasDefault) {
+            KnowledgeBase defaultKb = KnowledgeBase.builder()
+                .userId(userId)
+                .name("我的知识库")
+                .type(KnowledgeBaseType.DEFAULT)
+                .isDeletable(true)
+                .sortOrder(0)
+                .build();
+            repository.saveAndFlush(defaultKb);
+            result.add(defaultKb);
+        }
 
-        // 创建知识碎片库（不可删除）
-        KnowledgeBase fragmentsKb = KnowledgeBase.builder()
-            .userId(userId)
-            .name("知识碎片")
-            .type(KnowledgeBaseType.SYSTEM_FRAGMENTS)
-            .isDeletable(false)
-            .sortOrder(1)
-            .build();
-        repository.save(fragmentsKb);
+        boolean hasFragments = existing.stream()
+            .anyMatch(kb -> kb.getType() == KnowledgeBaseType.SYSTEM_FRAGMENTS);
+        if (!hasFragments) {
+            KnowledgeBase fragmentsKb = KnowledgeBase.builder()
+                .userId(userId)
+                .name("知识碎片")
+                .type(KnowledgeBaseType.SYSTEM_FRAGMENTS)
+                .isDeletable(false)
+                .sortOrder(1)
+                .build();
+            repository.saveAndFlush(fragmentsKb);
+            result.add(fragmentsKb);
+        }
 
-        return List.of(defaultKb, fragmentsKb);
+        return result.stream()
+            .sorted(java.util.Comparator.comparing(KnowledgeBase::getSortOrder))
+            .toList();
+    }
+
+    private boolean hasBothSystemBases(List<KnowledgeBase> bases) {
+        boolean hasDefault = bases.stream()
+            .anyMatch(kb -> kb.getType() == KnowledgeBaseType.DEFAULT);
+        boolean hasFragments = bases.stream()
+            .anyMatch(kb -> kb.getType() == KnowledgeBaseType.SYSTEM_FRAGMENTS);
+        return hasDefault && hasFragments;
     }
 }

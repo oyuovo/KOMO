@@ -12,11 +12,15 @@ import com.komo.exception.BusinessException;
 import com.komo.exception.ErrorCode;
 import com.komo.repository.KnowledgeLinkRepository;
 import com.komo.repository.KnowledgeRepository;
+import com.komo.security.SecurityContext;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -32,18 +36,23 @@ import java.util.regex.Pattern;
 @Service
 public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepository> {
 
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeService.class);
+
     private final KnowledgeLinkRepository knowledgeLinkRepository;
     private final KnowledgeIndexService indexService;
     private final KnowledgeBaseService knowledgeBaseService;
+    private final TransactionTemplate transactionTemplate;
 
     public KnowledgeService(KnowledgeRepository repository,
                             KnowledgeLinkRepository knowledgeLinkRepository,
                             KnowledgeIndexService indexService,
-                            KnowledgeBaseService knowledgeBaseService) {
+                            KnowledgeBaseService knowledgeBaseService,
+                            TransactionTemplate transactionTemplate) {
         super(repository);
         this.knowledgeLinkRepository = knowledgeLinkRepository;
         this.indexService = indexService;
         this.knowledgeBaseService = knowledgeBaseService;
+        this.transactionTemplate = transactionTemplate;
     }
 
     @Override
@@ -68,53 +77,55 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
         return findByIdOrThrow(id);
     }
 
-    @Transactional
     public KnowledgeEntry create(KnowledgeCreateRequest request) {
         UUID kbId = request.getKnowledgeBaseId() != null
             ? request.getKnowledgeBaseId()
             : knowledgeBaseService.getDefaultBase(getCurrentUserId()).getId();
 
-        KnowledgeEntry entry = KnowledgeEntry.builder()
-            .userId(getCurrentUserId())
-            .title(request.getTitle())
-            .content(request.getContent())
-            .contentPlain(stripMarkdown(request.getContent()))
-            .source(KnowledgeSource.MANUAL)
-            .entryType(request.getEntryType() != null ? request.getEntryType() : KnowledgeEntry.KnowledgeType.FACT)
-            .knowledgeBaseId(kbId)
-            .categoryId(request.getCategoryId())
-            .tagNames(request.getTags())
-            .build();
-
-        entry = repository.save(entry);
+        KnowledgeEntry entry = transactionTemplate.execute(status -> repository.save(
+            KnowledgeEntry.builder()
+                .userId(getCurrentUserId())
+                .title(request.getTitle())
+                .content(request.getContent())
+                .contentPlain(stripMarkdown(request.getContent()))
+                .source(KnowledgeSource.MANUAL)
+                .entryType(request.getEntryType() != null
+                    ? request.getEntryType() : KnowledgeEntry.KnowledgeType.FACT)
+                .knowledgeBaseId(kbId)
+                .categoryId(request.getCategoryId())
+                .tagNames(request.getTags())
+                .build()));
         indexService.indexEntry(entry.getId(), entry.getUserId(), entry.getTitle(), entry.getContentPlain());
         return entry;
     }
 
-    @Transactional
     public KnowledgeEntry update(UUID id, KnowledgeUpdateRequest request) {
-        KnowledgeEntry entry = findByIdOrThrow(id);
-        entry.setTitle(request.getTitle());
-        entry.setContent(request.getContent());
-        entry.setContentPlain(stripMarkdown(request.getContent()));
-        entry.setEntryType(request.getEntryType());
-        entry.setCategoryId(request.getCategoryId());
-        entry.setTagNames(request.getTags());
-        entry = repository.save(entry);
+        KnowledgeEntry entry = transactionTemplate.execute(status -> {
+            KnowledgeEntry current = findByIdOrThrow(id);
+            current.setTitle(request.getTitle());
+            current.setContent(request.getContent());
+            current.setContentPlain(stripMarkdown(request.getContent()));
+            current.setEntryType(request.getEntryType());
+            current.setCategoryId(request.getCategoryId());
+            current.setTagNames(request.getTags());
+            return repository.save(current);
+        });
         indexService.updateEntry(entry.getId(), entry.getUserId(), entry.getTitle(), entry.getContentPlain());
         return entry;
     }
 
-    @Transactional
     public void softDelete(UUID id) {
-        KnowledgeEntry entry = findByIdOrThrow(id);
-        entry.setDeletedAt(LocalDateTime.now());
-        repository.save(entry);
+        KnowledgeEntry entry = transactionTemplate.execute(status -> {
+            KnowledgeEntry current = findByIdOrThrow(id);
+            current.setDeletedAt(LocalDateTime.now());
+            return repository.save(current);
+        });
         indexService.deleteEntry(id);
+        log.info("[AUDIT] action=DELETE_KNOWLEDGE userId={} entryId={} title={}",
+            entry.getUserId(), id, entry.getTitle());
     }
 
     /** 批量软删除。逐条处理，单条失败不影响其他。返回成功/失败计数。 */
-    @Transactional
     public BatchDeleteResult batchSoftDelete(List<UUID> ids) {
         int deleted = 0;
         int failed = 0;
@@ -124,7 +135,7 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
                 deleted++;
             } catch (Exception e) {
                 failed++;
-                System.err.println("[batchDelete] 删除知识 " + id + " 失败: " + e.getMessage());
+                log.warn("[batchDelete] 删除知识 {} 失败", id, e);
             }
         }
         return new BatchDeleteResult(deleted, failed, ids.size());
@@ -209,8 +220,30 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
     }
 
     /** 将碎片内容合并到目标文章内。匹配最佳 ## section 插入，否则追加末尾。 */
-    @Transactional
     public KnowledgeEntry mergeInto(UUID fragmentId, UUID targetId) {
+        KnowledgeEntry merged = null;
+        for (int retry = 0; retry < 3; retry++) {
+            try {
+                merged = transactionTemplate.execute(status -> doMergeInto(fragmentId, targetId));
+                break;
+            } catch (org.springframework.orm.ObjectOptimisticLockingFailureException e) {
+                if (retry == 2) throw e;
+                log.warn("mergeInto 乐观锁冲突，将在新事务中重试 {}", retry + 1, e);
+            }
+        }
+
+        if (merged == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "合并失败，请重试");
+        }
+
+        // 外部 ES 调用必须发生在数据库事务提交之后。
+        indexService.updateEntry(
+            merged.getId(), merged.getUserId(), merged.getTitle(), merged.getContentPlain());
+        indexService.deleteEntry(fragmentId);
+        return merged;
+    }
+
+    private KnowledgeEntry doMergeInto(UUID fragmentId, UUID targetId) {
         KnowledgeEntry fragment = findByIdOrThrow(fragmentId);
         KnowledgeEntry target = findByIdOrThrow(targetId);
 
@@ -228,7 +261,6 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
         target.setContent(mergedContent);
         target.setContentPlain(stripMarkdown(mergedContent));
         target = repository.save(target);
-        indexService.updateEntry(target.getId(), target.getUserId(), target.getTitle(), target.getContentPlain());
 
         // 创建关联记录
         KnowledgeLink link = KnowledgeLink.builder()
@@ -241,7 +273,6 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
         // 软删除碎片（内容已合并进目标文章）
         fragment.setDeletedAt(LocalDateTime.now());
         repository.save(fragment);
-        indexService.deleteEntry(fragmentId);
 
         return target;
     }
@@ -326,9 +357,10 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
         return union.isEmpty() ? 0 : (double) intersection.size() / union.size();
     }
 
-    /** 手动重建 ES 索引：从 DB 全量回填所有未删除条目。返回索引条数。 */
+    /** 手动重建 ES 索引：从 DB 全量回填当前用户未删除条目。返回索引条数。 */
     public int reindexAll() {
-        List<KnowledgeEntry> allActive = repository.findAllActive();
+        UUID userId = SecurityContext.getCurrentUserId();
+        List<KnowledgeEntry> allActive = repository.findAllByUserIdAndDeletedAtIsNull(userId);
         return indexService.reindexAll(allActive);
     }
 

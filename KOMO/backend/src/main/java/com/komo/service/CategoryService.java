@@ -83,7 +83,13 @@ public class CategoryService extends BaseService<Category, CategoryRepository> {
         repository.delete(category);
     }
 
-    private String sanitizeLtreeLabel(String uuid) {
-        return uuid.replace("-", "_");
+    /** Sanitize UUID for ltree label: replace '-' with '_'. Also validates format. */
+    private String sanitizeLtreeLabel(String input) {
+        String sanitized = input.replace("-", "_");
+        // ltree labels must only contain [A-Za-z0-9_]
+        if (!sanitized.matches("^[A-Za-z0-9_]+$")) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "路径标签包含非法字符");
+        }
+        return sanitized;
     }
 }

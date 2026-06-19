@@ -39,10 +39,10 @@ public interface KnowledgeRepository extends JpaRepository<KnowledgeEntry, UUID>
     @Query("SELECT k FROM KnowledgeEntry k WHERE k.id IN (:ids) AND k.userId = :userId")
     List<KnowledgeEntry> findAllByIdsAndUserId(@Param("ids") List<UUID> ids, @Param("userId") UUID userId);
 
-    /** 用于知识导出 */
+    /** 查询当前用户所有未删除条目（用于 ES 索引重建） */
     List<KnowledgeEntry> findAllByUserIdAndDeletedAtIsNull(UUID userId);
 
-    /** 查询所有未删除条目（用于 ES 索引重建） */
+    /** 查询所有未删除条目（无用户过滤 — 仅限内部全局操作使用） */
     @Query("SELECT k FROM KnowledgeEntry k WHERE k.deletedAt IS NULL")
-    List<KnowledgeEntry> findAllActive();
+    List<KnowledgeEntry> findAllActiveGlobal();
 }
