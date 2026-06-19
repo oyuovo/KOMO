@@ -96,12 +96,32 @@
   background: var(--komo-surface-hover);
 }
 
-/* 列表 */
-.articleList {
+/* Move-to-category button */
+.btnMoveToCategory {
+  padding: 6px 16px;
+  border: 1px solid var(--komo-accent);
+  border-radius: var(--komo-radius-sm);
+  font-size: var(--komo-text-sm);
+  font-weight: 600;
+  font-family: inherit;
+  background: var(--komo-accent-soft);
+  color: var(--komo-accent);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btnMoveToCategory:hover { opacity: 0.85; }
+.btnMoveToCategory:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 树形列表 */
+.treeList {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 1px;
   margin-bottom: 40px;
+  overflow-x: auto;
 }
 
 .statusMsg {
@@ -117,12 +137,60 @@
   font-size: var(--komo-text-sm);
 }
 
+/* 分类行 */
+.categoryRow {
+  display: flex;
+  align-items: center;
+  border-radius: var(--komo-radius-sm);
+  transition: background 0.1s ease;
+  min-width: fit-content;
+}
+.categoryRow:hover { background: var(--komo-surface-hover); }
+
+.categoryToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  padding: 10px 0;
+  border: none;
+  border-radius: var(--komo-radius-sm);
+  background: transparent;
+  color: var(--komo-text);
+  font-size: var(--komo-text-sm);
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+}
+
+.categoryIcon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.categoryName {
+  font-weight: 600;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.categoryCount {
+  font-size: var(--komo-text-xs);
+  color: var(--komo-text-tertiary);
+  flex-shrink: 0;
+}
+
+/* 文章行 */
 .articleRow {
   display: flex;
   align-items: center;
   gap: 4px;
   border-radius: var(--komo-radius-md);
   transition: all 0.15s ease;
+  min-width: fit-content;
 }
 .articleRow:hover { background: var(--komo-surface); }
 
@@ -169,6 +237,12 @@
 .articleDelete:hover {
   background: #fef0f0;
   color: var(--komo-danger);
+}
+
+.articleIcon {
+  font-size: 12px;
+  color: var(--komo-text-tertiary);
+  flex-shrink: 0;
 }
 
 .articleTitle {

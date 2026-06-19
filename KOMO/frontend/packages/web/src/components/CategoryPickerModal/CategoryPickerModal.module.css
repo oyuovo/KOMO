@@ -1,0 +1,111 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(44, 36, 22, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  background: var(--komo-surface);
+  border: 1px solid var(--komo-border);
+  border-radius: var(--komo-radius-lg);
+  padding: 24px;
+  width: 400px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(44, 36, 22, 0.12);
+}
+
+.title {
+  font-size: var(--komo-text-md);
+  font-weight: 700;
+  margin: 0 0 4px 0;
+}
+
+.subtitle {
+  font-size: var(--komo-text-xs);
+  color: var(--komo-text-tertiary);
+  margin: 0 0 16px 0;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow-y: auto;
+  flex: 1;
+  margin-bottom: 16px;
+  max-height: 360px;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: var(--komo-radius-sm);
+  background: transparent;
+  color: var(--komo-text-secondary);
+  font-size: var(--komo-text-sm);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+.option:hover { background: var(--komo-surface-hover); color: var(--komo-text); }
+
+.optionActive {
+  background: var(--komo-accent-soft);
+  color: var(--komo-accent);
+  font-weight: 600;
+}
+
+.optionIcon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.optionName {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.btnCancel {
+  padding: 8px 20px;
+  border: 1px solid var(--komo-border);
+  border-radius: var(--komo-radius-sm);
+  background: var(--komo-surface);
+  color: var(--komo-text-secondary);
+  font-size: var(--komo-text-sm);
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+}
+.btnCancel:hover { background: var(--komo-surface-hover); }
+
+.btnConfirm {
+  padding: 8px 20px;
+  border: none;
+  border-radius: var(--komo-radius-sm);
+  background: var(--komo-accent);
+  color: white;
+  font-size: var(--komo-text-sm);
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+.btnConfirm:hover { opacity: 0.9; }
