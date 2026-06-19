@@ -517,3 +517,43 @@ export async function renameKnowledgeBase(id: string, name: string): Promise<Kno
 export async function deleteKnowledgeBase(id: string): Promise<void> {
   return del(`/knowledge-bases/${id}`);
 }
+
+// ===== Categories =====
+
+export interface CategoryData {
+  id: string;
+  userId: string;
+  knowledgeBaseId: string;
+  name: string;
+  path: string;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export interface CategoryCreateRequest {
+  name: string;
+  knowledgeBaseId: string;
+  parentId?: string;
+}
+
+export async function listCategories(kbId: string): Promise<CategoryData[]> {
+  return get(`/categories?kb=${kbId}`);
+}
+
+export async function createCategory(req: CategoryCreateRequest): Promise<CategoryData> {
+  return post('/categories', req);
+}
+
+export async function updateCategory(id: string, name: string): Promise<CategoryData> {
+  return put(`/categories/${id}`, { name });
+}
+
+export async function deleteCategory(id: string): Promise<void> {
+  return del(`/categories/${id}`);
+}
+
+// ===== Export =====
+
+export async function exportKnowledge(): Promise<KnowledgeItem[]> {
+  return get('/knowledge/export');
+}
