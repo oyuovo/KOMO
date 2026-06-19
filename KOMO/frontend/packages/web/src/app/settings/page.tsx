@@ -46,7 +46,7 @@ export default function SettingsPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch {
-      // ignore
+      alert('导出失败，请稍后重试');
     } finally {
       setExporting(false);
     }

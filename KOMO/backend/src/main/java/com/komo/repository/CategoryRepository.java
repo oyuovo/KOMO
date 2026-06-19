@@ -16,10 +16,10 @@ public interface CategoryRepository extends JpaRepository<Category, UUID> {
     Optional<Category> findByIdAndUserId(UUID id, UUID userId);
 
     /** 查询某路径下的所有子分类（ltree 操作符 <@） */
-    @Query(value = "SELECT * FROM categories WHERE user_id = :userId AND path <@ CAST(:path AS ltree)",
+    @Query(value = "SELECT * FROM categories WHERE user_id = :userId AND knowledge_base_id = :knowledgeBaseId AND path <@ CAST(:path AS ltree)",
            nativeQuery = true)
-    List<Category> findDescendants(@Param("userId") UUID userId, @Param("path") String path);
+    List<Category> findDescendants(@Param("userId") UUID userId, @Param("knowledgeBaseId") UUID knowledgeBaseId, @Param("path") String path);
 
     /** 统计子分类数量 */
-    long countByPathStartingWithAndUserId(String pathPrefix, UUID userId);
+    long countByPathStartingWithAndUserIdAndKnowledgeBaseId(String pathPrefix, UUID userId, UUID knowledgeBaseId);
 }

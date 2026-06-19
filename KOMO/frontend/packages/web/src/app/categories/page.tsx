@@ -126,7 +126,12 @@ export default function CategoriesPage() {
         <select
           className={styles.kbSelect}
           value={selectedKbId}
-          onChange={(e) => setSelectedKbId(e.target.value)}
+          onChange={(e) => {
+            setSelectedKbId(e.target.value);
+            setCreating(false);
+            setEditingId(null);
+            setNewName('');
+          }}
         >
           {kbs.map((kb) => (
             <option key={kb.id} value={kb.id}>{kb.name}</option>

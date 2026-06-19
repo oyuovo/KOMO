@@ -33,18 +33,10 @@ export default function CreateKnowledgePage() {
   const [selectedKbId, setSelectedKbId] = useState<string>('');
   const [categories, setCategories] = useState<CategoryData[]>([]);
   const [categoryId, setCategoryId] = useState<string>('');
-
-  if (!getToken()) {
-    return (
-      <div className={styles.page}>
-        <p style={{ textAlign: 'center', padding: 60, color: 'var(--komo-text-secondary)' }}>
-          请先登录
-        </p>
-      </div>
-    );
-  }
+  const [needsAuth, setNeedsAuth] = useState(false);
 
   useEffect(() => {
+    if (!getToken()) { setNeedsAuth(true); return; }
     listKnowledgeBases()
       .then((list) => {
         setKbs(list);
@@ -80,6 +72,16 @@ export default function CreateKnowledgePage() {
       setSaving(false);
     }
   };
+
+  if (needsAuth) {
+    return (
+      <div className={styles.page}>
+        <p style={{ textAlign: 'center', padding: 60, color: 'var(--komo-text-secondary)' }}>
+          请先登录
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.page}>

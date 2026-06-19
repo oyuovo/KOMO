@@ -74,8 +74,8 @@ public class CategoryService extends BaseService<Category, CategoryRepository> {
     @Transactional
     public void delete(UUID id) {
         Category category = findByIdOrThrow(id);
-        long childCount = repository.countByPathStartingWithAndUserId(
-            category.getPath() + "." + sanitizeLtreeLabel(id.toString()), getCurrentUserId()
+        long childCount = repository.countByPathStartingWithAndUserIdAndKnowledgeBaseId(
+            category.getPath() + "." + sanitizeLtreeLabel(id.toString()), getCurrentUserId(), category.getKnowledgeBaseId()
         );
         if (childCount > 0) {
             throw new BusinessException(ErrorCode.CATEGORY_HAS_CHILDREN);
