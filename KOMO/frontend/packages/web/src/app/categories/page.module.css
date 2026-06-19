@@ -1,0 +1,200 @@
+.page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 40px 48px;
+}
+
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--komo-text-sm);
+  color: var(--komo-text-tertiary);
+  text-decoration: none;
+  margin-bottom: 24px;
+  transition: color 0.15s;
+}
+.backLink:hover { color: var(--komo-text); }
+
+.heading {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 24px;
+}
+
+/* KB selector */
+.kbSelector {
+  margin-bottom: 28px;
+}
+
+.kbLabel {
+  display: block;
+  font-size: var(--komo-text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--komo-text-tertiary);
+  margin-bottom: 8px;
+}
+
+.kbSelect {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--komo-border);
+  border-radius: var(--komo-radius-sm);
+  font-size: var(--komo-text-sm);
+  font-family: inherit;
+  background: var(--komo-bg);
+  color: var(--komo-text);
+  outline: none;
+}
+.kbSelect:focus { border-color: var(--komo-accent); }
+
+/* Tree */
+.treeSection { margin-bottom: 32px; }
+
+.treeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.treeTitle {
+  font-size: var(--komo-text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--komo-text-tertiary);
+}
+
+.addBtn {
+  padding: 6px 14px;
+  border: 1px solid var(--komo-border);
+  border-radius: var(--komo-radius-sm);
+  background: var(--komo-surface);
+  color: var(--komo-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+}
+.addBtn:hover { background: var(--komo-surface-hover); }
+
+.treeNode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  transition: background 0.1s;
+}
+.treeNode:hover { background: var(--komo-surface-hover); }
+.treeNode:hover .treeActions { opacity: 1; }
+
+.treeIndent { flex-shrink: 0; }
+
+.treeName {
+  flex: 1;
+  font-size: var(--komo-text-sm);
+  color: var(--komo-text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.treeActions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.treeActionBtn {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--komo-text-tertiary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.treeActionBtn:hover { background: var(--komo-surface-hover); color: var(--komo-text); }
+.treeActionBtnDanger:hover { color: var(--komo-danger); }
+
+.emptyTree {
+  padding: 24px;
+  text-align: center;
+  font-size: var(--komo-text-sm);
+  color: var(--komo-text-tertiary);
+}
+
+/* Create/Edit Row */
+.editRow {
+  display: flex;
+  gap: 8px;
+  padding: 4px 12px 8px;
+  align-items: center;
+}
+
+.editInput {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--komo-accent);
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  background: var(--komo-bg);
+  color: var(--komo-text);
+}
+
+.parentSelect {
+  padding: 6px 10px;
+  border: 1px solid var(--komo-border);
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: inherit;
+  background: var(--komo-bg);
+  color: var(--komo-text);
+  outline: none;
+  max-width: 140px;
+}
+
+.editConfirm {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  background: var(--komo-accent);
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.editCancel {
+  padding: 6px 10px;
+  border: 1px solid var(--komo-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--komo-text-tertiary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.error {
+  color: var(--komo-danger);
+  font-size: 13px;
+  padding: 10px 14px;
+  background: #fef0f0;
+  border-radius: var(--komo-radius-sm);
+  margin-bottom: 16px;
+}
