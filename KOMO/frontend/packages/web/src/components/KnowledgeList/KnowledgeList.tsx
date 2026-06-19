@@ -24,10 +24,11 @@ export interface KnowledgeStats {
 interface Props {
   searchQuery: string;
   knowledgeBaseId: string | null;
+  categoryId: string | null;
   onStatsChange?: (stats: KnowledgeStats) => void;
 }
 
-export default function KnowledgeList({ searchQuery, knowledgeBaseId, onStatsChange }: Props) {
+export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId, onStatsChange }: Props) {
   const [articles, setArticles] = useState<KnowledgeItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +53,7 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, onStatsCha
       const data: PageData<KnowledgeItem> = await listKnowledge({
         q: searchQuery || undefined,
         kb: knowledgeBaseId || undefined,
+        category: categoryId || undefined,
       });
       setArticles(data.content);
       if (onStatsChange) {
@@ -67,7 +69,7 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, onStatsCha
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, knowledgeBaseId]);
+  }, [searchQuery, knowledgeBaseId, categoryId]);
 
   useEffect(() => {
     fetchArticles();

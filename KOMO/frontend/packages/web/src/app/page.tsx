@@ -26,6 +26,8 @@ export default function HomePage() {
   const [loggingIn, setLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
 
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+
   // On mount, check localStorage for existing session
   useEffect(() => {
     const existingToken = getToken();
@@ -111,7 +113,12 @@ export default function HomePage() {
       {/* KB Sidebar */}
       <KnowledgeBaseSidebar
         selectedId={selectedKb?.id ?? null}
-        onSelect={setSelectedKb}
+        selectedCategoryId={selectedCategoryId}
+        onSelect={(kb) => {
+          setSelectedKb(kb);
+          setSelectedCategoryId(null);
+        }}
+        onCategorySelect={setSelectedCategoryId}
       />
 
       {/* Main Content */}
@@ -152,6 +159,7 @@ export default function HomePage() {
         <KnowledgeList
           searchQuery={searchQuery}
           knowledgeBaseId={selectedKb?.id ?? null}
+          categoryId={selectedCategoryId}
           onStatsChange={setStats}
         />
 
