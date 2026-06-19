@@ -1,30 +1,58 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import {
   listKnowledgeBases,
   createKnowledgeBase,
   renameKnowledgeBase,
   deleteKnowledgeBase,
+  listCategories,
   type KnowledgeBaseData,
+  type CategoryData,
 } from '@komo/shared/api-client';
 import styles from './KnowledgeBaseSidebar.module.css';
 
 interface Props {
   selectedId: string | null;
+  selectedCategoryId: string | null;
   onSelect: (kb: KnowledgeBaseData | null) => void;
+  onCategorySelect: (categoryId: string | null) => void;
 }
 
-export default function KnowledgeBaseSidebar({ selectedId, onSelect }: Props) {
+export default function KnowledgeBaseSidebar({
+  selectedId,
+  selectedCategoryId,
+  onSelect,
+  onCategorySelect,
+}: Props) {
   const [kbs, setKbs] = useState<KnowledgeBaseData[]>([]);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const [categories, setCategories] = useState<CategoryData[]>([]);
 
   useEffect(() => {
     fetchKBs();
   }, []);
+
+  const fetchCategories = async (kbId: string) => {
+    try {
+      const data = await listCategories(kbId);
+      setCategories(data);
+    } catch {
+      setCategories([]);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedId) {
+      fetchCategories(selectedId);
+    } else {
+      setCategories([]);
+    }
+  }, [selectedId]);
 
   const fetchKBs = async () => {
     try {
@@ -188,6 +216,44 @@ export default function KnowledgeBaseSidebar({ selectedId, onSelect }: Props) {
 
       {kbs.length === 0 && (
         <p className={styles.empty}>加载中...</p>
+      )}
+
+      {/* Category Tree — only when a KB is selected */}
+      {selectedId && (
+        <div className={styles.catSection}>
+          <div className={styles.catHeader}>
+            <span className={styles.catTitle}>分类</span>
+            <Link href="/categories" className={styles.catManageLink}>管理</Link>
+          </div>
+          {categories.length === 0 ? (
+            <p className={styles.catEmpty}>暂无分类</p>
+          ) : (
+            <div className={styles.catList}>
+              {/* "全部" 选项 */}
+              <button
+                className={`${styles.catItem} ${selectedCategoryId === null ? styles.catItemActive : ''}`}
+                onClick={() => onCategorySelect(null)}
+              >
+                全部
+              </button>
+              {[...categories]
+                .sort((a, b) => a.path.localeCompare(b.path))
+                .map((cat) => {
+                  const depth = cat.path === 'root' ? 0 : cat.path.split('.').length - 1;
+                  return (
+                    <button
+                      key={cat.id}
+                      className={`${styles.catItem} ${selectedCategoryId === cat.id ? styles.catItemActive : ''}`}
+                      style={{ paddingLeft: 20 + depth * 16 }}
+                      onClick={() => onCategorySelect(cat.id)}
+                    >
+                      {cat.name}
+                    </button>
+                  );
+                })}
+            </div>
+          )}
+        </div>
       )}
 
       {/* 全部文章入口 */}
