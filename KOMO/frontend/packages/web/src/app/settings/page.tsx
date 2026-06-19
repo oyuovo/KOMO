@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { clearTokens, getToken, getUser, listDrafts, listKnowledge, reindexKnowledge, type UserInfo } from '@komo/shared/api-client';
+import { clearTokens, getToken, getUser, listDrafts, listKnowledge, reindexKnowledge, exportKnowledge, type UserInfo } from '@komo/shared/api-client';
 import styles from './page.module.css';
 
 export default function SettingsPage() {
@@ -12,6 +12,7 @@ export default function SettingsPage() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [reindexState, setReindexState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [reindexCount, setReindexCount] = useState(0);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     if (!getToken()) {
@@ -28,6 +29,27 @@ export default function SettingsPage() {
   const handleLogout = () => {
     clearTokens();
     router.push('/');
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const data = await exportKnowledge();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const today = new Date().toISOString().slice(0, 10);
+      a.download = `komo-export-${today}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      // ignore
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleReindex = async () => {
@@ -75,6 +97,20 @@ export default function SettingsPage() {
           <div className={styles.row}>
             <span className={styles.label}>待处理草稿</span>
             <span className={styles.value}>{draftCount} 条</span>
+          </div>
+          <div className={styles.divider} />
+          <div className={styles.row}>
+            <div>
+              <span className={styles.label}>导出知识库</span>
+              <span className={styles.hint}>将所有知识导出为 JSON 文件</span>
+            </div>
+            <button
+              className={styles.exportBtn}
+              onClick={handleExport}
+              disabled={exporting}
+            >
+              {exporting ? '导出中...' : '导出 JSON'}
+            </button>
           </div>
         </div>
       </div>
