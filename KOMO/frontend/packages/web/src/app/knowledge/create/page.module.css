@@ -121,3 +121,35 @@
   border-radius: var(--komo-radius-md);
   background: var(--komo-surface);
 }
+
+/* Select Row */
+.selectRow {
+  display: flex;
+  gap: 16px;
+}
+
+.field { flex: 1; }
+
+.fieldLabel {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--komo-text-tertiary);
+  margin-bottom: 6px;
+}
+
+.select {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--komo-border);
+  border-radius: var(--komo-radius-sm);
+  font-size: var(--komo-text-sm);
+  font-family: inherit;
+  background: var(--komo-bg);
+  color: var(--komo-text);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.select:focus { border-color: var(--komo-accent); }

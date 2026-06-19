@@ -6,7 +6,11 @@ import {
   getToken,
   getKnowledge,
   updateKnowledge,
+  listKnowledgeBases,
+  listCategories,
   type KnowledgeItem,
+  type KnowledgeBaseData,
+  type CategoryData,
 } from '@komo/shared/api-client';
 import MarkdownRenderer from '@/components/MarkdownRenderer/MarkdownRenderer';
 import styles from './page.module.css';
@@ -31,25 +35,50 @@ export default function EditKnowledgePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [kbs, setKbs] = useState<KnowledgeBaseData[]>([]);
+  const [selectedKbId, setSelectedKbId] = useState<string>('');
+  const [categories, setCategories] = useState<CategoryData[]>([]);
+  const [categoryId, setCategoryId] = useState<string>('');
 
   useEffect(() => {
     if (!getToken()) { router.push('/'); return; }
+    // Load KBs first
+    listKnowledgeBases().then((list) => {
+      setKbs(list);
+      const defaultKb = list.find((kb) => kb.type === 'DEFAULT') || list[0];
+      if (defaultKb) setSelectedKbId(defaultKb.id);
+    }).catch(() => {});
+    // Load article
     getKnowledge(id)
       .then((article) => {
         setTitle(article.title);
         setContent(article.content);
         setEntryType(article.entryType || 'CONCEPT');
+        setCategoryId(article.categoryId || '');
+        if (article.knowledgeBaseId) setSelectedKbId(article.knowledgeBaseId);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    if (!selectedKbId) { setCategories([]); return; }
+    listCategories(selectedKbId)
+      .then(setCategories)
+      .catch(() => setCategories([]));
+  }, [selectedKbId]);
 
   const handleSave = async () => {
     if (!title.trim() || !content.trim()) return;
     setSaving(true);
     setError(null);
     try {
-      await updateKnowledge(id, { title: title.trim(), content: content.trim(), entryType });
+      await updateKnowledge(id, {
+        title: title.trim(),
+        content: content.trim(),
+        entryType,
+        categoryId: categoryId || undefined,
+      });
       router.push(`/article/${id}`);
     } catch (err) {
       setError((err as Error).message);
@@ -90,6 +119,43 @@ export default function EditKnowledgePage() {
             {t.label}
           </button>
         ))}
+      </div>
+
+      {/* KB + Category selectors */}
+      <div className={styles.selectRow}>
+        <div className={styles.field}>
+          <label className={styles.fieldLabel}>知识库</label>
+          <select
+            className={styles.select}
+            value={selectedKbId}
+            onChange={(e) => { setSelectedKbId(e.target.value); setCategoryId(''); }}
+          >
+            {kbs.map((kb) => (
+              <option key={kb.id} value={kb.id}>{kb.name}</option>
+            ))}
+          </select>
+        </div>
+        <div className={styles.field}>
+          <label className={styles.fieldLabel}>分类（可选）</label>
+          <select
+            className={styles.select}
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value)}
+          >
+            <option value="">无分类</option>
+            {[...categories]
+              .sort((a, b) => a.path.localeCompare(b.path))
+              .map((cat) => {
+                const depth = cat.path === 'root' ? 0 : cat.path.split('.').length - 1;
+                const prefix = '  '.repeat(depth);
+                return (
+                  <option key={cat.id} value={cat.id}>
+                    {prefix}{depth > 0 ? '└ ' : ''}{cat.name}
+                  </option>
+                );
+              })}
+          </select>
+        </div>
       </div>
 
       <input className={styles.titleInput} type="text" placeholder="标题"
