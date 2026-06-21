@@ -109,15 +109,6 @@ public class KnowledgeController {
             .body(ApiResponse.success(link));
     }
 
-    @DeleteMapping("/{id}/links/{linkId}")
-    public ResponseEntity<ApiResponse<Void>> removeLink(
-        @PathVariable UUID id,
-        @PathVariable UUID linkId
-    ) {
-        knowledgeService.removeLink(id, linkId);
-        return ResponseEntity.ok(ApiResponse.success(null));
-    }
-
     @GetMapping("/export")
     public ResponseEntity<ApiResponse<List<KnowledgeResponse>>> exportAll() {
         java.util.UUID userId = com.komo.security.SecurityContext.getCurrentUserId();

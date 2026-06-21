@@ -6,11 +6,10 @@ import Link from 'next/link';
 import {
   getKnowledge,
   deleteKnowledge,
-  getToken,
+  getMe,
   listKnowledge,
   getLinks,
   addLink,
-  removeLink,
   mergeInto,
   listKnowledgeBases,
   type KnowledgeItem,
@@ -115,14 +114,15 @@ export default function ArticlePage() {
 
   useEffect(() => {
     if (!id) return;
-    if (!getToken()) {
-      setNeedsAuth(true);
-      setLoading(false);
-      return;
-    }
+    getMe().then((u) => {
+      if (!u) {
+        setNeedsAuth(true);
+        setLoading(false);
+        return;
+      }
 
-    setLoading(true);
-    getKnowledge(id)
+      setLoading(true);
+      getKnowledge(id)
       .then((articleData) => {
         if (!articleData) {
           setError('文章不存在或无权访问');
@@ -143,6 +143,7 @@ export default function ArticlePage() {
         if (!error) setError(err.message);
       })
       .finally(() => setLoading(false));
+    });
   }, [id, needsAuth]);
 
   // IntersectionObserver: track visible headings

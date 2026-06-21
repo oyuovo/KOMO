@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  getToken,
+  getMe,
   createKnowledge,
   listKnowledgeBases,
   type KnowledgeBaseData,
@@ -58,17 +58,19 @@ export default function ImportPage() {
 
   // Auth + KBs
   useEffect(() => {
-    if (!getToken()) {
-      setNeedsAuth(true);
-      return;
-    }
-    listKnowledgeBases()
-      .then((list) => {
-        setKbs(list);
-        const defaultKb = list.find((kb) => kb.type === 'DEFAULT');
-        if (defaultKb) setSelectedKbId(defaultKb.id);
-      })
-      .catch(() => {});
+    getMe().then((u) => {
+      if (!u) {
+        setNeedsAuth(true);
+        return;
+      }
+      listKnowledgeBases()
+        .then((list) => {
+          setKbs(list);
+          const defaultKb = list.find((kb) => kb.type === 'DEFAULT');
+          if (defaultKb) setSelectedKbId(defaultKb.id);
+        })
+        .catch(() => {});
+    });
   }, []);
 
   const handleFile = useCallback((f: File) => {

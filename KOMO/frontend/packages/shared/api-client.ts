@@ -1,10 +1,8 @@
-// KOMO API Client — 前端与 Java 后端的 HTTP 通信层
-// Token 持久化存储 + 自动刷新 + 401 拦截
+// KOMO API Client — HTTP 通信层
+// Token 通过 httpOnly Cookie 自动携带，前端不再手动管理。
+// CSRF 通过 Double Submit Cookie (XSRF-TOKEN → X-XSRF-TOKEN) 防护。
 
 const API_BASE = 'http://localhost:8081/api';
-const TOKEN_KEY = 'komo_access_token';
-const REFRESH_KEY = 'komo_refresh_token';
-const USER_KEY = 'komo_user';
 
 interface ApiResponse<T> {
   code: number;
@@ -19,90 +17,85 @@ export interface UserInfo {
   nickname: string;
 }
 
-// ===== Token 管理（localStorage 持久化） =====
+// ===== Token 管理（httpOnly Cookie — 前端无需手动操作） =====
 
-export function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(TOKEN_KEY);
+/** 从 Cookie 读取 CSRF token（非 httpOnly，Spring Security 自动写入） */
+function getCsrfToken(): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
 }
 
-export function getRefreshToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(REFRESH_KEY);
-}
-
-export function getUser(): UserInfo | null {
-  if (typeof window === 'undefined') return null;
+/** 调用 /api/auth/me 获取当前登录用户 */
+export async function getMe(): Promise<UserInfo | null> {
   try {
-    const raw = localStorage.getItem(USER_KEY);
-    return raw ? JSON.parse(raw) : null;
+    const res = await fetch(`${API_BASE}/auth/me`, {
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+    });
+    if (!res.ok) return null;
+    const json: ApiResponse<UserInfo> = await res.json();
+    return json.code === 0 ? json.data : null;
   } catch {
     return null;
   }
 }
 
-export function setTokens(access: string, refresh: string, user: UserInfo) {
-  localStorage.setItem(TOKEN_KEY, access);
-  localStorage.setItem(REFRESH_KEY, refresh);
-  localStorage.setItem(USER_KEY, JSON.stringify(user));
+/** 登出 — 清除服务端 httpOnly Cookie */
+export async function logout(): Promise<void> {
+  try {
+    await fetch(`${API_BASE}/auth/logout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+    });
+  } catch {
+    // 静默失败 — 即使服务不可用也要清除本地状态
+  }
 }
 
+// ===== 兼容旧 API（逐步迁移） =====
+
+/** @deprecated 使用 getMe() 代替 */
+export function getToken(): string | null {
+  return null; // httpOnly Cookie 不可从 JS 读取
+}
+
+/** @deprecated 使用 getMe() 代替 */
+export function getUser(): UserInfo | null {
+  return null; // 用户状态改为从服务端获取
+}
+
+/** @deprecated 不再需要手动存储 token */
+export function setTokens(_access: string, _refresh: string, _user: UserInfo) {
+  // no-op: tokens 由 httpOnly Cookie 自动管理
+}
+
+/** @deprecated 使用 logout() 代替 */
 export function clearTokens() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(REFRESH_KEY);
-  localStorage.removeItem(USER_KEY);
+  // 异步调用 logout 清除 cookie
+  logout().catch(() => {});
 }
 
-/** 用 Refresh Token 换取新的 Access Token */
-let refreshPromise: Promise<boolean> | null = null;
-
+/** @deprecated 不再需要手动刷新 — Cookie 自动携带 refresh token */
 export async function refreshAuth(): Promise<boolean> {
-  // 避免并发刷新
-  if (refreshPromise) return refreshPromise;
-
-  refreshPromise = (async () => {
-    try {
-      const refresh = getRefreshToken();
-      if (!refresh) return false;
-
-      const res = await fetch(`${API_BASE}/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken: refresh }),
-      });
-
-      if (!res.ok) {
-        clearTokens();
-        return false;
-      }
-
-      const json: ApiResponse<{ accessToken: string; refreshToken: string }> = await res.json();
-      if (json.code !== 0) {
-        clearTokens();
-        return false;
-      }
-
-      const user = getUser();
-      if (user) {
-        setTokens(json.data.accessToken, json.data.refreshToken, user);
-      }
-      return true;
-    } catch {
-      clearTokens();
-      return false;
-    } finally {
-      refreshPromise = null;
-    }
-  })();
-
-  return refreshPromise;
+  try {
+    const res = await fetch(`${API_BASE}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 // ===== 基础请求（含自动刷新） =====
 
 /** 清除登录态并跳转到首页 */
 function redirectToLogin() {
-  clearTokens();
+  logout().catch(() => {});
   if (typeof window !== 'undefined') {
     window.location.href = '/';
   }
@@ -117,14 +110,19 @@ async function request<T>(
     ...((options.headers as Record<string, string>) || {}),
   };
 
-  const token = getToken();
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+  // CSRF Double Submit Cookie
+  const csrf = getCsrfToken();
+  if (csrf) {
+    headers['X-XSRF-TOKEN'] = csrf;
   }
 
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    res = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers,
+      credentials: 'include',
+    });
   } catch {
     throw new ApiError(0, '无法连接服务器，请检查后端是否启动');
   }
@@ -133,45 +131,28 @@ async function request<T>(
   if (res.status === 401 || res.status === 403) {
     const refreshed = await refreshAuth();
     if (refreshed) {
-      const newToken = getToken();
-      if (newToken) {
-        headers['Authorization'] = `Bearer ${newToken}`;
-        try {
-          res = await fetch(`${API_BASE}${path}`, { ...options, headers });
-        } catch {
-          throw new ApiError(0, '无法连接服务器，请检查后端是否启动');
-        }
+      try {
+        const newCsrf = getCsrfToken();
+        if (newCsrf) headers['X-XSRF-TOKEN'] = newCsrf;
+        res = await fetch(`${API_BASE}${path}`, {
+          ...options,
+          headers,
+          credentials: 'include',
+        });
+      } catch {
+        throw new ApiError(0, '无法连接服务器，请检查后端是否启动');
       }
     } else {
-      // 刷新失败 → 直接跳转登录
       redirectToLogin();
       throw new ApiError(401, '登录已过期，请重新登录');
     }
   }
 
-  // 安全解析 JSON（服务不可用时 body 可能为空）
+  // 安全解析 JSON
   let json: ApiResponse<T>;
   try {
     json = await res.json();
   } catch {
-    if (res.status === 401 || res.status === 403) {
-      // Token 可能过期，尝试静默刷新
-      const refreshed = await refreshAuth();
-      if (refreshed) {
-        // 重试请求
-        const newToken = getToken();
-        if (newToken) {
-          headers['Authorization'] = `Bearer ${newToken}`;
-          try {
-            res = await fetch(`${API_BASE}${path}`, { ...options, headers });
-            json = await res.json();
-            if (json.code === 0) return json.data;
-          } catch {}
-        }
-      }
-      redirectToLogin();
-      throw new ApiError(401, '登录已过期，请重新登录');
-    }
     throw new ApiError(0, '服务响应异常，请稍后重试');
   }
 
@@ -208,9 +189,6 @@ export interface RegisterRequest {
 }
 
 export interface AuthData {
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
   user: {
     id: string;
     email: string;
@@ -219,15 +197,56 @@ export interface AuthData {
 }
 
 export async function login(req: LoginRequest): Promise<AuthData> {
-  const data = await post<AuthData>('/auth/login', req);
-  setTokens(data.accessToken, data.refreshToken, data.user);
-  return data;
+  // 使用原生 fetch（不经过 request()，避免循环依赖）
+  const csrf = getCsrfToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (csrf) headers['X-XSRF-TOKEN'] = csrf;
+
+  const res = await fetch(`${API_BASE}/auth/login`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(req),
+    credentials: 'include',
+  });
+
+  if (!res.ok) {
+    let message = '登录失败';
+    try {
+      const json = await res.json();
+      message = json.message || message;
+    } catch {}
+    throw new ApiError(res.status, message);
+  }
+
+  const json: ApiResponse<AuthData> = await res.json();
+  if (json.code !== 0) throw new ApiError(json.code, json.message);
+  return json.data;
 }
 
 export async function register(req: RegisterRequest): Promise<AuthData> {
-  const data = await post<AuthData>('/auth/register', req);
-  setTokens(data.accessToken, data.refreshToken, data.user);
-  return data;
+  const csrf = getCsrfToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (csrf) headers['X-XSRF-TOKEN'] = csrf;
+
+  const res = await fetch(`${API_BASE}/auth/register`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(req),
+    credentials: 'include',
+  });
+
+  if (!res.ok) {
+    let message = '注册失败';
+    try {
+      const json = await res.json();
+      message = json.message || message;
+    } catch {}
+    throw new ApiError(res.status, message);
+  }
+
+  const json: ApiResponse<AuthData> = await res.json();
+  if (json.code !== 0) throw new ApiError(json.code, json.message);
+  return json.data;
 }
 
 // ===== Knowledge =====
@@ -346,10 +365,6 @@ export async function addLink(
   relation: string
 ): Promise<KnowledgeLinkData> {
   return post(`/knowledge/${entryId}/links`, { targetEntryId, relation });
-}
-
-export async function removeLink(entryId: string, linkId: string): Promise<void> {
-  return del(`/knowledge/${entryId}/links/${linkId}`);
 }
 
 /** 将知识条目嵌入到目标文章（软关联） */

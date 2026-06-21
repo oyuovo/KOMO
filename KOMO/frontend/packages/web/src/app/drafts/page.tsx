@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import MarkdownRenderer from '@/components/MarkdownRenderer/MarkdownRenderer';
 import {
-  getToken,
+  getMe,
   listDrafts,
   confirmDraft,
   editAndConfirmDraft,
@@ -37,12 +37,14 @@ export default function DraftsPage() {
   const [selectedParent, setSelectedParent] = useState<Record<string, { id: string; title: string } | null>>({});
 
   useEffect(() => {
-    if (!getToken()) {
-      router.push('/');
-      return;
-    }
-    fetchDrafts();
-    listKnowledgeBases().then(setKbs).catch(() => {});
+    getMe().then((u) => {
+      if (!u) {
+        router.push('/');
+        return;
+      }
+      fetchDrafts();
+      listKnowledgeBases().then(setKbs).catch(() => {});
+    });
   }, []);
 
   const fetchDrafts = async () => {

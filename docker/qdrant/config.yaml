@@ -1,7 +1,0 @@
-# docker/qdrant/config.yaml
-log_level: INFO
-
-service:
-  host: 0.0.0.0
-  http_port: 6333
-  grpc_port: 6334

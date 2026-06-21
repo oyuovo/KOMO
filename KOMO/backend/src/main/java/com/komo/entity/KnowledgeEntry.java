@@ -70,9 +70,6 @@ public class KnowledgeEntry extends BaseEntity {
     @Column(name = "tag_names", length = 500)
     private String tagNames;
 
-    @Column(name = "embedding_id")
-    private UUID embeddingId;
-
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 

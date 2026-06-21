@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  getToken,
+  getMe,
   getKnowledge,
   updateKnowledge,
   listKnowledgeBases,
@@ -41,9 +41,10 @@ export default function EditKnowledgePage() {
   const [categoryId, setCategoryId] = useState<string>('');
 
   useEffect(() => {
-    if (!getToken()) { router.push('/'); return; }
-    // Load KBs first
-    listKnowledgeBases().then((list) => {
+    getMe().then((u) => {
+      if (!u) { router.push('/'); return; }
+      // Load KBs first
+      listKnowledgeBases().then((list) => {
       setKbs(list);
       const defaultKb = list.find((kb) => kb.type === 'DEFAULT') || list[0];
       if (defaultKb) setSelectedKbId(defaultKb.id);
@@ -59,6 +60,7 @@ export default function EditKnowledgePage() {
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+    });
   }, [id]);
 
   useEffect(() => {

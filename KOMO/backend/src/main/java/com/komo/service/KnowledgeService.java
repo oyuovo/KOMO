@@ -161,19 +161,6 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
         return knowledgeLinkRepository.save(link);
     }
 
-    @Transactional
-    public void removeLink(UUID entryId, UUID linkId) {
-        findByIdOrThrow(entryId); // 验证归属
-        KnowledgeLink link = knowledgeLinkRepository.findById(linkId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "关联不存在"));
-
-        if (!link.getSourceEntryId().equals(entryId) && !link.getTargetEntryId().equals(entryId)) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "关联不属于该知识条目");
-        }
-
-        knowledgeLinkRepository.delete(link);
-    }
-
     /** 获取某条目的所有关联 */
     public List<KnowledgeLink> getLinks(UUID entryId) {
         findByIdOrThrow(entryId); // 验证归属

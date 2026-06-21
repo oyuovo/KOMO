@@ -2,6 +2,7 @@ package com.komo.security;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +19,7 @@ import java.util.UUID;
 
 /**
  * JWT 认证过滤器。
- * 每个请求执行一次，从 Authorization 头提取 JWT，
+ * 优先从 httpOnly Cookie 提取 access_token，兼容旧的 Authorization Bearer header。
  * 验证后将用户信息设置到 SecurityContext（Spring 和 KOMO 两层）。
  */
 @Component
@@ -56,6 +57,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     private String extractToken(HttpServletRequest request) {
+        // 优先从 httpOnly Cookie 读取
+        Cookie[] cookies = request.getCookies();
+        if (cookies != null) {
+            for (Cookie cookie : cookies) {
+                if ("access_token".equals(cookie.getName())) {
+                    String value = cookie.getValue();
+                    if (StringUtils.hasText(value)) {
+                        return value;
+                    }
+                }
+            }
+        }
+
+        // 兼容旧 Authorization: Bearer <token> header
         String bearer = request.getHeader("Authorization");
         if (StringUtils.hasText(bearer) && bearer.startsWith("Bearer ")) {
             return bearer.substring(7);

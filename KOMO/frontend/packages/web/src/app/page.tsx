@@ -4,9 +4,8 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   login,
-  getToken,
-  getUser,
-  clearTokens,
+  getMe,
+  logout,
   type UserInfo,
   type KnowledgeBaseData,
 } from '@komo/shared/api-client';
@@ -28,14 +27,12 @@ export default function HomePage() {
 
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
 
-  // On mount, check localStorage for existing session
+  // On mount, check httpOnly Cookie session via /api/auth/me
   useEffect(() => {
-    const existingToken = getToken();
-    const existingUser = getUser();
-    if (existingToken && existingUser) {
-      setUser(existingUser);
-    }
-    setAuthChecked(true);
+    getMe()
+      .then((u) => { if (u) setUser(u); })
+      .catch(() => {})
+      .finally(() => setAuthChecked(true));
   }, []);
 
   const handleLogin = async () => {
@@ -52,7 +49,7 @@ export default function HomePage() {
   };
 
   const handleLogout = () => {
-    clearTokens();
+    logout();
     setUser(null);
   };
 

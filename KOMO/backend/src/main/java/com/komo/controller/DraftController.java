@@ -1,5 +1,6 @@
 package com.komo.controller;
 
+import com.komo.dto.request.BatchDraftRequest;
 import com.komo.dto.request.DraftConfirmRequest;
 import com.komo.dto.request.DraftEditRequest;
 import com.komo.dto.response.ApiResponse;
@@ -85,20 +86,18 @@ public class DraftController {
     /** 批量确认 */
     @PostMapping("/batch-confirm")
     public ResponseEntity<ApiResponse<Map<String, Integer>>> batchConfirm(
-        @RequestBody Map<String, List<UUID>> body
+        @Valid @RequestBody BatchDraftRequest body
     ) {
-        List<UUID> ids = body.getOrDefault("ids", List.of());
-        int count = draftService.batchConfirm(ids);
+        int count = draftService.batchConfirm(body.getIds());
         return ResponseEntity.ok(ApiResponse.success(Map.of("confirmed", count)));
     }
 
     /** 批量驳回 */
     @PostMapping("/batch-reject")
     public ResponseEntity<ApiResponse<Map<String, Integer>>> batchReject(
-        @RequestBody Map<String, List<UUID>> body
+        @Valid @RequestBody BatchDraftRequest body
     ) {
-        List<UUID> ids = body.getOrDefault("ids", List.of());
-        int count = draftService.batchReject(ids);
+        int count = draftService.batchReject(body.getIds());
         return ResponseEntity.ok(ApiResponse.success(Map.of("rejected", count)));
     }
 }

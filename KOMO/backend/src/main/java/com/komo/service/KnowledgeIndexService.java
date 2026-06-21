@@ -115,48 +115,52 @@ public class KnowledgeIndexService {
         });
     }
 
-    /** 更新索引 */
+    /** 更新索引（含重试） */
     public void updateEntry(UUID entryId, UUID userId, String title, String contentPlain) {
-        try {
-            Map<String, Object> doc = new HashMap<>();
-            doc.put("title", title);
-            doc.put("contentPlain", contentPlain != null ? contentPlain : "");
-            doc.put("createdAt", System.currentTimeMillis());
+        retry("更新 entryId=" + entryId, () -> {
+            try {
+                Map<String, Object> doc = new HashMap<>();
+                doc.put("title", title);
+                doc.put("contentPlain", contentPlain != null ? contentPlain : "");
+                doc.put("createdAt", System.currentTimeMillis());
 
-            esClient.update(UpdateRequest.of(u -> u
-                .index(INDEX_NAME)
-                .id(entryId.toString())
-                .doc(doc)
-            ), Map.class);
-        } catch (ElasticsearchException e) {
-            if (e.status() == 404) {
-                // 文档不存在，回退为新建索引
-                log.info("[ES] 更新时未找到文档，回退为新建 entryId={}", entryId);
-                indexEntry(entryId, userId, title, contentPlain);
-            } else {
-                log.error("[ES] 更新失败 entryId={} status={}", entryId, e.status(), e);
+                esClient.update(UpdateRequest.of(u -> u
+                    .index(INDEX_NAME)
+                    .id(entryId.toString())
+                    .doc(doc)
+                ), Map.class);
+            } catch (ElasticsearchException e) {
+                if (e.status() == 404) {
+                    // 文档不存在，回退为新建索引
+                    log.info("[ES] 更新时未找到文档，回退为新建 entryId={}", entryId);
+                    indexEntry(entryId, userId, title, contentPlain);
+                } else {
+                    throw new RuntimeException(e);
+                }
+            } catch (Exception e) {
+                throw new RuntimeException(e);
             }
-        } catch (Exception e) {
-            log.error("[ES] 更新失败 entryId={}", entryId, e);
-        }
+        });
     }
 
-    /** 删除索引 */
+    /** 删除索引（含重试） */
     public void deleteEntry(UUID entryId) {
-        try {
-            esClient.delete(DeleteRequest.of(d -> d
-                .index(INDEX_NAME)
-                .id(entryId.toString())
-            ));
-        } catch (ElasticsearchException e) {
-            if (e.status() == 404) {
-                // 文档本来就不存在，无需告警
-                return;
+        retry("删除 entryId=" + entryId, () -> {
+            try {
+                esClient.delete(DeleteRequest.of(d -> d
+                    .index(INDEX_NAME)
+                    .id(entryId.toString())
+                ));
+            } catch (ElasticsearchException e) {
+                if (e.status() == 404) {
+                    // 文档本来就不存在，无需告警
+                    return;
+                }
+                throw new RuntimeException(e);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
             }
-            log.error("[ES] 删除失败 entryId={} status={}", entryId, e.status(), e);
-        } catch (Exception e) {
-            log.error("[ES] 删除失败 entryId={}", entryId, e);
-        }
+        });
     }
 
     /** 全文搜索（用于 RAG 和首页搜索） */

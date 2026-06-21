@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   createKnowledge,
-  getToken,
+  getMe,
   listKnowledgeBases,
   listCategories,
   type KnowledgeBaseData,
@@ -36,14 +36,16 @@ export default function CreateKnowledgePage() {
   const [needsAuth, setNeedsAuth] = useState(false);
 
   useEffect(() => {
-    if (!getToken()) { setNeedsAuth(true); return; }
-    listKnowledgeBases()
-      .then((list) => {
-        setKbs(list);
-        const defaultKb = list.find((kb) => kb.type === 'DEFAULT') || list[0];
-        if (defaultKb) setSelectedKbId(defaultKb.id);
-      })
-      .catch(() => {});
+    getMe().then((u) => {
+      if (!u) { setNeedsAuth(true); return; }
+      listKnowledgeBases()
+        .then((list) => {
+          setKbs(list);
+          const defaultKb = list.find((kb) => kb.type === 'DEFAULT') || list[0];
+          if (defaultKb) setSelectedKbId(defaultKb.id);
+        })
+        .catch(() => {});
+    });
   }, []);
 
   useEffect(() => {

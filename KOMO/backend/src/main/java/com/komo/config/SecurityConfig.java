@@ -16,6 +16,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -24,8 +26,8 @@ import java.util.List;
 
 /**
  * Spring Security 配置。
- * 采用无状态 JWT 认证，CSRF 禁用，
- * /api/auth/** 和 /api/health 为公开端点。
+ * 采用无状态 JWT + httpOnly Cookie 认证，CSRF 通过 Double Submit Cookie 防护。
+ * /api/auth/** 为公开端点。
  */
 @Configuration
 @EnableWebSecurity
@@ -39,7 +41,16 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-            .csrf(csrf -> csrf.disable())
+            .csrf(csrf -> csrf
+                .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                .csrfTokenRequestHandler((request, response, supplier) -> {
+                    // Eager 解析：强制每次请求都生成 CSRF Token cookie
+                    CsrfToken token = supplier.get();
+                    request.setAttribute(CsrfToken.class.getName(), token);
+                    request.setAttribute(token.getParameterName(), token);
+                })
+                .ignoringRequestMatchers("/api/auth/**")
+            )
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll()

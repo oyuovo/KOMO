@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { listDrafts, getToken, getUser, type UserInfo } from '@komo/shared/api-client';
+import { listDrafts, getMe, type UserInfo } from '@komo/shared/api-client';
 import styles from './TopNav.module.css';
 
 const navItems = [
@@ -20,12 +20,15 @@ export default function TopNav() {
 
   // 每次路由切换时刷新用户信息和草稿数量
   useEffect(() => {
-    const token = getToken();
-    if (!token) return;
-    const u = getUser();
-    if (u) setUser(u);
-    listDrafts()
-      .then((drafts) => setDraftCount(drafts.length))
+    getMe()
+      .then((u) => {
+        if (u) {
+          setUser(u);
+          listDrafts()
+            .then((drafts) => setDraftCount(drafts.length))
+            .catch(() => {});
+        }
+      })
       .catch(() => {});
   }, [pathname]);
 

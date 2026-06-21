@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import MarkdownRenderer from '@/components/MarkdownRenderer/MarkdownRenderer';
 import {
-  getToken,
+  getMe,
   getMessages,
   listConversations,
   createConversation,
@@ -34,12 +34,13 @@ export default function ConversationDetailPage() {
 
   // 验证登录，加载数据
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      router.push('/');
-      return;
-    }
-    fetchData();
+    getMe().then((u) => {
+      if (!u) {
+        router.push('/');
+        return;
+      }
+      fetchData();
+    });
   }, [conversationId]);
 
   // 加载消息和侧边栏对话列表
@@ -101,16 +102,15 @@ export default function ConversationDetailPage() {
     setMessages((prev) => [...prev, tempUserMsg, tempAiMsg]);
 
     try {
-      const token = getToken();
       const response = await fetch(
         `http://localhost:8081/api/conversations/${conversationId}/messages/stream`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ content }),
+          credentials: 'include',
         }
       );
 

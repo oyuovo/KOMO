@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-  getToken,
+  getMe,
   listKnowledgeBases,
   listCategories,
   createCategory,
@@ -38,14 +38,16 @@ export default function CategoriesPage() {
   const [editName, setEditName] = useState('');
 
   useEffect(() => {
-    if (!getToken()) { setNeedsAuth(true); return; }
-    listKnowledgeBases()
-      .then((list) => {
-        setKbs(list);
-        const defaultKb = list.find((kb) => kb.type === 'DEFAULT') || list[0];
-        if (defaultKb) setSelectedKbId(defaultKb.id);
-      })
-      .catch(() => {});
+    getMe().then((u) => {
+      if (!u) { setNeedsAuth(true); return; }
+      listKnowledgeBases()
+        .then((list) => {
+          setKbs(list);
+          const defaultKb = list.find((kb) => kb.type === 'DEFAULT') || list[0];
+          if (defaultKb) setSelectedKbId(defaultKb.id);
+        })
+        .catch(() => {});
+    });
   }, []);
 
   // Load categories when KB changes

@@ -81,6 +81,11 @@ public class UserService {
         return buildAuthResponse(user);
     }
 
+    public User findById(UUID userId) {
+        return userRepository.findById(userId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "用户不存在"));
+    }
+
     private AuthResponse buildAuthResponse(User user) {
         String accessToken = jwtTokenProvider.generateAccessToken(user.getId());
         String refreshToken = jwtTokenProvider.generateRefreshToken(user.getId());

@@ -7,7 +7,7 @@ import {
   listConversations,
   createConversation,
   deleteConversation,
-  getToken,
+  getMe,
   type ConversationData,
 } from '@komo/shared/api-client';
 import BatchDeleteOverlay, {
@@ -36,12 +36,13 @@ export default function ConversationsPage() {
   });
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      router.push('/');
-      return;
-    }
-    fetchConversations();
+    getMe().then((u) => {
+      if (!u) {
+        router.push('/');
+        return;
+      }
+      fetchConversations();
+    });
   }, []);
 
   const fetchConversations = async () => {

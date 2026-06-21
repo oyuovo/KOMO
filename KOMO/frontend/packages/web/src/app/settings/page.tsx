@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { clearTokens, getToken, getUser, listDrafts, listKnowledge, reindexKnowledge, exportKnowledge, type UserInfo } from '@komo/shared/api-client';
+import { getMe, logout, listDrafts, listKnowledge, reindexKnowledge, exportKnowledge, type UserInfo } from '@komo/shared/api-client';
 import styles from './page.module.css';
 
 export default function SettingsPage() {
@@ -15,19 +15,21 @@ export default function SettingsPage() {
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    if (!getToken()) {
-      router.push('/');
-      return;
-    }
-    setUser(getUser());
-    Promise.all([
-      listDrafts().then((d) => setDraftCount(d.length)).catch(() => {}),
-      listKnowledge().then((r) => setArticleCount(r.totalElements)).catch(() => {}),
-    ]);
+    getMe().then((u) => {
+      if (!u) {
+        router.push('/');
+        return;
+      }
+      setUser(u);
+      Promise.all([
+        listDrafts().then((d) => setDraftCount(d.length)).catch(() => {}),
+        listKnowledge().then((r) => setArticleCount(r.totalElements)).catch(() => {}),
+      ]);
+    });
   }, []);
 
   const handleLogout = () => {
-    clearTokens();
+    logout();
     router.push('/');
   };
 
