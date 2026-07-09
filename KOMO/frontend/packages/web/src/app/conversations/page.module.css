@@ -1,247 +1,35 @@
 .page {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 40px 48px;
-  width: 100%;
-}
-
-/* Header */
-.header {
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  margin-bottom: 36px;
+  height: 100vh;
+  overflow: hidden;
 }
 
-.title {
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+.main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--komo-bg);
 }
 
-.subtitle {
-  font-size: var(--komo-text-sm);
+.placeholder {
+  text-align: center;
   color: var(--komo-text-secondary);
-  margin-top: 4px;
 }
 
-.headerActions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.placeholderIcon {
+  font-size: 48px;
+  margin: 0 0 16px 0;
 }
 
-.btnNew {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 18px;
-  border-radius: var(--komo-radius-sm);
-  font-size: var(--komo-text-sm);
+.placeholderTitle {
+  font-size: 18px;
   font-weight: 600;
-  background: var(--komo-accent);
-  color: white;
-  border: none;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  font-family: inherit;
-}
-.btnNew:hover { background: var(--komo-accent-hover); }
-.btnNew:disabled { opacity: 0.4; cursor: not-allowed; }
-
-.btnSelect {
-  padding: 6px 14px;
-  border: 1px solid var(--komo-border);
-  border-radius: var(--komo-radius-sm);
-  font-size: var(--komo-text-sm);
-  font-family: inherit;
-  background: var(--komo-surface);
-  color: var(--komo-text-secondary);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.btnSelect:hover {
-  background: var(--komo-surface-hover);
+  margin: 0 0 8px 0;
   color: var(--komo-text);
 }
-.btnSelect:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
 
-.btnCancelSelect {
-  padding: 6px 14px;
-  border: 1px solid var(--komo-border);
-  border-radius: var(--komo-radius-sm);
-  font-size: var(--komo-text-sm);
-  font-family: inherit;
-  background: var(--komo-surface);
-  color: var(--komo-text-secondary);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.btnCancelSelect:hover {
-  background: var(--komo-surface-hover);
-}
-
-.btnBatchDelete {
-  padding: 6px 16px;
-  border: none;
-  border-radius: var(--komo-radius-sm);
-  font-size: var(--komo-text-sm);
-  font-weight: 600;
-  font-family: inherit;
-  background: var(--komo-danger);
-  color: white;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.btnBatchDelete:hover { opacity: 0.9; }
-.btnBatchDelete:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-/* Selection Bar */
-.selectBar {
-  display: flex;
-  align-items: center;
-  margin-bottom: 12px;
-  padding: 0 0 0 2px;
-}
-
-.selectAllLabel {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--komo-text-sm);
-  color: var(--komo-text-secondary);
-  cursor: pointer;
-  user-select: none;
-}
-
-.checkbox {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--komo-accent);
-  cursor: pointer;
-}
-
-.checkboxCell {
-  display: flex;
-  align-items: center;
-  padding: 14px 0 14px 16px;
-  cursor: pointer;
-}
-
-.convContentSelect {
-  padding-left: 0 !important;
-}
-
-/* List */
-.list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.convRow {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  border-radius: var(--komo-radius-md);
-  transition: all 0.15s ease;
-}
-.convRow:hover { background: var(--komo-surface); }
-
-.convContent {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 0 14px 18px;
-  flex: 1;
-  min-width: 0;
-  text-decoration: none;
-  color: inherit;
-  border-radius: var(--komo-radius-md) 0 0 var(--komo-radius-md);
-}
-
-.deleteBtn {
-  padding: 6px 12px;
-  margin-right: 8px;
-  border: none;
-  border-radius: var(--komo-radius-sm);
-  font-size: var(--komo-text-xs);
-  font-family: inherit;
-  background: transparent;
-  color: var(--komo-text-tertiary);
-  cursor: pointer;
-  flex-shrink: 0;
-  opacity: 0;
-  transition: all 0.15s ease;
-}
-.convRow:hover .deleteBtn { opacity: 1; }
-.deleteBtn:hover {
-  background: #fef0f0;
-  color: var(--komo-danger);
-}
-
-.convIcon {
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-.convTitle {
-  flex: 1;
-  font-size: var(--komo-text-base);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.convTime {
-  font-size: var(--komo-text-xs);
-  color: var(--komo-text-tertiary);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-/* Status */
-.statusMsg {
-  color: var(--komo-text-tertiary);
-  padding: 24px;
-  text-align: center;
-  font-size: var(--komo-text-sm);
-}
-
-.errorMsg {
-  color: var(--komo-danger);
-  padding: 24px;
-  font-size: var(--komo-text-sm);
-}
-
-/* Empty State */
-.empty {
-  text-align: center;
-  padding: 60px 24px;
-}
-
-.emptyIcon {
-  font-size: 40px;
-  margin-bottom: 16px;
-}
-
-.emptyTitle {
-  font-size: var(--komo-text-md);
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.emptyDesc {
-  font-size: var(--komo-text-sm);
-  color: var(--komo-text-secondary);
-  margin-bottom: 24px;
+.placeholderDesc {
+  font-size: 14px;
+  margin: 0;
 }
