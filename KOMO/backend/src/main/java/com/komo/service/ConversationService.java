@@ -218,7 +218,8 @@ public class ConversationService {
         return assistantMsg;
     }
 
-    /** SSE 流式对话 — 直接写 HttpServletResponse OutputStream */
+    /** SSE 流式对话 — 直接写 HttpServletResponse OutputStream。
+     * 客户端断开后继续从 AI 读取完整响应并保存消息，确保对话不丢失。 */
     public void streamMessage(UUID conversationId, UUID userId, String content,
                                HttpServletResponse response) throws IOException {
         // 1. 保存用户消息
@@ -241,7 +242,7 @@ public class ConversationService {
             "role", m.getRole() == Message.MessageRole.USER ? "user" : "assistant",
             "content", m.getContent())));
 
-        // 3. 获取 OutputStream
+        // 3. 获取 OutputStream，客户端断开后自动降级为 nullOutputStream
         OutputStream out = response.getOutputStream();
         StringBuilder fullResponse = new StringBuilder();
         try {
@@ -286,41 +287,65 @@ public class ConversationService {
 
                             if ("[DONE]".equals(data)) { n = -1; break; }
                             if (data.startsWith("[ERROR]")) {
-                                writeSseEvent(out, "error", data);
-                                response.flushBuffer();
+                                try {
+                                    writeSseEvent(out, "error", data);
+                                    response.flushBuffer();
+                                } catch (IOException ignored) {
+                                    out = OutputStream.nullOutputStream();
+                                }
                                 n = -1; break;
                             }
                             if (!data.isEmpty()) {
                                 fullResponse.append(data);
-                                writeSseEvent(out, "token", data);
+                                try {
+                                    writeSseEvent(out, "token", data);
+                                    response.flushBuffer();
+                                } catch (IOException e) {
+                                    // 客户端已断开 — 继续读取 AI 响应，但不再尝试写入
+                                    out = OutputStream.nullOutputStream();
+                                    log.debug("[SSE] 客户端断开，继续读取AI响应 conversationId={}", conversationId);
+                                }
                             }
                         }
                     }
                 }
-                response.flushBuffer(); // 每个 chunk 后强制 flush
                 if (n == -1) break;
+                try {
+                    response.flushBuffer();
+                } catch (IOException ignored) {
+                    out = OutputStream.nullOutputStream();
+                }
             }
             bis.close();
             conn.disconnect();
-
-            // 4. 保存 AI 回复
-            Message assistantMsg = conversationPersistenceService.saveAssistantMessage(
-                conversationId, userId, fullResponse.toString(), content, history.size() <= 2);
-
-            // 异步入队提取任务（用户手动模式则跳过）
-            enqueueExtractionIfAuto(userId, conversationId, assistantMsg.getId(), aiMessages);
-
-            // done 事件
-            String doneData = om.writeValueAsString(Map.of("messageId", assistantMsg.getId().toString()));
-            writeSseEvent(out, "done", doneData);
-            response.flushBuffer();
-
         } catch (Exception e) {
+            // AI 服务异常 — 不管客户端状态，直接记录
+            log.error("[SSE] AI流读取失败 conversationId={}", conversationId, e);
             try {
                 writeSseEvent(out, "error", "AI 服务暂时不可用，请稍后重试");
                 response.flushBuffer();
-            } catch (Exception writeErr) {
-                log.debug("SSE error事件写入失败（客户端可能已断开）", writeErr);
+            } catch (IOException writeErr) {
+                log.debug("[SSE] error事件写入失败（客户端可能已断开）", writeErr);
+            }
+            return; // AI 调用失败，不保存消息
+        } finally {
+            // ★ 无论客户端是否断开，只要 AI 返回了内容就保存
+            if (fullResponse.length() > 0) {
+                Message assistantMsg = conversationPersistenceService.saveAssistantMessage(
+                    conversationId, userId, fullResponse.toString(), content, history.size() <= 2);
+
+                // 异步入队提取任务
+                enqueueExtractionIfAuto(userId, conversationId, assistantMsg.getId(), aiMessages);
+
+                // 尝试发送 done 事件（客户端可能已断开）
+                try {
+                    ObjectMapper om = new ObjectMapper();
+                    String doneData = om.writeValueAsString(Map.of("messageId", assistantMsg.getId().toString()));
+                    writeSseEvent(out, "done", doneData);
+                    response.flushBuffer();
+                } catch (IOException ignored) {
+                    // 客户端已断开，done 事件无法送达，消息已保存
+                }
             }
         }
     }
