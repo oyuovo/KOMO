@@ -72,17 +72,49 @@ public class ConversationService {
 
     /** 创建新对话 */
     @Transactional
-    public Conversation create(UUID userId, String title) {
+    public Conversation create(UUID userId, String title, UUID knowledgeBaseId) {
+        if (knowledgeBaseId != null) {
+            knowledgeBaseService.findByIdOrThrow(knowledgeBaseId);
+        }
         Conversation convo = Conversation.builder()
             .userId(userId)
             .title(title != null ? title : "新对话")
+            .knowledgeBaseId(knowledgeBaseId)
             .build();
         return conversationRepository.save(convo);
+    }
+
+    /** 向后兼容 — 无知识库创建 */
+    @Transactional
+    public Conversation create(UUID userId, String title) {
+        return create(userId, title, null);
     }
 
     /** 获取用户的对话列表 */
     public List<Conversation> list(UUID userId) {
         return conversationRepository.findAllByUserIdOrderByUpdatedAtDesc(userId);
+    }
+
+    /** 获取用户指定知识库下的对话列表 */
+    public List<Conversation> listByKnowledgeBase(UUID userId, UUID knowledgeBaseId) {
+        return conversationRepository.findAllByUserIdAndKnowledgeBaseIdOrderByUpdatedAtDesc(userId, knowledgeBaseId);
+    }
+
+    /** 切换对话所属知识库 */
+    @Transactional
+    public Conversation switchKnowledgeBase(UUID conversationId, UUID userId, UUID knowledgeBaseId) {
+        Conversation convo = conversationRepository.findByIdAndUserId(conversationId, userId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "对话不存在"));
+
+        if (knowledgeBaseId != null) {
+            knowledgeBaseService.findByIdOrThrow(knowledgeBaseId);
+        }
+
+        convo.setKnowledgeBaseId(knowledgeBaseId);
+        Conversation saved = conversationRepository.save(convo);
+        log.info("[AUDIT] action=CONVERSATION_SWITCH_KB conversationId={} userId={} newKbId={}",
+            conversationId, userId, knowledgeBaseId);
+        return saved;
     }
 
     /** 获取对话消息历史 */
@@ -297,6 +329,15 @@ public class ConversationService {
     private void enqueueExtractionIfAuto(UUID userId, UUID conversationId,
                                           UUID messageId, List<Map<String, String>> aiMessages) {
         try {
+            Conversation convo = conversationRepository.findById(conversationId).orElse(null);
+            if (convo == null) return;
+
+            // 无知识库对话 — 绝不提取
+            if (convo.getKnowledgeBaseId() == null) {
+                log.debug("[extraction] 无KB对话，跳过提取 conversationId={}", conversationId);
+                return;
+            }
+
             var user = userService.findById(userId);
             if (user.getAutoExtract() != null && !user.getAutoExtract()) {
                 log.debug("[extraction] 用户手动模式，跳过自动提取 userId={}", userId);
@@ -310,6 +351,13 @@ public class ConversationService {
 
     /** 手动触发对话最新消息的提取（供控制器调用）。 */
     public void triggerExtraction(UUID conversationId, UUID userId) {
+        Conversation convo = conversationRepository.findByIdAndUserId(conversationId, userId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "对话不存在"));
+
+        if (convo.getKnowledgeBaseId() == null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "无知识库对话不支持知识提取");
+        }
+
         var messages = messageRepository.findAllByConversationIdOrderByCreatedAtAsc(conversationId);
         if (messages.isEmpty()) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "对话无消息");
