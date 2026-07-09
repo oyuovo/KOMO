@@ -19,8 +19,10 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
@@ -41,8 +43,13 @@ public class ConversationController {
     private final ConversationService conversationService;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<Conversation>>> list() {
+    public ResponseEntity<ApiResponse<List<Conversation>>> list(
+        @RequestParam(required = false) UUID kb
+    ) {
         UUID userId = SecurityContext.getCurrentUserId();
+        if (kb != null) {
+            return ResponseEntity.ok(ApiResponse.success(conversationService.listByKnowledgeBase(userId, kb)));
+        }
         return ResponseEntity.ok(ApiResponse.success(conversationService.list(userId)));
     }
 
@@ -50,7 +57,12 @@ public class ConversationController {
     public ResponseEntity<ApiResponse<Conversation>> create(@RequestBody Map<String, String> body) {
         UUID userId = SecurityContext.getCurrentUserId();
         String title = body.getOrDefault("title", null);
-        Conversation convo = conversationService.create(userId, title);
+        UUID knowledgeBaseId = null;
+        if (body.containsKey("knowledgeBaseId") && body.get("knowledgeBaseId") != null
+            && !body.get("knowledgeBaseId").isEmpty()) {
+            knowledgeBaseId = UUID.fromString(body.get("knowledgeBaseId"));
+        }
+        Conversation convo = conversationService.create(userId, title, knowledgeBaseId);
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(ApiResponse.success(convo));
     }
@@ -82,6 +94,22 @@ public class ConversationController {
         UUID userId = SecurityContext.getCurrentUserId();
         conversationService.triggerExtraction(id, userId);
         return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    /** 切换对话归属的知识库。只影响后续消息。 */
+    @PutMapping("/{id}/kb")
+    public ResponseEntity<ApiResponse<Conversation>> switchKnowledgeBase(
+        @PathVariable UUID id,
+        @RequestBody Map<String, String> body
+    ) {
+        UUID userId = SecurityContext.getCurrentUserId();
+        UUID knowledgeBaseId = null;
+        if (body.containsKey("knowledgeBaseId") && body.get("knowledgeBaseId") != null
+            && !body.get("knowledgeBaseId").isEmpty()) {
+            knowledgeBaseId = UUID.fromString(body.get("knowledgeBaseId"));
+        }
+        Conversation updated = conversationService.switchKnowledgeBase(id, userId, knowledgeBaseId);
+        return ResponseEntity.ok(ApiResponse.success(updated));
     }
 
     @DeleteMapping("/{id}")
