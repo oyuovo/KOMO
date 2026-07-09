@@ -4,6 +4,7 @@ import java.util.UUID;
 
 import com.komo.config.JwtConfig;
 import com.komo.dto.request.LoginRequest;
+import com.komo.dto.request.PreferenceUpdateRequest;
 import com.komo.dto.request.RegisterRequest;
 import com.komo.dto.response.AuthResponse;
 import com.komo.entity.User;
@@ -86,6 +87,16 @@ public class UserService {
             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "用户不存在"));
     }
 
+    @Transactional
+    public User updatePreferences(UUID userId, PreferenceUpdateRequest request) {
+        User user = findById(userId);
+        if (request.getAutoExtract() != null) {
+            user.setAutoExtract(request.getAutoExtract());
+            log.info("[AUDIT] action=PREFERENCE_UPDATE userId={} autoExtract={}", userId, request.getAutoExtract());
+        }
+        return userRepository.save(user);
+    }
+
     private AuthResponse buildAuthResponse(User user) {
         String accessToken = jwtTokenProvider.generateAccessToken(user.getId());
         String refreshToken = jwtTokenProvider.generateRefreshToken(user.getId());
@@ -98,6 +109,7 @@ public class UserService {
                 .id(user.getId().toString())
                 .email(user.getEmail())
                 .nickname(user.getNickname())
+                .autoExtract(Boolean.TRUE.equals(user.getAutoExtract()))
                 .build())
             .build();
     }

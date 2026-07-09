@@ -105,6 +105,9 @@
 }
 
 .chatHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 16px 24px;
   border-bottom: 1px solid var(--komo-border);
   flex-shrink: 0;
@@ -114,6 +117,27 @@
   font-size: var(--komo-text-md);
   font-weight: 600;
   letter-spacing: -0.01em;
+}
+
+.extractBtn {
+  padding: 6px 14px;
+  border: 1px solid var(--komo-primary, #2563eb);
+  border-radius: var(--komo-radius-sm);
+  background: transparent;
+  color: var(--komo-primary, #2563eb);
+  font-size: var(--komo-text-sm);
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.extractBtn:hover:not(:disabled) {
+  background: var(--komo-primary, #2563eb);
+  color: #fff;
+}
+.extractBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* ===== Message List ===== */

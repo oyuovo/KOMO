@@ -48,6 +48,7 @@ public class ConversationService {
     private final KnowledgeBaseService knowledgeBaseService;
     private final DedupService dedupService;
     private final RabbitTemplate rabbitTemplate;
+    private final UserService userService;
 
     public ConversationService(ConversationRepository conversationRepository,
                                MessageRepository messageRepository,
@@ -56,7 +57,8 @@ public class ConversationService {
                                KnowledgeIndexService knowledgeIndexService,
                                KnowledgeBaseService knowledgeBaseService,
                                DedupService dedupService,
-                               RabbitTemplate rabbitTemplate) {
+                               RabbitTemplate rabbitTemplate,
+                               UserService userService) {
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
         this.conversationPersistenceService = conversationPersistenceService;
@@ -65,6 +67,7 @@ public class ConversationService {
         this.knowledgeBaseService = knowledgeBaseService;
         this.dedupService = dedupService;
         this.rabbitTemplate = rabbitTemplate;
+        this.userService = userService;
     }
 
     /** 创建新对话 */
@@ -177,14 +180,8 @@ public class ConversationService {
         Message assistantMsg = conversationPersistenceService.saveAssistantMessage(
             conversationId, userId, aiResponse, content, history.size() <= 2);
 
-        // 5. 异步入队提取任务（RabbitMQ），不阻塞回复
-        try {
-            ExtractionTaskPayload payload = new ExtractionTaskPayload(
-                userId, conversationId, assistantMsg.getId(), aiMessages);
-            rabbitTemplate.convertAndSend("komo.extraction", "extraction.task", payload);
-        } catch (Exception e) {
-            log.warn("[extraction] 入队提取任务失败（RabbitMQ 可能未启动）", e);
-        }
+        // 5. 异步入队提取任务（RabbitMQ），用户手动模式则跳过
+        enqueueExtractionIfAuto(userId, conversationId, assistantMsg.getId(), aiMessages);
 
         return assistantMsg;
     }
@@ -278,14 +275,8 @@ public class ConversationService {
             Message assistantMsg = conversationPersistenceService.saveAssistantMessage(
                 conversationId, userId, fullResponse.toString(), content, history.size() <= 2);
 
-            // 异步入队提取任务
-            try {
-                ExtractionTaskPayload payload = new ExtractionTaskPayload(
-                    userId, conversationId, assistantMsg.getId(), aiMessages);
-                rabbitTemplate.convertAndSend("komo.extraction", "extraction.task", payload);
-            } catch (Exception e) {
-                log.warn("[extraction] SSE流中入队提取任务失败（RabbitMQ 可能未启动）", e);
-            }
+            // 异步入队提取任务（用户手动模式则跳过）
+            enqueueExtractionIfAuto(userId, conversationId, assistantMsg.getId(), aiMessages);
 
             // done 事件
             String doneData = om.writeValueAsString(Map.of("messageId", assistantMsg.getId().toString()));
@@ -302,7 +293,54 @@ public class ConversationService {
         }
     }
 
-    /** 写一条 SSE 事件到 OutputStream，正确处理 data 中的 \\n */
+    /** 用户开启自动提取时入队，手动模式则跳过。 */
+    private void enqueueExtractionIfAuto(UUID userId, UUID conversationId,
+                                          UUID messageId, List<Map<String, String>> aiMessages) {
+        try {
+            var user = userService.findById(userId);
+            if (user.getAutoExtract() != null && !user.getAutoExtract()) {
+                log.debug("[extraction] 用户手动模式，跳过自动提取 userId={}", userId);
+                return;
+            }
+            enqueueExtraction(userId, conversationId, messageId, aiMessages);
+        } catch (Exception e) {
+            log.warn("[extraction] 入队提取任务失败（RabbitMQ 可能未启动）", e);
+        }
+    }
+
+    /** 手动触发对话最新消息的提取（供控制器调用）。 */
+    public void triggerExtraction(UUID conversationId, UUID userId) {
+        var messages = messageRepository.findAllByConversationIdOrderByCreatedAtAsc(conversationId);
+        if (messages.isEmpty()) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "对话无消息");
+        }
+        // 找最后一条 assistant 消息
+        Message lastAssistant = null;
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            if (messages.get(i).getRole() == Message.MessageRole.ASSISTANT) {
+                lastAssistant = messages.get(i);
+                break;
+            }
+        }
+        if (lastAssistant == null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "对话中尚无 AI 回复");
+        }
+
+        List<Map<String, String>> aiMessages = messages.stream()
+            .map(m -> Map.of("role", m.getRole().name().toLowerCase(), "content", m.getContent()))
+            .toList();
+
+        enqueueExtraction(userId, conversationId, lastAssistant.getId(), aiMessages);
+        log.info("[extraction] 手动触发提取 conversationId={} userId={}", conversationId, userId);
+    }
+
+    /** 直接入队提取任务（不检查用户偏好）。 */
+    private void enqueueExtraction(UUID userId, UUID conversationId,
+                                    UUID messageId, List<Map<String, String>> aiMessages) {
+        ExtractionTaskPayload payload = new ExtractionTaskPayload(
+            userId, conversationId, messageId, aiMessages);
+        rabbitTemplate.convertAndSend("komo.extraction", "extraction.task", payload);
+    }
     private void writeSseEvent(OutputStream out, String eventName, String data) throws IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("event: ").append(eventName).append("\n");

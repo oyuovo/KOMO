@@ -6,10 +6,12 @@ import { useParams, useRouter } from 'next/navigation';
 import MarkdownRenderer from '@/components/MarkdownRenderer/MarkdownRenderer';
 import {
   getMe,
+  getCsrfToken,
   getMessages,
   listConversations,
   createConversation,
   listDrafts,
+  extractConversation,
   type MessageData,
   type ConversationData,
 } from '@komo/shared/api-client';
@@ -28,6 +30,9 @@ export default function ConversationDetailPage() {
   const [input, setInput] = useState('');
   const [draftCount, setDraftCount] = useState(0);
   const [showDraftHint, setShowDraftHint] = useState(false);
+  const [autoExtract, setAutoExtract] = useState(true);
+  const [extracting, setExtracting] = useState(false);
+  const [extractDone, setExtractDone] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -39,6 +44,7 @@ export default function ConversationDetailPage() {
         router.push('/');
         return;
       }
+      setAutoExtract(u.autoExtract);
       fetchData();
     });
   }, [conversationId]);
@@ -102,13 +108,17 @@ export default function ConversationDetailPage() {
     setMessages((prev) => [...prev, tempUserMsg, tempAiMsg]);
 
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      const csrf = getCsrfToken();
+      if (csrf) headers['X-XSRF-TOKEN'] = csrf;
+
       const response = await fetch(
         `http://localhost:8081/api/conversations/${conversationId}/messages/stream`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers,
           body: JSON.stringify({ content }),
           credentials: 'include',
         }
@@ -222,6 +232,22 @@ export default function ConversationDetailPage() {
     }
   };
 
+  const handleExtract = async () => {
+    if (extracting) return;
+    setExtracting(true);
+    setExtractDone(false);
+    try {
+      await extractConversation(conversationId);
+      setExtractDone(true);
+      setTimeout(() => setExtractDone(false), 3000);
+      checkDraftCount();
+    } catch {
+      // ignore
+    } finally {
+      setExtracting(false);
+    }
+  };
+
   const checkDraftCount = async () => {
     try {
       const drafts = await listDrafts();
@@ -287,6 +313,16 @@ export default function ConversationDetailPage() {
           <h2 className={styles.chatTitle}>
             {currentConv?.title || '对话'}
           </h2>
+          {!autoExtract && (
+            <button
+              className={styles.extractBtn}
+              onClick={handleExtract}
+              disabled={extracting}
+              title="手动提取知识草稿"
+            >
+              {extracting ? '提取中...' : extractDone ? '✓ 已提取' : '提取知识'}
+            </button>
+          )}
         </div>
 
         {/* Knowledge Hint Bar — 发现新知识点提示 */}

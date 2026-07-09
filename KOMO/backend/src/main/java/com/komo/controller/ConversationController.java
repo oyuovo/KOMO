@@ -76,6 +76,14 @@ public class ConversationController {
         return ResponseEntity.ok(ApiResponse.success(reply));
     }
 
+    /** 手动触发对话的知识提取。 */
+    @PostMapping("/{id}/extract")
+    public ResponseEntity<ApiResponse<Void>> extract(@PathVariable UUID id) {
+        UUID userId = SecurityContext.getCurrentUserId();
+        conversationService.triggerExtraction(id, userId);
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID id) {
         UUID userId = SecurityContext.getCurrentUserId();

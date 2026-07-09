@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getMe, logout, listDrafts, listKnowledge, reindexKnowledge, exportKnowledge, type UserInfo } from '@komo/shared/api-client';
+import { getMe, logout, listDrafts, listKnowledge, reindexKnowledge, exportKnowledge, updatePreferences, type UserInfo } from '@komo/shared/api-client';
 import styles from './page.module.css';
 
 export default function SettingsPage() {
@@ -13,6 +13,7 @@ export default function SettingsPage() {
   const [reindexState, setReindexState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [reindexCount, setReindexCount] = useState(0);
   const [exporting, setExporting] = useState(false);
+  const [autoExtract, setAutoExtract] = useState(true);
 
   useEffect(() => {
     getMe().then((u) => {
@@ -21,12 +22,23 @@ export default function SettingsPage() {
         return;
       }
       setUser(u);
+      setAutoExtract(u.autoExtract);
       Promise.all([
         listDrafts().then((d) => setDraftCount(d.length)).catch(() => {}),
         listKnowledge().then((r) => setArticleCount(r.totalElements)).catch(() => {}),
       ]);
     });
   }, []);
+
+  const handleToggleAutoExtract = async () => {
+    const next = !autoExtract;
+    setAutoExtract(next); // optimistic update
+    try {
+      await updatePreferences({ autoExtract: next });
+    } catch {
+      setAutoExtract(!next); // rollback
+    }
+  };
 
   const handleLogout = () => {
     logout();
@@ -139,6 +151,30 @@ export default function SettingsPage() {
           {reindexState === 'error' && (
             <p className={styles.reindexError}>重建失败，请检查后端服务</p>
           )}
+        </div>
+      </div>
+
+      <div className={styles.section}>
+        <h2 className={styles.sectionTitle}>提取偏好</h2>
+        <div className={styles.card}>
+          <div className={styles.row}>
+            <div>
+              <span className={styles.label}>自动提取草稿</span>
+              <span className={styles.hint}>
+                {autoExtract
+                  ? '对话结束后自动提取知识草稿（静默模式）'
+                  : '需在对话页手动触发提取，可降低 API 成本'}
+              </span>
+            </div>
+            <label className={styles.toggle}>
+              <input
+                type="checkbox"
+                checked={autoExtract}
+                onChange={handleToggleAutoExtract}
+              />
+              <span className={styles.slider} />
+            </label>
+          </div>
         </div>
       </div>
 

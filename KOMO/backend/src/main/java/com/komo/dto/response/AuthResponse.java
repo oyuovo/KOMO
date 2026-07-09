@@ -20,5 +20,6 @@ public class AuthResponse {
         private String id;
         private String email;
         private String nickname;
+        private boolean autoExtract;
     }
 }

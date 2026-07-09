@@ -33,4 +33,8 @@ public class User extends BaseEntity {
 
     @Builder.Default
     private boolean enabled = true;
+
+    /** 是否自动提取知识草稿。true=静默提取(默认), false=手动提取。null 视为 true。 */
+    @Builder.Default
+    private Boolean autoExtract = true;
 }

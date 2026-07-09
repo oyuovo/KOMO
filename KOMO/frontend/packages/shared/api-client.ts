@@ -15,12 +15,13 @@ export interface UserInfo {
   id: string;
   email: string;
   nickname: string;
+  autoExtract: boolean;
 }
 
 // ===== Token 管理（httpOnly Cookie — 前端无需手动操作） =====
 
 /** 从 Cookie 读取 CSRF token（非 httpOnly，Spring Security 自动写入） */
-function getCsrfToken(): string | null {
+export function getCsrfToken(): string | null {
   if (typeof document === 'undefined') return null;
   const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
   return match ? decodeURIComponent(match[1]) : null;
@@ -189,11 +190,7 @@ export interface RegisterRequest {
 }
 
 export interface AuthData {
-  user: {
-    id: string;
-    email: string;
-    nickname: string;
-  };
+  user: UserInfo;
 }
 
 export async function login(req: LoginRequest): Promise<AuthData> {
@@ -570,4 +567,18 @@ export async function deleteCategory(id: string): Promise<void> {
 
 export async function exportKnowledge(): Promise<KnowledgeItem[]> {
   return get('/knowledge/export');
+}
+
+// ===== Preferences =====
+
+export async function updatePreferences(prefs: {
+  autoExtract: boolean;
+}): Promise<UserInfo> {
+  return put('/auth/preferences', prefs);
+}
+
+// ===== Manual Extraction =====
+
+export async function extractConversation(conversationId: string): Promise<void> {
+  return post(`/conversations/${conversationId}/extract`, {});
 }

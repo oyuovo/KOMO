@@ -1,6 +1,7 @@
 package com.komo.controller;
 
 import com.komo.dto.request.LoginRequest;
+import com.komo.dto.request.PreferenceUpdateRequest;
 import com.komo.dto.request.RegisterRequest;
 import com.komo.dto.response.ApiResponse;
 import com.komo.dto.response.AuthResponse;
@@ -21,6 +22,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -99,6 +101,27 @@ public class AuthController {
                 .id(user.getId().toString())
                 .email(user.getEmail())
                 .nickname(user.getNickname())
+                .autoExtract(Boolean.TRUE.equals(user.getAutoExtract()))
+                .build()
+        ));
+    }
+
+    @PutMapping("/preferences")
+    public ResponseEntity<ApiResponse<AuthResponse.UserInfo>> updatePreferences(
+        @Valid @RequestBody PreferenceUpdateRequest request
+    ) {
+        UUID userId = SecurityContext.getCurrentUserId();
+        if (userId == null) {
+            return ResponseEntity.status(401)
+                .body(ApiResponse.error(401, "未登录"));
+        }
+        User user = userService.updatePreferences(userId, request);
+        return ResponseEntity.ok(ApiResponse.success(
+            AuthResponse.UserInfo.builder()
+                .id(user.getId().toString())
+                .email(user.getEmail())
+                .nickname(user.getNickname())
+                .autoExtract(Boolean.TRUE.equals(user.getAutoExtract()))
                 .build()
         ));
     }
