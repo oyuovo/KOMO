@@ -4,16 +4,19 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import MarkdownRenderer from '@/components/MarkdownRenderer/MarkdownRenderer';
+import ConversationSidebar from '@/components/ConversationSidebar/ConversationSidebar';
 import {
   getMe,
   getCsrfToken,
   getMessages,
   listConversations,
-  createConversation,
   listDrafts,
   extractConversation,
+  switchConversationKb,
+  listKnowledgeBases,
   type MessageData,
   type ConversationData,
+  type KnowledgeBaseData,
 } from '@komo/shared/api-client';
 import styles from './page.module.css';
 
@@ -33,9 +36,12 @@ export default function ConversationDetailPage() {
   const [autoExtract, setAutoExtract] = useState(true);
   const [extracting, setExtracting] = useState(false);
   const [extractDone, setExtractDone] = useState(false);
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseData[]>([]);
+  const [currentKbId, setCurrentKbId] = useState<string | null>(null);
+  const [showKbSwitcher, setShowKbSwitcher] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // 验证登录，加载数据
   useEffect(() => {
@@ -46,6 +52,7 @@ export default function ConversationDetailPage() {
       }
       setAutoExtract(u.autoExtract);
       fetchData();
+      listKnowledgeBases().then(setKnowledgeBases).catch(() => {});
     });
   }, [conversationId]);
 
@@ -60,6 +67,10 @@ export default function ConversationDetailPage() {
       ]);
       setMessages(msgs);
       setConversations(convs);
+      const current = convs.find(c => c.id === conversationId);
+      if (current) {
+        setCurrentKbId(current.knowledgeBaseId ?? null);
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -72,12 +83,48 @@ export default function ConversationDetailPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // 页面加载完成后聚焦输入框（Vue 等价于 nextTick）
+  // 页面加载完成后聚焦输入框
   useEffect(() => {
     if (!loading) {
       inputRef.current?.focus();
     }
   }, [loading]);
+
+  // 检查 URL 中是否有引用参数（来自文章页追问）
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const searchParams = new URLSearchParams(window.location.search);
+    const quote = searchParams.get('quote');
+    const source = searchParams.get('source');
+    if (quote) {
+      const lines = [`> ${quote}`];
+      if (source) lines.push(`> 来源：${source}`);
+      lines.push('', '');
+      setInput(lines.join('\n'));
+      const url = new URL(window.location.href);
+      url.searchParams.delete('quote');
+      url.searchParams.delete('source');
+      url.searchParams.delete('sourceId');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, []);
+
+  const handleSwitchKb = async (kbId: string | null) => {
+    setShowKbSwitcher(false);
+    try {
+      const updated = await switchConversationKb(conversationId, kbId);
+      setCurrentKbId(updated.knowledgeBaseId ?? null);
+      window.dispatchEvent(new Event('conversation-sidebar-refresh'));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const getCurrentKbName = (): string => {
+    if (currentKbId === null) return '\u{1F4C4} 无知识库';
+    const kb = knowledgeBases.find(k => k.id === currentKbId);
+    return kb ? `\u{1F4C1} ${kb.name}` : '\u{1F4C1} 知识库';
+  };
 
   const handleSend = async () => {
     const content = input.trim();
@@ -271,58 +318,59 @@ export default function ConversationDetailPage() {
 
   return (
     <div className={styles.layout}>
-      {/* Sidebar — 对话列表（Vue 等价: 侧边栏始终显示，类似 v-if 条件渲染） */}
-      <aside className={styles.sidebar}>
-        <div className={styles.sidebarHeader}>
-          <span className={styles.sidebarTitle}>对话列表</span>
-          <button
-            className={styles.sidebarNew}
-            onClick={async () => {
-              try {
-                const conv = await createConversation();
-                router.push(`/conversations/${conv.id}`);
-              } catch {
-                // ignore
-              }
-            }}
-            title="新建对话"
-          >
-            +
-          </button>
-        </div>
-        <div className={styles.sidebarList}>
-          {conversations.map((conv) => (
-            <button
-              key={conv.id}
-              className={`${styles.sidebarItem} ${
-                conv.id === conversationId ? styles.sidebarItemActive : ''
-              }`}
-              onClick={() => router.push(`/conversations/${conv.id}`)}
-            >
-              <span className={styles.sidebarItemIcon}>💬</span>
-              <span className={styles.sidebarItemTitle}>{conv.title}</span>
-            </button>
-          ))}
-        </div>
-      </aside>
+      <ConversationSidebar activeConversationId={conversationId} />
 
       {/* Main Chat Area */}
       <main className={styles.chat}>
         {/* Top bar */}
         <div className={styles.chatHeader}>
-          <h2 className={styles.chatTitle}>
-            {currentConv?.title || '对话'}
-          </h2>
-          {!autoExtract && (
+          <div className={styles.kbSwitcherWrap}>
             <button
-              className={styles.extractBtn}
-              onClick={handleExtract}
-              disabled={extracting}
-              title="手动提取知识草稿"
+              className={`${styles.kbSwitcher} ${currentKbId === null ? styles.kbSwitcherNoKb : ''}`}
+              onClick={() => setShowKbSwitcher(!showKbSwitcher)}
             >
-              {extracting ? '提取中...' : extractDone ? '✓ 已提取' : '提取知识'}
+              {getCurrentKbName()} ▾
             </button>
-          )}
+            {showKbSwitcher && (
+              <div className={styles.kbSwitcherMenu}>
+                {knowledgeBases.map(kb => (
+                  <button
+                    key={kb.id}
+                    className={`${styles.kbSwitcherItem} ${
+                      currentKbId === kb.id ? styles.kbSwitcherItemActive : ''
+                    }`}
+                    onClick={() => handleSwitchKb(kb.id)}
+                  >
+                    📁 {kb.name}
+                  </button>
+                ))}
+                <div className={styles.kbSwitcherDivider} />
+                <button
+                  className={`${styles.kbSwitcherItem} ${
+                    currentKbId === null ? styles.kbSwitcherItemActive : ''
+                  }`}
+                  onClick={() => handleSwitchKb(null)}
+                >
+                  📄 无知识库
+                </button>
+              </div>
+            )}
+          </div>
+          <span className={styles.chatTitle}>
+            {currentConv?.title || '对话'}
+          </span>
+          <div className={styles.chatHeaderRight}>
+            {!autoExtract && currentKbId !== null && (
+              <button
+                className={styles.extractBtn}
+                onClick={handleExtract}
+                disabled={extracting}
+                title="手动提取知识草稿"
+              >
+                {extracting ? '提取中...' : extractDone ? '✓ 已提取' : '提取知识'}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Knowledge Hint Bar — 发现新知识点提示 */}
@@ -383,15 +431,15 @@ export default function ConversationDetailPage() {
         {/* Input Area */}
         <div className={styles.inputArea}>
           <div className={styles.inputWrapper}>
-            <input
-              ref={inputRef}
+            <textarea
+              ref={inputRef as React.RefObject<HTMLTextAreaElement>}
               className={styles.input}
-              type="text"
-              placeholder="输入消息，Enter 发送..."
+              placeholder="输入消息，Enter 发送，Shift+Enter 换行..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               disabled={sending}
+              rows={3}
             />
             <button
               className={styles.sendBtn}
