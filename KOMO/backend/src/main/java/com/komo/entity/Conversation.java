@@ -25,4 +25,7 @@ public class Conversation extends BaseEntity {
 
     @Column(length = 500)
     private String title;
+
+    @Column(name = "knowledge_base_id")
+    private UUID knowledgeBaseId;  // null = 无知识库对话，不提取知识
 }
