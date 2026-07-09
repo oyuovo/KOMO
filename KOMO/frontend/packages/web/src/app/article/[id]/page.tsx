@@ -12,10 +12,12 @@ import {
   addLink,
   mergeInto,
   listKnowledgeBases,
+  createConversation,
   type KnowledgeItem,
   type KnowledgeLinkData,
 } from '@komo/shared/api-client';
 import MarkdownRenderer from '@/components/MarkdownRenderer/MarkdownRenderer';
+import ContextMenu from '@/components/ContextMenu/ContextMenu';
 import { slugifyHeading } from '@/lib/slugify';
 import styles from './page.module.css';
 
@@ -58,6 +60,37 @@ export default function ArticlePage() {
   const [tocItems, setTocItems] = useState<TocItem[]>([]);
   const [activeTocId, setActiveTocId] = useState<string | null>(null);
   const articleBodyRef = useRef<HTMLDivElement>(null);
+
+  const [contextMenu, setContextMenu] = useState<{
+    x: number; y: number; quote: string;
+  } | null>(null);
+
+  const handleArticleContextMenu = useCallback((e: React.MouseEvent) => {
+    const selection = window.getSelection();
+    const text = selection?.toString().trim() || '';
+    if (text.length < 5) return;
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, quote: text });
+  }, []);
+
+  const handleQuoteToChat = async () => {
+    if (!contextMenu || !article) return;
+    const { quote } = contextMenu;
+    const title = quote.length > 20 ? quote.slice(0, 20) + '...' : quote;
+    try {
+      const conv = await createConversation(
+        title,
+        article.knowledgeBaseId ?? undefined
+      );
+      const params = new URLSearchParams();
+      params.set('quote', quote);
+      params.set('source', article.title);
+      params.set('sourceId', article.id);
+      router.push(`/conversations/${conv.id}?${params.toString()}`);
+    } catch {
+      // ignore
+    }
+  };
 
   const handleDelete = async () => {
     if (!confirm('确定要删除这篇文章吗？')) return;
@@ -298,7 +331,7 @@ export default function ArticlePage() {
 
           <h1 className={styles.articleTitle}>{article.title}</h1>
 
-          <div className={styles.articleBody} ref={articleBodyRef}>
+          <div className={styles.articleBody} ref={articleBodyRef} onContextMenu={handleArticleContextMenu}>
             <MarkdownRenderer content={article.content} />
           </div>
 
@@ -340,6 +373,20 @@ export default function ArticlePage() {
       </main>
 
       {/* Right TOC sidebar */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          items={[
+            {
+              label: '\u{1F4AC} 追问 KOMO',
+              onClick: handleQuoteToChat,
+            },
+          ]}
+        />
+      )}
+
       {(tocItems.length > 0 || isInFragmentsKb) && (
         <aside className={styles.tocFloat}>
           {tocItems.length > 0 && (
