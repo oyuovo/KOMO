@@ -406,6 +406,7 @@ async function del<T>(path: string, body?: unknown): Promise<T> {
 export interface ConversationData {
   id: string;
   title: string;
+  knowledgeBaseId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -419,12 +420,19 @@ export interface MessageData {
   createdAt: string;
 }
 
-export async function listConversations(): Promise<ConversationData[]> {
-  return get('/conversations');
+export async function listConversations(kbId?: string): Promise<ConversationData[]> {
+  const qs = kbId ? `?kb=${kbId}` : '';
+  return get(`/conversations${qs}`);
 }
 
-export async function createConversation(title?: string): Promise<ConversationData> {
-  return post('/conversations', { title });
+export async function createConversation(
+  title?: string,
+  knowledgeBaseId?: string | null
+): Promise<ConversationData> {
+  const body: Record<string, string> = {};
+  if (title) body.title = title;
+  if (knowledgeBaseId) body.knowledgeBaseId = knowledgeBaseId;
+  return post('/conversations', body);
 }
 
 export async function getMessages(conversationId: string): Promise<MessageData[]> {
@@ -581,4 +589,14 @@ export async function updatePreferences(prefs: {
 
 export async function extractConversation(conversationId: string): Promise<void> {
   return post(`/conversations/${conversationId}/extract`, {});
+}
+
+/** 切换对话归属的知识库。knowledgeBaseId 传 null 表示无知识库。 */
+export async function switchConversationKb(
+  conversationId: string,
+  knowledgeBaseId: string | null
+): Promise<ConversationData> {
+  return put(`/conversations/${conversationId}/kb`, {
+    knowledgeBaseId: knowledgeBaseId ?? '',
+  });
 }
