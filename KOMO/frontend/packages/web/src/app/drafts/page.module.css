@@ -411,3 +411,42 @@
   font-size: var(--komo-text-sm);
   color: var(--komo-text-secondary);
 }
+
+/* Date Group */
+.dateGroup {
+  margin-top: 8px;
+}
+
+.dateGroupHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0 6px 0;
+  margin-bottom: 4px;
+}
+
+.dateGroupLabel {
+  font-size: var(--komo-text-sm);
+  font-weight: 600;
+  color: var(--komo-text-secondary);
+  white-space: nowrap;
+}
+
+.dateGroupCount {
+  font-size: var(--komo-text-xs);
+  color: var(--komo-text-tertiary);
+  font-weight: 400;
+}
+
+.dateGroupLine {
+  flex: 1;
+  height: 1px;
+  background: var(--komo-border);
+}
+
+/* Card Date */
+.cardDate {
+  font-size: var(--komo-text-xs);
+  color: var(--komo-text-tertiary);
+  white-space: nowrap;
+}

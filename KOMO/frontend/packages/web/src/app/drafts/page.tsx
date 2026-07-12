@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import MarkdownRenderer from '@/components/MarkdownRenderer/MarkdownRenderer';
 import {
@@ -18,6 +18,61 @@ import {
   type KnowledgeItem,
 } from '@komo/shared/api-client';
 import styles from './page.module.css';
+
+// ===== 日期工具 =====
+
+interface DateGroup {
+  label: string;
+  drafts: DraftData[];
+}
+
+function formatDate(dateStr: string): { groupLabel: string; time: string } {
+  const d = new Date(dateStr);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 86400000);
+  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+  const time = d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+
+  if (target.getTime() === today.getTime()) {
+    return { groupLabel: '今天', time };
+  }
+  if (target.getTime() === yesterday.getTime()) {
+    return { groupLabel: '昨天', time };
+  }
+  // 同一年: "7月10日"
+  if (d.getFullYear() === now.getFullYear()) {
+    return {
+      groupLabel: `${d.getMonth() + 1}月${d.getDate()}日`,
+      time,
+    };
+  }
+  return {
+    groupLabel: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+    time,
+  };
+}
+
+function groupDraftsByDate(drafts: DraftData[]): DateGroup[] {
+  const groups = new Map<string, DraftData[]>();
+  for (const draft of drafts) {
+    const { groupLabel } = formatDate(draft.createdAt);
+    if (!groups.has(groupLabel)) groups.set(groupLabel, []);
+    groups.get(groupLabel)!.push(draft);
+  }
+  // 保持原顺序（后端已按时间倒序），只输出分组
+  const seen = new Set<string>();
+  const result: DateGroup[] = [];
+  for (const draft of drafts) {
+    const { groupLabel } = formatDate(draft.createdAt);
+    if (!seen.has(groupLabel)) {
+      seen.add(groupLabel);
+      result.push({ label: groupLabel, drafts: groups.get(groupLabel)! });
+    }
+  }
+  return result;
+}
 
 export default function DraftsPage() {
   const router = useRouter();
@@ -166,6 +221,8 @@ export default function DraftsPage() {
     }
   };
 
+  const dateGroups = useMemo(() => groupDraftsByDate(drafts), [drafts]);
+
   return (
     <div className={styles.page}>
       {/* Header */}
@@ -208,178 +265,191 @@ export default function DraftsPage() {
             </p>
           </div>
         )}
-        {drafts.map((draft) => {
-          const extType = extractTypeLabel(draft.extractType);
-          const rel = relationLabel(draft.relationType);
-          // 解析 relationDetail 中的父文章 ID
-          let parentEntryId: string | null = null;
-          try {
-            if (draft.relationDetail) {
-              const detail = JSON.parse(draft.relationDetail);
-              parentEntryId = detail.parentEntryId || null;
-            }
-          } catch { /* ignore */ }
-          return (
-            <div
-              key={draft.id}
-              className={`${styles.card} ${editingId === draft.id ? styles.cardEditing : ''}`}
-            >
-              {/* Checkbox */}
-              <input
-                type="checkbox"
-                className={styles.checkbox}
-                checked={selectedIds.has(draft.id)}
-                onChange={() => toggleSelect(draft.id)}
-              />
-
-              {/* Content */}
-              {editingId === draft.id ? (
-                <div className={styles.editForm}>
+        {dateGroups.map((group) => (
+          <div key={group.label} className={styles.dateGroup}>
+            {/* Date Header */}
+            <div className={styles.dateGroupHeader}>
+              <span className={styles.dateGroupLabel}>{group.label}</span>
+              <span className={styles.dateGroupCount}>{group.drafts.length} 条</span>
+              <div className={styles.dateGroupLine} />
+            </div>
+            {/* Draft Cards */}
+            {group.drafts.map((draft) => {
+              const extType = extractTypeLabel(draft.extractType);
+              const rel = relationLabel(draft.relationType);
+              const { time } = formatDate(draft.createdAt);
+              // 解析 relationDetail 中的父文章 ID
+              let parentEntryId: string | null = null;
+              try {
+                if (draft.relationDetail) {
+                  const detail = JSON.parse(draft.relationDetail);
+                  parentEntryId = detail.parentEntryId || null;
+                }
+              } catch { /* ignore */ }
+              return (
+                <div
+                  key={draft.id}
+                  className={`${styles.card} ${editingId === draft.id ? styles.cardEditing : ''}`}
+                >
+                  {/* Checkbox */}
                   <input
-                    className={styles.editTitle}
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    placeholder="标题"
+                    type="checkbox"
+                    className={styles.checkbox}
+                    checked={selectedIds.has(draft.id)}
+                    onChange={() => toggleSelect(draft.id)}
                   />
-                  <textarea
-                    className={styles.editContent}
-                    value={editContent}
-                    onChange={(e) => setEditContent(e.target.value)}
-                    rows={6}
-                    placeholder="Markdown 内容"
-                  />
-                  <div className={styles.editActions}>
-                    <button
-                      className={styles.btnConfirm}
-                      onClick={() => handleEditConfirm(draft.id, draft.extractType)}
-                    >
-                      保存并确认
-                    </button>
-                    <button
-                      className={styles.btnCancel}
-                      onClick={() => setEditingId(null)}
-                    >
-                      取消
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className={styles.cardBody}>
-                  <div className={styles.cardHeader}>
-                    <h3 className={styles.cardTitle}>{draft.title}</h3>
-                    <div className={styles.cardBadges}>
-                      {extType && <span className={extType.cls}>{extType.text}</span>}
-                      {rel && <span className={rel.cls}>{rel.text}</span>}
-                      <span className={styles.badgeConfidence}>
-                        置信度 {(draft.confidence * 100).toFixed(0)}%
-                      </span>
-                    </div>
-                  </div>
-                  <p className={styles.cardContent}>
-                    {draft.content.slice(0, 200)}
-                    {draft.content.length > 200 ? '...' : ''}
-                  </p>
-                  {/* 目标去向 */}
-                  {selectedParent[draft.id] ? (
-                    <div className={styles.kbRow}>
-                      <span className={styles.kbLabel}>📎 嵌入到</span>
-                      <span className={styles.parentHint}>
-                        {selectedParent[draft.id]!.title}
+
+                  {/* Content */}
+                  {editingId === draft.id ? (
+                    <div className={styles.editForm}>
+                      <input
+                        className={styles.editTitle}
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        placeholder="标题"
+                      />
+                      <textarea
+                        className={styles.editContent}
+                        value={editContent}
+                        onChange={(e) => setEditContent(e.target.value)}
+                        rows={6}
+                        placeholder="Markdown 内容"
+                      />
+                      <div className={styles.editActions}>
                         <button
-                          className={styles.parentClear}
-                          onClick={() => setSelectedParent((prev) => ({ ...prev, [draft.id]: null }))}
+                          className={styles.btnConfirm}
+                          onClick={() => handleEditConfirm(draft.id, draft.extractType)}
                         >
-                          ×
+                          保存并确认
                         </button>
-                      </span>
-                    </div>
-                  ) : parentEntryId ? (
-                    <div className={styles.kbRow}>
-                      <span className={styles.kbLabel}>📎 嵌入到</span>
-                      <span className={styles.parentHint}>
-                        已有文章
-                        <span className={styles.parentId}>{parentEntryId.slice(0, 8)}...</span>
-                      </span>
+                        <button
+                          className={styles.btnCancel}
+                          onClick={() => setEditingId(null)}
+                        >
+                          取消
+                        </button>
+                      </div>
                     </div>
                   ) : (
-                    <div className={styles.kbRow}>
-                      <span className={styles.kbLabel}>入库到</span>
-                      <select
-                        className={styles.kbSelect}
-                        value={targetKb[draft.id] ?? getDefaultKbId(draft.extractType) ?? ''}
-                        onChange={(e) =>
-                          setTargetKb((prev) => ({ ...prev, [draft.id]: e.target.value }))
-                        }
-                      >
-                        {kbs.map((kb) => (
-                          <option key={kb.id} value={kb.id}>
-                            {kb.type === 'SYSTEM_FRAGMENTS' ? '📦' : '📚'} {kb.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  {/* 手动搜索文章嵌入 */}
-                  {!selectedParent[draft.id] && (
-                    <div className={styles.embedRow}>
-                      <input
-                        className={styles.embedSearch}
-                        type="text"
-                        placeholder="或搜索文章嵌入..."
-                        value={searchParent[draft.id] || ''}
-                        onChange={(e) => handleArticleSearch(draft.id, e.target.value)}
-                      />
-                      {(searchResults[draft.id]?.length ?? 0) > 0 && (
-                        <div className={styles.embedResults}>
-                          {searchResults[draft.id]!.map((item) => (
+                    <div className={styles.cardBody}>
+                      <div className={styles.cardHeader}>
+                        <h3 className={styles.cardTitle}>{draft.title}</h3>
+                        <div className={styles.cardBadges}>
+                          <span className={styles.cardDate}>{time}</span>
+                          {extType && <span className={extType.cls}>{extType.text}</span>}
+                          {rel && <span className={rel.cls}>{rel.text}</span>}
+                          <span className={styles.badgeConfidence}>
+                            置信度 {(draft.confidence * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                      </div>
+                      <p className={styles.cardContent}>
+                        {draft.content.slice(0, 200)}
+                        {draft.content.length > 200 ? '...' : ''}
+                      </p>
+                      {/* 目标去向 */}
+                      {selectedParent[draft.id] ? (
+                        <div className={styles.kbRow}>
+                          <span className={styles.kbLabel}>📎 嵌入到</span>
+                          <span className={styles.parentHint}>
+                            {selectedParent[draft.id]!.title}
                             <button
-                              key={item.id}
-                              className={styles.embedResultItem}
-                              onClick={() => {
-                                setSelectedParent((prev) => ({
-                                  ...prev,
-                                  [draft.id]: { id: item.id, title: item.title },
-                                }));
-                                setSearchParent((prev) => ({ ...prev, [draft.id]: '' }));
-                                setSearchResults((prev) => ({ ...prev, [draft.id]: [] }));
-                              }}
+                              className={styles.parentClear}
+                              onClick={() => setSelectedParent((prev) => ({ ...prev, [draft.id]: null }))}
                             >
-                              {item.title}
+                              ×
                             </button>
-                          ))}
+                          </span>
+                        </div>
+                      ) : parentEntryId ? (
+                        <div className={styles.kbRow}>
+                          <span className={styles.kbLabel}>📎 嵌入到</span>
+                          <span className={styles.parentHint}>
+                            已有文章
+                            <span className={styles.parentId}>{parentEntryId.slice(0, 8)}...</span>
+                          </span>
+                        </div>
+                      ) : (
+                        <div className={styles.kbRow}>
+                          <span className={styles.kbLabel}>入库到</span>
+                          <select
+                            className={styles.kbSelect}
+                            value={targetKb[draft.id] ?? getDefaultKbId(draft.extractType) ?? ''}
+                            onChange={(e) =>
+                              setTargetKb((prev) => ({ ...prev, [draft.id]: e.target.value }))
+                            }
+                          >
+                            {kbs.map((kb) => (
+                              <option key={kb.id} value={kb.id}>
+                                {kb.type === 'SYSTEM_FRAGMENTS' ? '📦' : '📚'} {kb.name}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                       )}
+                      {/* 手动搜索文章嵌入 */}
+                      {!selectedParent[draft.id] && (
+                        <div className={styles.embedRow}>
+                          <input
+                            className={styles.embedSearch}
+                            type="text"
+                            placeholder="或搜索文章嵌入..."
+                            value={searchParent[draft.id] || ''}
+                            onChange={(e) => handleArticleSearch(draft.id, e.target.value)}
+                          />
+                          {(searchResults[draft.id]?.length ?? 0) > 0 && (
+                            <div className={styles.embedResults}>
+                              {searchResults[draft.id]!.map((item) => (
+                                <button
+                                  key={item.id}
+                                  className={styles.embedResultItem}
+                                  onClick={() => {
+                                    setSelectedParent((prev) => ({
+                                      ...prev,
+                                      [draft.id]: { id: item.id, title: item.title },
+                                    }));
+                                    setSearchParent((prev) => ({ ...prev, [draft.id]: '' }));
+                                    setSearchResults((prev) => ({ ...prev, [draft.id]: [] }));
+                                  }}
+                                >
+                                  {item.title}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <div className={styles.cardActions}>
+                        <button
+                          className={styles.btnConfirm}
+                          onClick={() => handleConfirm(draft.id, draft.extractType)}
+                        >
+                          确认入库
+                        </button>
+                        <button
+                          className={styles.btnEdit}
+                          onClick={() => {
+                            setEditingId(draft.id);
+                            setEditTitle(draft.title);
+                            setEditContent(draft.content);
+                          }}
+                        >
+                          编辑
+                        </button>
+                        <button
+                          className={styles.btnRejectText}
+                          onClick={() => handleReject(draft.id)}
+                        >
+                          驳回
+                        </button>
+                      </div>
                     </div>
                   )}
-                  <div className={styles.cardActions}>
-                    <button
-                      className={styles.btnConfirm}
-                      onClick={() => handleConfirm(draft.id, draft.extractType)}
-                    >
-                      确认入库
-                    </button>
-                    <button
-                      className={styles.btnEdit}
-                      onClick={() => {
-                        setEditingId(draft.id);
-                        setEditTitle(draft.title);
-                        setEditContent(draft.content);
-                      }}
-                    >
-                      编辑
-                    </button>
-                    <button
-                      className={styles.btnRejectText}
-                      onClick={() => handleReject(draft.id)}
-                    >
-                      驳回
-                    </button>
-                  </div>
                 </div>
-              )}
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        ))}
       </div>
     </div>
   );

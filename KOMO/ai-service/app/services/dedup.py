@@ -1,10 +1,11 @@
 """语义去重服务 — 调用 DeepSeek 判断知识重复"""
 
-import json
-import re
 import logging
+from pydantic import ValidationError
 from ..core.clients import deepseek
 from ..core.config import DEEPSEEK_MODEL
+from ..core.json_utils import parse_llm_json
+from ..schemas.dedup import DedupVerdict
 from ..prompts.dedup import DEDUP_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -52,11 +53,22 @@ async def check_semantic_duplicate(
                 {"role": "user", "content": user_prompt},
             ],
             stream=False,
-            temperature=0.1,
+            temperature=0,                      # JSON mode 推荐 0 以获取确定性输出
             max_tokens=512,
+            response_format={"type": "json_object"},        # 强制 LLM 输出合法 JSON
+            extra_body={"thinking": {"type": "disabled"}},  # 关闭推理链
         )
+
+        finish_reason = response.choices[0].finish_reason
+        if finish_reason == "length":
+            logger.warning("[dedup] LLM 输出被截断 (finish_reason=length)")
+
         content = response.choices[0].message.content.strip()
-        return _parse_json_response(content)
+
+        # 解析 JSON + Pydantic Schema 校验
+        raw = parse_llm_json(content, expect_array=False)
+        return _validate_dedup_result(raw)
+
     except Exception:
         logger.exception("[dedup] Semantic duplicate check failed")
         return {
@@ -67,25 +79,22 @@ async def check_semantic_duplicate(
         }
 
 
-def _parse_json_response(text: str) -> dict:
-    """解析 LLM 返回的 JSON，含多个兜底策略"""
-    # 策略 1：直接解析
+def _validate_dedup_result(raw: dict) -> dict:
+    """用 Pydantic Schema 校验 LLM 去重输出。
+
+    校验失败时返回安全兜底值 (NEW, 0.5 confidence)。
+    """
     try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-    # 策略 2：提取代码块
-    match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
-    if match:
-        try:
-            return json.loads(match.group(1).strip())
-        except json.JSONDecodeError:
-            pass
-    # 策略 3：提取第一个 JSON 对象
-    match = re.search(r"\{[\s\S]*\}", text)
-    if match:
-        try:
-            return json.loads(match.group(0))
-        except json.JSONDecodeError:
-            pass
-    return {"verdict": "NEW", "confidence": 0.5, "reason": "无法解析", "matched_index": -1}
+        verdict = DedupVerdict.model_validate(raw)
+        return verdict.model_dump()
+    except ValidationError as e:
+        logger.warning(
+            "[dedup] Schema 校验失败: %s — raw: %.300s",
+            e.errors(), raw
+        )
+        return {
+            "verdict": "NEW",
+            "confidence": 0.5,
+            "reason": "Schema 校验失败",
+            "matched_index": -1,
+        }

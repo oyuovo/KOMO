@@ -70,7 +70,8 @@ public class KnowledgeDraftService {
         KnowledgeEntry entry = transactionTemplate.execute(
             status -> doConfirmWithParent(draftId, overrideKbId, parentEntryId));
         indexService.indexEntry(
-            entry.getId(), entry.getUserId(), entry.getTitle(), entry.getContentPlain());
+            entry.getId(), entry.getUserId(), entry.getKnowledgeBaseId(),
+            entry.getTitle(), entry.getContentPlain(), entry.getContent());
         return entry;
     }
 
@@ -133,7 +134,8 @@ public class KnowledgeDraftService {
         KnowledgeEntry entry = transactionTemplate.execute(
             status -> doEditAndConfirm(draftId, title, content, overrideKbId));
         indexService.indexEntry(
-            entry.getId(), entry.getUserId(), entry.getTitle(), entry.getContentPlain());
+            entry.getId(), entry.getUserId(), entry.getKnowledgeBaseId(),
+            entry.getTitle(), entry.getContentPlain(), entry.getContent());
         return entry;
     }
 

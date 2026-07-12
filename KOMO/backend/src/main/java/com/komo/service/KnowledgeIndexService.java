@@ -38,35 +38,47 @@ public class KnowledgeIndexService {
         ensureIndex();
     }
 
-    /** 创建索引（含 SmartCN 中文分词器配置） */
+    /** 创建索引（含 SmartCN 中文分词器 + keyword 字段类型）。
+     * 使用 userId.keyword / knowledgeBaseId.keyword 查询，兼容动态映射。 */
     public void ensureIndex() {
         try {
             boolean exists = esClient.indices()
                 .exists(e -> e.index(INDEX_NAME)).value();
             if (!exists) {
-                esClient.indices().create(CreateIndexRequest.of(c -> c
-                    .index(INDEX_NAME)
-                    .settings(s -> s
-                        .numberOfShards("1")
-                        .numberOfReplicas("0")
-                        .analysis(a -> a
-                            .analyzer("smart_cn", sa -> sa
-                                .custom(sa2 -> sa2
-                                    .tokenizer("smartcn_tokenizer")
-                                )
-                            )
+                createIndexWithMapping();
+            }
+        } catch (Exception e) {
+            log.error("[ES] 创建索引失败", e);
+        }
+    }
+
+    private void createIndexWithMapping() {
+        try {
+            esClient.indices().create(CreateIndexRequest.of(c -> c
+            .index(INDEX_NAME)
+            .settings(s -> s
+                .numberOfShards("1")
+                .numberOfReplicas("0")
+                .analysis(a -> a
+                    .analyzer("smart_cn", sa -> sa
+                        .custom(sa2 -> sa2
+                            .tokenizer("smartcn_tokenizer")
                         )
                     )
-                    .mappings(m -> m
-                        .properties("userId", p -> p.keyword(k -> k))
-                        .properties("title", p -> p
-                            .text(t -> t.analyzer("smart_cn").boost(3.0)))
-                        .properties("contentPlain", p -> p
-                            .text(t -> t.analyzer("smart_cn")))
-                        .properties("createdAt", p -> p.date(d -> d))
-                    )
-                ));
-            }
+                )
+            )
+            .mappings(m -> m
+                .properties("userId", p -> p.keyword(k -> k))
+                .properties("knowledgeBaseId", p -> p.keyword(k -> k))
+                .properties("title", p -> p
+                    .text(t -> t.analyzer("smart_cn").boost(3.0)))
+                .properties("contentPlain", p -> p
+                    .text(t -> t.analyzer("smart_cn")))
+                .properties("content", p -> p
+                    .text(t -> t.analyzer("smart_cn")))
+                .properties("createdAt", p -> p.date(d -> d))
+            )
+        ));
         } catch (Exception e) {
             log.error("[ES] 创建索引失败", e);
         }
@@ -95,13 +107,18 @@ public class KnowledgeIndexService {
     }
 
     /** 索引一条知识条目 */
-    public void indexEntry(UUID entryId, UUID userId, String title, String contentPlain) {
+    public void indexEntry(UUID entryId, UUID userId, UUID knowledgeBaseId,
+                           String title, String contentPlain, String content) {
         retry("索引 entryId=" + entryId, () -> {
             try {
                 Map<String, Object> doc = new HashMap<>();
                 doc.put("userId", userId.toString());
+                if (knowledgeBaseId != null) {
+                    doc.put("knowledgeBaseId", knowledgeBaseId.toString());
+                }
                 doc.put("title", title);
                 doc.put("contentPlain", contentPlain != null ? contentPlain : "");
+                doc.put("content", content != null ? content : "");
                 doc.put("createdAt", System.currentTimeMillis());
 
                 esClient.index(IndexRequest.of(i -> i
@@ -116,12 +133,17 @@ public class KnowledgeIndexService {
     }
 
     /** 更新索引（含重试） */
-    public void updateEntry(UUID entryId, UUID userId, String title, String contentPlain) {
+    public void updateEntry(UUID entryId, UUID userId, UUID knowledgeBaseId,
+                            String title, String contentPlain, String content) {
         retry("更新 entryId=" + entryId, () -> {
             try {
                 Map<String, Object> doc = new HashMap<>();
+                if (knowledgeBaseId != null) {
+                    doc.put("knowledgeBaseId", knowledgeBaseId.toString());
+                }
                 doc.put("title", title);
                 doc.put("contentPlain", contentPlain != null ? contentPlain : "");
+                doc.put("content", content != null ? content : "");
                 doc.put("createdAt", System.currentTimeMillis());
 
                 esClient.update(UpdateRequest.of(u -> u
@@ -133,7 +155,7 @@ public class KnowledgeIndexService {
                 if (e.status() == 404) {
                     // 文档不存在，回退为新建索引
                     log.info("[ES] 更新时未找到文档，回退为新建 entryId={}", entryId);
-                    indexEntry(entryId, userId, title, contentPlain);
+                    indexEntry(entryId, userId, knowledgeBaseId, title, contentPlain, content);
                 } else {
                     throw new RuntimeException(e);
                 }
@@ -164,19 +186,25 @@ public class KnowledgeIndexService {
     }
 
     /** 全文搜索（用于 RAG 和首页搜索） */
-    public List<Map<String, Object>> search(UUID userId, String query, int size) {
+    public List<Map<String, Object>> search(UUID userId, String query, int size,
+                                             UUID knowledgeBaseId) {
         try {
             SearchResponse<Map> response = esClient.search(s -> s
                 .index(INDEX_NAME)
                 .query(q -> q
-                    .bool(b -> b
-                        .must(m -> m.term(t -> t.field("userId").value(userId.toString())))
-                        .must(m -> m.multiMatch(mm -> mm
+                    .bool(b -> {
+                        b.must(m -> m.term(t -> t.field("userId.keyword").value(userId.toString())));
+                        if (knowledgeBaseId != null) {
+                            b.filter(f -> f.term(t ->
+                                t.field("knowledgeBaseId.keyword").value(knowledgeBaseId.toString())));
+                        }
+                        b.must(m -> m.multiMatch(mm -> mm
                             .fields("title^3", "contentPlain")
                             .query(query)
                             .type(TextQueryType.BestFields)
-                        ))
-                    )
+                        ));
+                        return b;
+                    })
                 )
                 .size(size),
                 Map.class
@@ -211,7 +239,7 @@ public class KnowledgeIndexService {
                 .index(INDEX_NAME)
                 .query(q -> q
                     .bool(b -> b
-                        .must(m -> m.term(t -> t.field("userId").value(userId.toString())))
+                        .must(m -> m.term(t -> t.field("userId.keyword").value(userId.toString())))
                         .must(m -> m.moreLikeThis(mlt -> mlt
                             .fields("title", "contentPlain")
                             .like(l -> l.text(likeText))
@@ -250,7 +278,8 @@ public class KnowledgeIndexService {
         int count = 0;
         for (KnowledgeEntry entry : entries) {
             if (entry.getDeletedAt() == null) {
-                indexEntry(entry.getId(), entry.getUserId(), entry.getTitle(), entry.getContentPlain());
+                indexEntry(entry.getId(), entry.getUserId(), entry.getKnowledgeBaseId(),
+                    entry.getTitle(), entry.getContentPlain(), entry.getContent());
                 count++;
             }
         }

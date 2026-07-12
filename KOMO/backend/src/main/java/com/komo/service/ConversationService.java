@@ -156,22 +156,30 @@ public class ConversationService {
         // 1. 保存用户消息
         conversationPersistenceService.saveUserMessage(conversationId, userId, content);
 
+        // 1b. 获取对话所属知识库（用于 KB 范围内的 RAG）
+        UUID kbId = conversationRepository.findById(conversationId)
+            .map(Conversation::getKnowledgeBaseId).orElse(null);
+
         // 2. 构建消息历史
         List<Message> history = messageRepository.findAllByConversationIdOrderByCreatedAtAsc(conversationId);
         List<Map<String, String>> aiMessages = new ArrayList<>();
 
-        // 2a. RAG 检索 — ES 全文搜索知识库
-        List<Map<String, Object>> relevantEntries = knowledgeIndexService.search(userId, content, 3);
+        // 2a. RAG 检索 — ES 全文搜索，限定在当前知识库范围内
+        List<Map<String, Object>> relevantEntries = knowledgeIndexService.search(userId, content, 3, kbId);
         if (!relevantEntries.isEmpty()) {
             StringBuilder context = new StringBuilder();
-            context.append("以下是用户知识库中与当前问题相关的知识条目，请在回答时参考：\n\n");
+            String scopeHint = kbId != null ? "当前知识库" : "你的知识库";
+            context.append("以下是").append(scopeHint).append("中与当前问题相关的知识条目，请在回答时参考：\n\n");
             for (Map<String, Object> entry : relevantEntries) {
                 context.append("### ").append(entry.getOrDefault("title", "")).append("\n");
-                String snippet = (String) entry.getOrDefault("contentPlain", "");
-                if (snippet != null && snippet.length() > 500) {
-                    snippet = snippet.substring(0, 500) + "...";
+                String body = (String) entry.getOrDefault("content", "");
+                if (body == null || body.isEmpty()) {
+                    body = (String) entry.getOrDefault("contentPlain", "");
                 }
-                context.append(snippet).append("\n\n");
+                if (body != null && body.length() > 2000) {
+                    body = body.substring(0, 2000) + "\n\n...(内容过长，已截断)";
+                }
+                context.append(body).append("\n\n");
             }
             context.append("---\n请基于以上知识库内容回答用户问题。如果知识库内容不足以回答，请如实告知并提供你自己的知识。");
             aiMessages.add(Map.of("role", "system", "content", context.toString()));
@@ -225,17 +233,29 @@ public class ConversationService {
         // 1. 保存用户消息
         conversationPersistenceService.saveUserMessage(conversationId, userId, content);
 
+        // 1b. 获取对话所属知识库（用于 KB 范围内的 RAG）
+        UUID kbId = conversationRepository.findById(conversationId)
+            .map(Conversation::getKnowledgeBaseId).orElse(null);
+
         // 2. 构建消息历史 + RAG 上下文
         List<Message> history = messageRepository.findAllByConversationIdOrderByCreatedAtAsc(conversationId);
         List<Map<String, String>> aiMessages = new ArrayList<>();
-        List<Map<String, Object>> relevant = knowledgeIndexService.search(userId, content, 3);
+        List<Map<String, Object>> relevant = knowledgeIndexService.search(userId, content, 3, kbId);
         if (!relevant.isEmpty()) {
-            StringBuilder ctx = new StringBuilder("参考用户知识库：\n");
+            String scopeHint = kbId != null ? "当前知识库" : "你的知识库";
+            StringBuilder ctx = new StringBuilder();
+            ctx.append("以下是").append(scopeHint).append("中与当前问题相关的知识条目，请在回答时参考：\n");
             for (Map<String, Object> e : relevant) {
-                String s = (String) e.getOrDefault("contentPlain", "");
-                if (s != null && s.length() > 300) s = s.substring(0, 300) + "...";
-                ctx.append("- ").append(e.getOrDefault("title", "")).append(": ").append(s).append("\n");
+                String body = (String) e.getOrDefault("content", "");
+                if (body == null || body.isEmpty()) {
+                    body = (String) e.getOrDefault("contentPlain", "");
+                }
+                if (body != null && body.length() > 2000) {
+                    body = body.substring(0, 2000) + "...(已截断)";
+                }
+                ctx.append("- ").append(e.getOrDefault("title", "")).append(": ").append(body).append("\n");
             }
+            ctx.append("---\n请基于以上知识库内容回答用户问题。如果知识库内容不足以回答，请如实告知并提供你自己的知识。");
             aiMessages.add(Map.of("role", "system", "content", ctx.toString()));
         }
         history.forEach(m -> aiMessages.add(Map.of(

@@ -95,7 +95,8 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
                 .categoryId(request.getCategoryId())
                 .tagNames(request.getTags())
                 .build()));
-        indexService.indexEntry(entry.getId(), entry.getUserId(), entry.getTitle(), entry.getContentPlain());
+        indexService.indexEntry(entry.getId(), entry.getUserId(), entry.getKnowledgeBaseId(),
+            entry.getTitle(), entry.getContentPlain(), entry.getContent());
         return entry;
     }
 
@@ -110,7 +111,8 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
             current.setTagNames(request.getTags());
             return repository.save(current);
         });
-        indexService.updateEntry(entry.getId(), entry.getUserId(), entry.getTitle(), entry.getContentPlain());
+        indexService.updateEntry(entry.getId(), entry.getUserId(), entry.getKnowledgeBaseId(),
+            entry.getTitle(), entry.getContentPlain(), entry.getContent());
         return entry;
     }
 
@@ -225,7 +227,8 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
 
         // 外部 ES 调用必须发生在数据库事务提交之后。
         indexService.updateEntry(
-            merged.getId(), merged.getUserId(), merged.getTitle(), merged.getContentPlain());
+            merged.getId(), merged.getUserId(), merged.getKnowledgeBaseId(),
+            merged.getTitle(), merged.getContentPlain(), merged.getContent());
         indexService.deleteEntry(fragmentId);
         return merged;
     }

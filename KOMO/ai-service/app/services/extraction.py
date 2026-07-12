@@ -1,10 +1,12 @@
 """知识提取服务 — 从 AI 对话中提取结构化知识"""
 
-import json
 import re
 import logging
+from pydantic import ValidationError
 from ..core.clients import deepseek
 from ..core.config import DEEPSEEK_MODEL
+from ..core.json_utils import parse_llm_json
+from ..schemas.extraction import KnowledgePoint
 from ..prompts.extraction import EXTRACTION_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -59,13 +61,23 @@ async def extract_knowledge(
             model=DEEPSEEK_MODEL,
             messages=extraction_messages,
             stream=False,
-            temperature=0.3,   # 低温度以获得更一致的提取结果
-            max_tokens=12288,   # 异步模式：充足 token 支持多篇长文提取
+            temperature=0,                      # JSON mode 推荐 0 以获取确定性输出
+            max_tokens=12288,
+            response_format={"type": "json_object"},        # 强制 LLM 输出合法 JSON
+            extra_body={"thinking": {"type": "disabled"}},  # 关闭推理链，避免 token 浪费
         )
+
+        # 检测截断
+        finish_reason = response.choices[0].finish_reason
+        if finish_reason == "length":
+            logger.warning("[extraction] LLM 输出被截断 (finish_reason=length)，需增加 max_tokens")
+
         content = response.choices[0].message.content.strip()
 
-        # 解析 JSON — 尝试提取 JSON 数组
-        knowledge_points = _parse_json_response(content)
+        # 解析 JSON + Pydantic Schema 校验
+        # json_object mode 保证合法 JSON 语法；Schema 校验保证字段完整性
+        raw_data = parse_llm_json(content, expect_array=True)
+        knowledge_points = _validate_extraction_result(raw_data)
 
         # 过滤低置信度 + 统计类型分布 + 质量关卡
         filtered = []
@@ -73,16 +85,10 @@ async def extract_knowledge(
         article_lengths = []
 
         for kp in knowledge_points:
-            if not isinstance(kp, dict):
-                continue
-            if not kp.get("title") or not kp.get("content"):
-                continue
-            if kp.get("confidence", 0) < 0.6:
+            if kp["confidence"] < 0.6:
                 continue
 
-            extract_type = kp.get("type", "FRAGMENT")
-            if extract_type not in type_counts:
-                extract_type = "FRAGMENT"
+            extract_type = kp["type"]
 
             # 质量关卡：ARTICLE 纯文本 < 500 字 → 自动降级为 FRAGMENT
             if extract_type == "ARTICLE":
@@ -141,29 +147,21 @@ def _plain_text_length(markdown: str) -> int:
     return len(text)
 
 
-def _parse_json_response(text: str) -> list:
-    """尝试从 LLM 回复中解析 JSON 数组"""
-    # 尝试直接解析
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
+def _validate_extraction_result(raw_data: list) -> list[dict]:
+    """用 Pydantic Schema 校验 LLM 输出的每一条知识点。
 
-    # 尝试提取 ```json ... ``` 代码块
-    code_block = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
-    if code_block:
+    校验失败的条目会被跳过并记录警告，不会阻断整体流程。
+    """
+    validated = []
+    for item in raw_data:
+        if not isinstance(item, dict):
+            continue
         try:
-            return json.loads(code_block.group(1).strip())
-        except json.JSONDecodeError:
-            pass
-
-    # 尝试提取 [...] 部分
-    array_match = re.search(r"\[[\s\S]*\]", text)
-    if array_match:
-        try:
-            return json.loads(array_match.group(0))
-        except json.JSONDecodeError:
-            pass
-
-    logger.warning("[extraction] Could not parse JSON from: %s...", text[:200])
-    return []
+            kp = KnowledgePoint.model_validate(item)
+            validated.append(kp.model_dump())
+        except ValidationError as e:
+            logger.warning(
+                "[extraction] Schema 校验失败，跳过该条目: %s — data: %.200s",
+                e.errors(), item
+            )
+    return validated
