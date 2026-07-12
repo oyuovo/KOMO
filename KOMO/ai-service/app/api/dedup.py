@@ -1,10 +1,12 @@
 """去重 API"""
 
+import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from ..services.dedup import check_semantic_duplicate
 
 router = APIRouter(prefix="/api/dedup", tags=["dedup"])
+logger = logging.getLogger(__name__)
 
 
 class DedupRequest(BaseModel):
@@ -26,4 +28,5 @@ async def check(req: DedupRequest):
         )
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Dedup check failed")
+        raise HTTPException(status_code=500, detail="去重服务暂时不可用")

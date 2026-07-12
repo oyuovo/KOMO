@@ -54,3 +54,6 @@ komo:
   es:
     username: ${ES_USERNAME:elastic}
     password: ${ES_PASSWORD}
+  # Python AI 服务
+  ai:
+    base-url: ${AI_SERVICE_URL:http://localhost:8001}

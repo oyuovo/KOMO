@@ -8,6 +8,7 @@ import ConversationSidebar from '@/components/ConversationSidebar/ConversationSi
 import {
   getMe,
   getCsrfToken,
+  getApiBase,
   getMessages,
   listConversations,
   listDrafts,
@@ -162,7 +163,7 @@ export default function ConversationDetailPage() {
       if (csrf) headers['X-XSRF-TOKEN'] = csrf;
 
       const response = await fetch(
-        `http://localhost:8081/api/conversations/${conversationId}/messages/stream`,
+        `${getApiBase()}/conversations/${conversationId}/messages/stream`,
         {
           method: 'POST',
           headers,

@@ -44,13 +44,12 @@ public class KnowledgeDraftService {
         return draftRepository.existsByMessageIdAndUserId(messageId, userId);
     }
 
-    /** 获取当前用户的待处理草稿列表（排除 PENDING_DEDUP） */
+    /** 获取当前用户的待处理草稿列表 */
     public List<KnowledgeDraft> listPending() {
         UUID userId = SecurityContext.getCurrentUserId();
         return draftRepository.findByUserIdOrderByCreatedAtDesc(userId)
             .stream()
-            .filter(d -> d.getStatus() == KnowledgeDraft.DraftStatus.PENDING
-                      || d.getStatus() == KnowledgeDraft.DraftStatus.PENDING_DEDUP)
+            .filter(d -> d.getStatus() == KnowledgeDraft.DraftStatus.PENDING)
             .toList();
     }
 

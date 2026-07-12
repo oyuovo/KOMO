@@ -5,12 +5,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.chat import router as chat_router
 from app.api.extraction import router as extraction_router
 from app.api.dedup import router as dedup_router
+from app.core.config import ALLOWED_ORIGINS
 
 app = FastAPI(title="KOMO AI Service")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

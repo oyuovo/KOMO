@@ -113,9 +113,4 @@ public class DedupService {
     public boolean needsLlmReview(DedupResult result) {
         return result.getScore() >= NEW_THRESHOLD && result.getScore() <= DUPLICATE_THRESHOLD;
     }
-
-    /** 判定：是否为明确新知 */
-    public boolean isClearlyNew(DedupResult result) {
-        return result.getScore() < NEW_THRESHOLD;
-    }
 }

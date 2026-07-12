@@ -34,6 +34,7 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 
 @Service
 public class ConversationService {
@@ -49,6 +50,12 @@ public class ConversationService {
     private final DedupService dedupService;
     private final RabbitTemplate rabbitTemplate;
     private final UserService userService;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final RestTemplate restTemplate = new RestTemplate();
+
+    @Value("${komo.ai.base-url}")
+    private String aiBaseUrl;
 
     public ConversationService(ConversationRepository conversationRepository,
                                MessageRepository messageRepository,
@@ -82,12 +89,6 @@ public class ConversationService {
             .knowledgeBaseId(knowledgeBaseId)
             .build();
         return conversationRepository.save(convo);
-    }
-
-    /** 向后兼容 — 无知识库创建 */
-    @Transactional
-    public Conversation create(UUID userId, String title) {
-        return create(userId, title, null);
     }
 
     /** 获取用户的对话列表 */
@@ -194,7 +195,6 @@ public class ConversationService {
         // 3. 调用 Python AI 服务
         String aiResponse;
         try {
-            ObjectMapper objectMapper = new ObjectMapper();
             Map<String, Object> requestBody = Map.of("messages", aiMessages);
             String jsonBody = objectMapper.writeValueAsString(requestBody);
 
@@ -202,10 +202,9 @@ public class ConversationService {
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<String> entity = new HttpEntity<>(jsonBody, headers);
 
-            RestTemplate restTemplate = new RestTemplate();
             @SuppressWarnings("unchecked")
             Map<String, Object> response = restTemplate.postForObject(
-                "http://localhost:8001/api/chat/sync",
+                aiBaseUrl + "/api/chat/sync",
                 entity,
                 Map.class
             );
@@ -266,11 +265,10 @@ public class ConversationService {
         OutputStream out = response.getOutputStream();
         StringBuilder fullResponse = new StringBuilder();
         try {
-            ObjectMapper om = new ObjectMapper();
-            String jsonBody = om.writeValueAsString(Map.of("messages", aiMessages));
+            String jsonBody = objectMapper.writeValueAsString(Map.of("messages", aiMessages));
 
             HttpURLConnection conn = (HttpURLConnection) URI.create(
-                "http://localhost:8001/api/chat/stream").toURL().openConnection();
+                aiBaseUrl + "/api/chat/stream").toURL().openConnection();
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json");
@@ -359,8 +357,7 @@ public class ConversationService {
 
                 // 尝试发送 done 事件（客户端可能已断开）
                 try {
-                    ObjectMapper om = new ObjectMapper();
-                    String doneData = om.writeValueAsString(Map.of("messageId", assistantMsg.getId().toString()));
+                    String doneData = objectMapper.writeValueAsString(Map.of("messageId", assistantMsg.getId().toString()));
                     writeSseEvent(out, "done", doneData);
                     response.flushBuffer();
                 } catch (IOException ignored) {
@@ -455,7 +452,6 @@ public class ConversationService {
         }
 
         try {
-            ObjectMapper objectMapper = new ObjectMapper();
             Map<String, Object> extractReq = Map.of("messages", messages);
             String jsonBody = objectMapper.writeValueAsString(extractReq);
 
@@ -463,10 +459,9 @@ public class ConversationService {
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<String> entity = new HttpEntity<>(jsonBody, headers);
 
-            RestTemplate restTemplate = new RestTemplate();
             @SuppressWarnings("unchecked")
             Map<String, Object> response = restTemplate.postForObject(
-                "http://localhost:8001/api/extraction/extract",
+                aiBaseUrl + "/api/extraction/extract",
                 entity,
                 Map.class
             );
@@ -624,16 +619,14 @@ public class ConversationService {
                 "existing_knowledge", existing
             );
 
-            ObjectMapper om = new ObjectMapper();
-            String jsonBody = om.writeValueAsString(dedupReq);
+            String jsonBody = objectMapper.writeValueAsString(dedupReq);
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<String> entity = new HttpEntity<>(jsonBody, headers);
 
-            RestTemplate rt = new RestTemplate();
-            Map<String, Object> response = rt.postForObject(
-                "http://localhost:8001/api/dedup/check",
+            Map<String, Object> response = restTemplate.postForObject(
+                aiBaseUrl + "/api/dedup/check",
                 entity,
                 Map.class
             );

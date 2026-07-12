@@ -2,7 +2,12 @@
 // Token 通过 httpOnly Cookie 自动携带，前端不再手动管理。
 // CSRF 通过 Double Submit Cookie (XSRF-TOKEN → X-XSRF-TOKEN) 防护。
 
-const API_BASE = 'http://localhost:8081/api';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081/api';
+
+/** 获取 API 基础 URL（供 SSE 流式端点等需要直接访问的场景使用） */
+export function getApiBase(): string {
+  return API_BASE;
+}
 
 interface ApiResponse<T> {
   code: number;
@@ -55,31 +60,10 @@ export async function logout(): Promise<void> {
   }
 }
 
-// ===== 兼容旧 API（逐步迁移） =====
+// ===== 基础请求（含自动刷新） =====
 
-/** @deprecated 使用 getMe() 代替 */
-export function getToken(): string | null {
-  return null; // httpOnly Cookie 不可从 JS 读取
-}
-
-/** @deprecated 使用 getMe() 代替 */
-export function getUser(): UserInfo | null {
-  return null; // 用户状态改为从服务端获取
-}
-
-/** @deprecated 不再需要手动存储 token */
-export function setTokens(_access: string, _refresh: string, _user: UserInfo) {
-  // no-op: tokens 由 httpOnly Cookie 自动管理
-}
-
-/** @deprecated 使用 logout() 代替 */
-export function clearTokens() {
-  // 异步调用 logout 清除 cookie
-  logout().catch(() => {});
-}
-
-/** @deprecated 不再需要手动刷新 — Cookie 自动携带 refresh token */
-export async function refreshAuth(): Promise<boolean> {
+/** 不再需要手动刷新 — Cookie 自动携带 refresh token */
+async function refreshAuth(): Promise<boolean> {
   try {
     const res = await fetch(`${API_BASE}/auth/refresh`, {
       method: 'POST',
@@ -91,8 +75,6 @@ export async function refreshAuth(): Promise<boolean> {
     return false;
   }
 }
-
-// ===== 基础请求（含自动刷新） =====
 
 /** 清除登录态并跳转到首页 */
 function redirectToLogin() {

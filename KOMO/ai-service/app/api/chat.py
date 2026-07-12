@@ -1,11 +1,13 @@
 """对话 API — SSE 流式输出"""
 
+import logging
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from ..services.chat import chat_stream
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+logger = logging.getLogger(__name__)
 
 
 class ChatRequest(BaseModel):
@@ -34,7 +36,8 @@ async def stream_chat(req: ChatRequest):
                 yield _sse_encode(token)
             yield "data: [DONE]\n\n"
         except Exception as e:
-            yield f"data: [ERROR] {str(e)}\n\n"
+            logger.exception("Chat stream failed")
+            yield f"data: [ERROR] AI 服务暂时不可用\n\n"
 
     return StreamingResponse(
         generate(),
@@ -59,4 +62,5 @@ async def sync_chat(req: ChatRequest):
         content = await chat_sync(req.messages)
         return {"content": content}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Chat sync failed")
+        raise HTTPException(status_code=500, detail="AI 服务暂时不可用")

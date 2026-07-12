@@ -132,11 +132,6 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
-    @GetMapping("/health")
-    public ResponseEntity<ApiResponse<String>> health() {
-        return ResponseEntity.ok(ApiResponse.success("KOMO API is running"));
-    }
-
     // ── cookie helpers ──
 
     private void setAuthCookies(HttpServletResponse response, String accessToken, String refreshToken) {

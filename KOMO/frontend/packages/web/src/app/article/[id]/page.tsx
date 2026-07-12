@@ -9,7 +9,6 @@ import {
   getMe,
   listKnowledge,
   getLinks,
-  addLink,
   mergeInto,
   listKnowledgeBases,
   createConversation,
