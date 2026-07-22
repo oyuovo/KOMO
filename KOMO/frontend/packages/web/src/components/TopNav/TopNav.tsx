@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { listDrafts, getMe, type UserInfo } from '@komo/shared/api-client';
+import { listDrafts, getMe, resetOnboarding, type UserInfo } from '@komo/shared/api-client';
 import styles from './TopNav.module.css';
 
 const navItems = [
@@ -31,6 +31,15 @@ export default function TopNav() {
       })
       .catch(() => {});
   }, [pathname]);
+
+  const handleHelpReset = async () => {
+    try {
+      await resetOnboarding();
+      window.location.href = '/';
+    } catch {
+      // ignore
+    }
+  };
 
   return (
     <nav className={styles.nav}>
@@ -62,6 +71,13 @@ export default function TopNav() {
 
       {user && (
         <div className={styles.right}>
+          <button
+            className={styles.helpBtn}
+            onClick={handleHelpReset}
+            title="重新显示新手指引"
+          >
+            ?
+          </button>
           <span className={styles.email}>{user.email}</span>
           <div className={styles.avatar}>
             {user.nickname ? user.nickname[0].toUpperCase() : 'U'}

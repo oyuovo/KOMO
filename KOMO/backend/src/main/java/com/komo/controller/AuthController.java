@@ -102,6 +102,8 @@ public class AuthController {
                 .email(user.getEmail())
                 .nickname(user.getNickname())
                 .autoExtract(Boolean.TRUE.equals(user.getAutoExtract()))
+                .dailyRecommendationEnabled(!Boolean.FALSE.equals(user.getDailyRecommendationEnabled()))
+                .onboardingCompleted(Boolean.TRUE.equals(user.getOnboardingCompleted()))
                 .build()
         ));
     }
@@ -122,6 +124,42 @@ public class AuthController {
                 .email(user.getEmail())
                 .nickname(user.getNickname())
                 .autoExtract(Boolean.TRUE.equals(user.getAutoExtract()))
+                .dailyRecommendationEnabled(!Boolean.FALSE.equals(user.getDailyRecommendationEnabled()))
+                .onboardingCompleted(Boolean.TRUE.equals(user.getOnboardingCompleted()))
+                .build()
+        ));
+    }
+
+    @PutMapping("/onboarding/complete")
+    public ResponseEntity<ApiResponse<AuthResponse.UserInfo>> completeOnboarding() {
+        UUID userId = SecurityContext.getCurrentUserId();
+        User user = userService.completeOnboarding(userId);
+        return ResponseEntity.ok(ApiResponse.success(
+            AuthResponse.UserInfo.builder()
+                .id(user.getId().toString())
+                .email(user.getEmail())
+                .nickname(user.getNickname())
+                .autoExtract(Boolean.TRUE.equals(user.getAutoExtract()))
+                .dailyRecommendationEnabled(!Boolean.FALSE.equals(user.getDailyRecommendationEnabled()))
+                .onboardingCompleted(Boolean.TRUE.equals(user.getOnboardingCompleted()))
+                .onboardingCompleted(Boolean.TRUE.equals(user.getOnboardingCompleted()))
+                .build()
+        ));
+    }
+
+    @PutMapping("/onboarding/reset")
+    public ResponseEntity<ApiResponse<AuthResponse.UserInfo>> resetOnboarding() {
+        UUID userId = SecurityContext.getCurrentUserId();
+        User user = userService.resetOnboarding(userId);
+        return ResponseEntity.ok(ApiResponse.success(
+            AuthResponse.UserInfo.builder()
+                .id(user.getId().toString())
+                .email(user.getEmail())
+                .nickname(user.getNickname())
+                .autoExtract(Boolean.TRUE.equals(user.getAutoExtract()))
+                .dailyRecommendationEnabled(!Boolean.FALSE.equals(user.getDailyRecommendationEnabled()))
+                .onboardingCompleted(Boolean.TRUE.equals(user.getOnboardingCompleted()))
+                .onboardingCompleted(Boolean.TRUE.equals(user.getOnboardingCompleted()))
                 .build()
         ));
     }

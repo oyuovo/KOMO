@@ -11,6 +11,8 @@ import {
 } from '@komo/shared/api-client';
 import KnowledgeList from '@/components/KnowledgeList/KnowledgeList';
 import KnowledgeBaseSidebar from '@/components/KnowledgeBaseSidebar/KnowledgeBaseSidebar';
+import DailyRecommendation from '@/components/DailyRecommendation/DailyRecommendation';
+import OnboardingGuide from '@/components/OnboardingGuide/OnboardingGuide';
 import styles from './page.module.css';
 
 export default function HomePage() {
@@ -140,6 +142,14 @@ export default function HomePage() {
             </Link>
           </div>
         </div>
+
+        {/* Onboarding Guide */}
+        <OnboardingGuide user={user} />
+
+        {/* Daily Recommendation */}
+        <DailyRecommendation
+          userDailyRecommendationEnabled={user?.dailyRecommendationEnabled ?? true}
+        />
 
         {/* Search Bar */}
         <div className={styles.searchBar}>

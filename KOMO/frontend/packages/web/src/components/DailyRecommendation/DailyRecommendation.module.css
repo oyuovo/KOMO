@@ -1,0 +1,120 @@
+.card {
+  background: var(--komo-bg-card);
+  border: 1px solid var(--komo-border);
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-bottom: 24px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.icon {
+  font-size: 18px;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--komo-text);
+}
+
+.dimensionBadge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.badgeDeepening {
+  background: #e8f4fd;
+  color: #1a73e8;
+}
+
+.badgeCrossDomain {
+  background: #f3e8fd;
+  color: #7c3aed;
+}
+
+.badgeGap {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.closeBtn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--komo-text-tertiary);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.closeBtn:hover {
+  background: var(--komo-bg-hover);
+  color: var(--komo-text);
+}
+
+.question {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--komo-text);
+  margin-bottom: 10px;
+  white-space: pre-wrap;
+}
+
+.missingArea {
+  font-size: 13px;
+  color: var(--komo-text-secondary);
+  margin-bottom: 14px;
+}
+
+.missingLabel {
+  font-weight: 500;
+  color: var(--komo-text);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.btnPrimary {
+  background: var(--komo-link);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.btnPrimary:hover {
+  opacity: 0.9;
+}
+
+.btnSecondary {
+  background: none;
+  color: var(--komo-text-secondary);
+  border: 1px solid var(--komo-border);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btnSecondary:hover {
+  background: var(--komo-bg-hover);
+  color: var(--komo-text);
+}

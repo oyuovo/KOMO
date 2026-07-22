@@ -21,6 +21,8 @@ export interface UserInfo {
   email: string;
   nickname: string;
   autoExtract: boolean;
+  dailyRecommendationEnabled: boolean;
+  onboardingCompleted: boolean;
 }
 
 // ===== Token 管理（httpOnly Cookie — 前端无需手动操作） =====
@@ -562,7 +564,8 @@ export async function exportKnowledge(): Promise<KnowledgeItem[]> {
 // ===== Preferences =====
 
 export async function updatePreferences(prefs: {
-  autoExtract: boolean;
+  autoExtract?: boolean;
+  dailyRecommendationEnabled?: boolean;
 }): Promise<UserInfo> {
   return put('/auth/preferences', prefs);
 }
@@ -581,4 +584,44 @@ export async function switchConversationKb(
   return put(`/conversations/${conversationId}/kb`, {
     knowledgeBaseId: knowledgeBaseId ?? '',
   });
+}
+
+// ===== Onboarding =====
+
+export async function completeOnboarding(): Promise<UserInfo> {
+  return put('/auth/onboarding/complete', {});
+}
+
+export async function resetOnboarding(): Promise<UserInfo> {
+  return put('/auth/onboarding/reset', {});
+}
+
+// ===== Daily Recommendations =====
+
+export interface DailyRecommendationData {
+  id: string;
+  userId: string;
+  question: string;
+  dimension: 'deepening' | 'cross_domain' | 'gap';
+  relatedKnowledgeTitles: string | null; // JSON array [{id, title}]
+  missingArea: string | null;
+  suggestedKbId: string | null;
+  status: 'ACTIVE' | 'DISMISSED' | 'SAVED' | 'CONVERSED';
+  createdAt: string;
+}
+
+export async function getTodayRecommendation(): Promise<DailyRecommendationData | null> {
+  return get('/recommendations/today');
+}
+
+export async function generateRecommendation(): Promise<DailyRecommendationData | null> {
+  return post('/recommendations/generate', {});
+}
+
+export async function dismissRecommendation(id: string): Promise<void> {
+  return put(`/recommendations/${id}/dismiss`, {});
+}
+
+export async function converseRecommendation(id: string): Promise<void> {
+  return put(`/recommendations/${id}/converse`, {});
 }

@@ -21,5 +21,7 @@ public class AuthResponse {
         private String email;
         private String nickname;
         private boolean autoExtract;
+        private boolean dailyRecommendationEnabled;
+        private boolean onboardingCompleted;
     }
 }

@@ -94,6 +94,27 @@ public class UserService {
             user.setAutoExtract(request.getAutoExtract());
             log.info("[AUDIT] action=PREFERENCE_UPDATE userId={} autoExtract={}", userId, request.getAutoExtract());
         }
+        if (request.getDailyRecommendationEnabled() != null) {
+            user.setDailyRecommendationEnabled(request.getDailyRecommendationEnabled());
+            log.info("[AUDIT] action=PREFERENCE_UPDATE userId={} dailyRecommendationEnabled={}",
+                userId, request.getDailyRecommendationEnabled());
+        }
+        return userRepository.save(user);
+    }
+
+    @Transactional
+    public User completeOnboarding(UUID userId) {
+        User user = findById(userId);
+        user.setOnboardingCompleted(true);
+        log.info("[AUDIT] action=ONBOARDING_COMPLETE userId={}", userId);
+        return userRepository.save(user);
+    }
+
+    @Transactional
+    public User resetOnboarding(UUID userId) {
+        User user = findById(userId);
+        user.setOnboardingCompleted(false);
+        log.info("[AUDIT] action=ONBOARDING_RESET userId={}", userId);
         return userRepository.save(user);
     }
 
@@ -110,6 +131,8 @@ public class UserService {
                 .email(user.getEmail())
                 .nickname(user.getNickname())
                 .autoExtract(Boolean.TRUE.equals(user.getAutoExtract()))
+            .dailyRecommendationEnabled(!Boolean.FALSE.equals(user.getDailyRecommendationEnabled()))
+            .onboardingCompleted(Boolean.TRUE.equals(user.getOnboardingCompleted()))
                 .build())
             .build();
     }

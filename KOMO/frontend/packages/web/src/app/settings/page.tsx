@@ -14,6 +14,7 @@ export default function SettingsPage() {
   const [reindexCount, setReindexCount] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [autoExtract, setAutoExtract] = useState(true);
+  const [dailyRecommendationEnabled, setDailyRecommendationEnabled] = useState(true);
 
   useEffect(() => {
     getMe().then((u) => {
@@ -23,6 +24,7 @@ export default function SettingsPage() {
       }
       setUser(u);
       setAutoExtract(u.autoExtract);
+      setDailyRecommendationEnabled(u.dailyRecommendationEnabled);
       Promise.all([
         listDrafts().then((d) => setDraftCount(d.length)).catch(() => {}),
         listKnowledge().then((r) => setArticleCount(r.totalElements)).catch(() => {}),
@@ -37,6 +39,16 @@ export default function SettingsPage() {
       await updatePreferences({ autoExtract: next });
     } catch {
       setAutoExtract(!next); // rollback
+    }
+  };
+
+  const handleToggleDailyRecommendation = async () => {
+    const next = !dailyRecommendationEnabled;
+    setDailyRecommendationEnabled(next); // optimistic update
+    try {
+      await updatePreferences({ dailyRecommendationEnabled: next });
+    } catch {
+      setDailyRecommendationEnabled(!next); // rollback
     }
   };
 
@@ -171,6 +183,30 @@ export default function SettingsPage() {
                 type="checkbox"
                 checked={autoExtract}
                 onChange={handleToggleAutoExtract}
+              />
+              <span className={styles.slider} />
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div className={styles.section}>
+        <h2 className={styles.sectionTitle}>推荐</h2>
+        <div className={styles.card}>
+          <div className={styles.row}>
+            <div>
+              <span className={styles.label}>每日推荐问题</span>
+              <span className={styles.hint}>
+                {dailyRecommendationEnabled
+                  ? '每天基于知识库生成自查问题，帮助你发现知识盲区和跨领域关联'
+                  : '关闭后首页不再显示每日推荐问题'}
+              </span>
+            </div>
+            <label className={styles.toggle}>
+              <input
+                type="checkbox"
+                checked={dailyRecommendationEnabled}
+                onChange={handleToggleDailyRecommendation}
               />
               <span className={styles.slider} />
             </label>

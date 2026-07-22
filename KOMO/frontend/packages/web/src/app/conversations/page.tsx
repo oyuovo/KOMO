@@ -1,15 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { getMe } from '@komo/shared/api-client';
+import { Suspense, useEffect, useState, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import {
+  getMe,
+  createConversation,
+  type ConversationData,
+} from '@komo/shared/api-client';
 import ConversationSidebar from '@/components/ConversationSidebar/ConversationSidebar';
 import styles from './page.module.css';
 
-export default function ConversationsPage() {
+function ConversationsContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [authed, setAuthed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const autoCreated = useRef(false);
 
   useEffect(() => {
     getMe().then((u) => {
@@ -18,6 +24,21 @@ export default function ConversationsPage() {
       setLoading(false);
     });
   }, []);
+
+  // Auto-create conversation from daily recommendation question
+  useEffect(() => {
+    if (!authed || autoCreated.current) return;
+    const question = searchParams.get('question');
+    const kbId = searchParams.get('kb');
+    if (question) {
+      autoCreated.current = true;
+      createConversation(undefined, kbId || null)
+        .then((conv: ConversationData) => {
+          router.replace(`/conversations/${conv.id}?question=${encodeURIComponent(question)}`);
+        })
+        .catch(() => {});
+    }
+  }, [authed, searchParams]);
 
   if (loading) {
     return <div className={styles.page}><div className={styles.placeholder}>加载中...</div></div>;
@@ -38,5 +59,13 @@ export default function ConversationsPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function ConversationsPage() {
+  return (
+    <Suspense fallback={<div className={styles.page}><div className={styles.placeholder}>加载中...</div></div>}>
+      <ConversationsContent />
+    </Suspense>
   );
 }

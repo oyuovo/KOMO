@@ -37,4 +37,12 @@ public class User extends BaseEntity {
     /** 是否自动提取知识草稿。true=静默提取(默认), false=手动提取。null 视为 true。 */
     @Builder.Default
     private Boolean autoExtract = true;
+
+    /** 是否启用每日推荐问题。true=启用(默认), false=关闭。 */
+    @Builder.Default
+    private Boolean dailyRecommendationEnabled = true;
+
+    /** 新手引导是否已完成。true=不再自动显示引导。 */
+    @Builder.Default
+    private Boolean onboardingCompleted = false;
 }

@@ -36,7 +36,7 @@ export default function ConversationDetailPage() {
   const [showDraftHint, setShowDraftHint] = useState(false);
   const [autoExtract, setAutoExtract] = useState(true);
   const [extracting, setExtracting] = useState(false);
-  const [extractDone, setExtractDone] = useState(false);
+  const [extractResult, setExtractResult] = useState<'idle' | 'success' | 'empty'>('idle');
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseData[]>([]);
   const [currentKbId, setCurrentKbId] = useState<string | null>(null);
   const [showKbSwitcher, setShowKbSwitcher] = useState(false);
@@ -91,23 +91,29 @@ export default function ConversationDetailPage() {
     }
   }, [loading]);
 
-  // 检查 URL 中是否有引用参数（来自文章页追问）
+  // 检查 URL 中是否有引用参数（来自文章页追问 或 每日推荐）
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const searchParams = new URLSearchParams(window.location.search);
-    const quote = searchParams.get('quote');
-    const source = searchParams.get('source');
+    const urlParams = new URLSearchParams(window.location.search);
+    const quote = urlParams.get('quote');
+    const source = urlParams.get('source');
+    const question = urlParams.get('question');
     if (quote) {
       const lines = [`> ${quote}`];
       if (source) lines.push(`> 来源：${source}`);
       lines.push('', '');
       setInput(lines.join('\n'));
-      const url = new URL(window.location.href);
-      url.searchParams.delete('quote');
-      url.searchParams.delete('source');
-      url.searchParams.delete('sourceId');
-      window.history.replaceState({}, '', url.toString());
+    } else if (question) {
+      setInput(question);
     }
+    // Clean URL params
+    const url = new URL(window.location.href);
+    url.searchParams.delete('quote');
+    url.searchParams.delete('source');
+    url.searchParams.delete('sourceId');
+    url.searchParams.delete('question');
+    url.searchParams.delete('kb');
+    window.history.replaceState({}, '', url.toString());
   }, []);
 
   const handleSwitchKb = async (kbId: string | null) => {
@@ -283,16 +289,27 @@ export default function ConversationDetailPage() {
   const handleExtract = async () => {
     if (extracting) return;
     setExtracting(true);
-    setExtractDone(false);
+    setExtractResult('idle');
+    // 记录提取前的草稿数
+    const prevCount = draftCount;
+    let result: 'success' | 'empty' = 'empty';
     try {
       await extractConversation(conversationId);
-      setExtractDone(true);
-      setTimeout(() => setExtractDone(false), 3000);
-      checkDraftCount();
+      // 等待异步 Worker 处理
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      const drafts = await listDrafts();
+      const newCount = drafts.filter(d => d.status === 'PENDING').length;
+      if (newCount > prevCount) {
+        result = 'success';
+        setDraftCount(newCount);
+        setShowDraftHint(true);
+      }
     } catch {
-      // ignore
+      result = 'empty';
     } finally {
       setExtracting(false);
+      setExtractResult(result);
+      setTimeout(() => setExtractResult('idle'), result === 'empty' ? 5000 : 4000);
     }
   };
 
@@ -368,7 +385,13 @@ export default function ConversationDetailPage() {
                 disabled={extracting}
                 title="手动提取知识草稿"
               >
-                {extracting ? '提取中...' : extractDone ? '✓ 已提取' : '提取知识'}
+                {extracting
+                  ? '提取中...'
+                  : extractResult === 'success'
+                  ? '✓ 已提取'
+                  : extractResult === 'empty'
+                  ? '未发现知识点'
+                  : '提取知识'}
               </button>
             )}
           </div>

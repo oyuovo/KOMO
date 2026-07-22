@@ -5,4 +5,5 @@ import lombok.Data;
 @Data
 public class PreferenceUpdateRequest {
     private Boolean autoExtract;
+    private Boolean dailyRecommendationEnabled;
 }
