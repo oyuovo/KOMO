@@ -90,78 +90,48 @@ public class AuthController {
         // 强制触发 CSRF Token 生成，使 CookieCsrfTokenRepository 写入 XSRF-TOKEN cookie
         request.getAttribute(CsrfToken.class.getName());
 
-        UUID userId = SecurityContext.getCurrentUserId();
+        UUID userId = SecurityContext.getCurrentUserIdOrNull();
         if (userId == null) {
             return ResponseEntity.status(401)
                 .body(ApiResponse.error(401, "未登录"));
         }
         User user = userService.findById(userId);
-        return ResponseEntity.ok(ApiResponse.success(
-            AuthResponse.UserInfo.builder()
-                .id(user.getId().toString())
-                .email(user.getEmail())
-                .nickname(user.getNickname())
-                .autoExtract(Boolean.TRUE.equals(user.getAutoExtract()))
-                .dailyRecommendationEnabled(!Boolean.FALSE.equals(user.getDailyRecommendationEnabled()))
-                .onboardingCompleted(Boolean.TRUE.equals(user.getOnboardingCompleted()))
-                .build()
-        ));
+        return ResponseEntity.ok(ApiResponse.success(AuthResponse.UserInfo.from(user)));
     }
 
     @PutMapping("/preferences")
     public ResponseEntity<ApiResponse<AuthResponse.UserInfo>> updatePreferences(
         @Valid @RequestBody PreferenceUpdateRequest request
     ) {
-        UUID userId = SecurityContext.getCurrentUserId();
+        UUID userId = SecurityContext.getCurrentUserIdOrNull();
         if (userId == null) {
             return ResponseEntity.status(401)
                 .body(ApiResponse.error(401, "未登录"));
         }
         User user = userService.updatePreferences(userId, request);
-        return ResponseEntity.ok(ApiResponse.success(
-            AuthResponse.UserInfo.builder()
-                .id(user.getId().toString())
-                .email(user.getEmail())
-                .nickname(user.getNickname())
-                .autoExtract(Boolean.TRUE.equals(user.getAutoExtract()))
-                .dailyRecommendationEnabled(!Boolean.FALSE.equals(user.getDailyRecommendationEnabled()))
-                .onboardingCompleted(Boolean.TRUE.equals(user.getOnboardingCompleted()))
-                .build()
-        ));
+        return ResponseEntity.ok(ApiResponse.success(AuthResponse.UserInfo.from(user)));
     }
 
     @PutMapping("/onboarding/complete")
     public ResponseEntity<ApiResponse<AuthResponse.UserInfo>> completeOnboarding() {
-        UUID userId = SecurityContext.getCurrentUserId();
+        UUID userId = SecurityContext.getCurrentUserIdOrNull();
+        if (userId == null) {
+            return ResponseEntity.status(401)
+                .body(ApiResponse.error(401, "未登录"));
+        }
         User user = userService.completeOnboarding(userId);
-        return ResponseEntity.ok(ApiResponse.success(
-            AuthResponse.UserInfo.builder()
-                .id(user.getId().toString())
-                .email(user.getEmail())
-                .nickname(user.getNickname())
-                .autoExtract(Boolean.TRUE.equals(user.getAutoExtract()))
-                .dailyRecommendationEnabled(!Boolean.FALSE.equals(user.getDailyRecommendationEnabled()))
-                .onboardingCompleted(Boolean.TRUE.equals(user.getOnboardingCompleted()))
-                .onboardingCompleted(Boolean.TRUE.equals(user.getOnboardingCompleted()))
-                .build()
-        ));
+        return ResponseEntity.ok(ApiResponse.success(AuthResponse.UserInfo.from(user)));
     }
 
     @PutMapping("/onboarding/reset")
     public ResponseEntity<ApiResponse<AuthResponse.UserInfo>> resetOnboarding() {
-        UUID userId = SecurityContext.getCurrentUserId();
+        UUID userId = SecurityContext.getCurrentUserIdOrNull();
+        if (userId == null) {
+            return ResponseEntity.status(401)
+                .body(ApiResponse.error(401, "未登录"));
+        }
         User user = userService.resetOnboarding(userId);
-        return ResponseEntity.ok(ApiResponse.success(
-            AuthResponse.UserInfo.builder()
-                .id(user.getId().toString())
-                .email(user.getEmail())
-                .nickname(user.getNickname())
-                .autoExtract(Boolean.TRUE.equals(user.getAutoExtract()))
-                .dailyRecommendationEnabled(!Boolean.FALSE.equals(user.getDailyRecommendationEnabled()))
-                .onboardingCompleted(Boolean.TRUE.equals(user.getOnboardingCompleted()))
-                .onboardingCompleted(Boolean.TRUE.equals(user.getOnboardingCompleted()))
-                .build()
-        ));
+        return ResponseEntity.ok(ApiResponse.success(AuthResponse.UserInfo.from(user)));
     }
 
     @PostMapping("/logout")

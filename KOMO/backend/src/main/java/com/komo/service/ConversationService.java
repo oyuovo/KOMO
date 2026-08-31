@@ -10,6 +10,7 @@ import com.komo.exception.BusinessException;
 import com.komo.exception.ErrorCode;
 import com.komo.repository.ConversationRepository;
 import com.komo.repository.MessageRepository;
+import com.komo.util.MarkdownUtils;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.data.domain.PageRequest;
@@ -50,9 +51,14 @@ public class ConversationService {
     private final DedupService dedupService;
     private final RabbitTemplate rabbitTemplate;
     private final UserService userService;
+    private final RestTemplate restTemplate;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final RestTemplate restTemplate = new RestTemplate();
+
+    /** 列表接口返回上限，避免对话无限增长后一次性全量加载 */
+    private static final int MAX_LIST_SIZE = 200;
+    /** 发给 AI 的历史消息窗口（最近 N 条），防止长对话撞穿上下文窗口 */
+    private static final int MAX_HISTORY_MESSAGES = 20;
 
     @Value("${komo.ai.base-url}")
     private String aiBaseUrl;
@@ -65,7 +71,8 @@ public class ConversationService {
                                KnowledgeBaseService knowledgeBaseService,
                                DedupService dedupService,
                                RabbitTemplate rabbitTemplate,
-                               UserService userService) {
+                               UserService userService,
+                               RestTemplate restTemplate) {
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
         this.conversationPersistenceService = conversationPersistenceService;
@@ -75,6 +82,7 @@ public class ConversationService {
         this.dedupService = dedupService;
         this.rabbitTemplate = rabbitTemplate;
         this.userService = userService;
+        this.restTemplate = restTemplate;
     }
 
     /** 创建新对话 */
@@ -91,14 +99,16 @@ public class ConversationService {
         return conversationRepository.save(convo);
     }
 
-    /** 获取用户的对话列表 */
+    /** 获取用户的对话列表（限最近 MAX_LIST_SIZE 条） */
     public List<Conversation> list(UUID userId) {
-        return conversationRepository.findAllByUserIdOrderByUpdatedAtDesc(userId);
+        return conversationRepository.findAllByUserIdOrderByUpdatedAtDesc(
+            userId, PageRequest.of(0, MAX_LIST_SIZE));
     }
 
-    /** 获取用户指定知识库下的对话列表 */
+    /** 获取用户指定知识库下的对话列表（限最近 MAX_LIST_SIZE 条） */
     public List<Conversation> listByKnowledgeBase(UUID userId, UUID knowledgeBaseId) {
-        return conversationRepository.findAllByUserIdAndKnowledgeBaseIdOrderByUpdatedAtDesc(userId, knowledgeBaseId);
+        return conversationRepository.findAllByUserIdAndKnowledgeBaseIdOrderByUpdatedAtDesc(
+            userId, knowledgeBaseId, PageRequest.of(0, MAX_LIST_SIZE));
     }
 
     /** 切换对话所属知识库 */
@@ -154,43 +164,18 @@ public class ConversationService {
 
     /** 发送消息并获取 AI 回复。事务拆分：保存用户消息(TX) → AI调用 → 保存助手消息(TX)。 */
     public Message sendMessage(UUID conversationId, UUID userId, String content) {
-        // 1. 保存用户消息
+        // 1. 保存用户消息（内部已校验对话归属）
         conversationPersistenceService.saveUserMessage(conversationId, userId, content);
 
         // 1b. 获取对话所属知识库（用于 KB 范围内的 RAG）
-        UUID kbId = conversationRepository.findById(conversationId)
+        UUID kbId = conversationRepository.findByIdAndUserId(conversationId, userId)
             .map(Conversation::getKnowledgeBaseId).orElse(null);
 
-        // 2. 构建消息历史
+        // 2. 构建消息历史（截断窗口）+ RAG 上下文
         List<Message> history = messageRepository.findAllByConversationIdOrderByCreatedAtAsc(conversationId);
-        List<Map<String, String>> aiMessages = new ArrayList<>();
-
-        // 2a. RAG 检索 — ES 全文搜索，限定在当前知识库范围内
-        List<Map<String, Object>> relevantEntries = knowledgeIndexService.search(userId, content, 3, kbId);
-        if (!relevantEntries.isEmpty()) {
-            StringBuilder context = new StringBuilder();
-            String scopeHint = kbId != null ? "当前知识库" : "你的知识库";
-            context.append("以下是").append(scopeHint).append("中与当前问题相关的知识条目，请在回答时参考：\n\n");
-            for (Map<String, Object> entry : relevantEntries) {
-                context.append("### ").append(entry.getOrDefault("title", "")).append("\n");
-                String body = (String) entry.getOrDefault("content", "");
-                if (body == null || body.isEmpty()) {
-                    body = (String) entry.getOrDefault("contentPlain", "");
-                }
-                if (body != null && body.length() > 2000) {
-                    body = body.substring(0, 2000) + "\n\n...(内容过长，已截断)";
-                }
-                context.append(body).append("\n\n");
-            }
-            context.append("---\n请基于以上知识库内容回答用户问题。如果知识库内容不足以回答，请如实告知并提供你自己的知识。");
-            aiMessages.add(Map.of("role", "system", "content", context.toString()));
-        }
-
-        // 2b. 将历史消息加入上下文
-        history.forEach(m -> aiMessages.add(Map.of(
-            "role", m.getRole() == Message.MessageRole.USER ? "user" : "assistant",
-            "content", m.getContent()
-        )));
+        boolean initialExchange = history.size() <= 2;
+        history = truncateHistory(history);
+        List<Map<String, String>> aiMessages = buildAiMessages(userId, content, history, kbId);
 
         // 3. 调用 Python AI 服务
         String aiResponse;
@@ -215,9 +200,9 @@ public class ConversationService {
             aiResponse = "AI 服务暂时不可用，请稍后重试";
         }
 
-        // 3. 保存 AI 回复
+        // 4. 保存 AI 回复
         Message assistantMsg = conversationPersistenceService.saveAssistantMessage(
-            conversationId, userId, aiResponse, content, history.size() <= 2);
+            conversationId, userId, aiResponse, content, initialExchange);
 
         // 5. 异步入队提取任务（RabbitMQ），用户手动模式则跳过
         enqueueExtractionIfAuto(userId, conversationId, assistantMsg.getId(), aiMessages);
@@ -225,41 +210,60 @@ public class ConversationService {
         return assistantMsg;
     }
 
+    /** 只保留最近 MAX_HISTORY_MESSAGES 条历史，防止长对话撞穿 AI 上下文窗口 */
+    private List<Message> truncateHistory(List<Message> history) {
+        if (history.size() <= MAX_HISTORY_MESSAGES) {
+            return history;
+        }
+        return new ArrayList<>(history.subList(history.size() - MAX_HISTORY_MESSAGES, history.size()));
+    }
+
+    /** 拼装发给 AI 的消息列表：RAG 系统提示（如有）+ 历史消息。 */
+    private List<Map<String, String>> buildAiMessages(UUID userId, String content,
+                                                       List<Message> history, UUID kbId) {
+        List<Map<String, String>> aiMessages = new ArrayList<>();
+        List<Map<String, Object>> relevantEntries = knowledgeIndexService.search(userId, content, 3, kbId);
+        if (!relevantEntries.isEmpty()) {
+            StringBuilder context = new StringBuilder();
+            String scopeHint = kbId != null ? "当前知识库" : "你的知识库";
+            context.append("以下是").append(scopeHint).append("中与当前问题相关的知识条目，请在回答时参考：\n\n");
+            for (Map<String, Object> entry : relevantEntries) {
+                context.append("### ").append(entry.getOrDefault("title", "")).append("\n");
+                String body = (String) entry.getOrDefault("content", "");
+                if (body == null || body.isEmpty()) {
+                    body = (String) entry.getOrDefault("contentPlain", "");
+                }
+                if (body != null && body.length() > 2000) {
+                    body = body.substring(0, 2000) + "\n\n...(内容过长，已截断)";
+                }
+                context.append(body).append("\n\n");
+            }
+            context.append("---\n请基于以上知识库内容回答用户问题。如果知识库内容不足以回答，请如实告知并提供你自己的知识。");
+            aiMessages.add(Map.of("role", "system", "content", context.toString()));
+        }
+        history.forEach(m -> aiMessages.add(Map.of(
+            "role", m.getRole() == Message.MessageRole.USER ? "user" : "assistant",
+            "content", m.getContent()
+        )));
+        return aiMessages;
+    }
+
     /** SSE 流式对话 — 直接写 HttpServletResponse OutputStream。
      * 客户端断开后继续从 AI 读取完整响应并保存消息，确保对话不丢失。 */
     public void streamMessage(UUID conversationId, UUID userId, String content,
                                HttpServletResponse response) throws IOException {
-        // 1. 保存用户消息
+        // 1. 保存用户消息（内部已校验对话归属）
         conversationPersistenceService.saveUserMessage(conversationId, userId, content);
 
         // 1b. 获取对话所属知识库（用于 KB 范围内的 RAG）
-        UUID kbId = conversationRepository.findById(conversationId)
+        UUID kbId = conversationRepository.findByIdAndUserId(conversationId, userId)
             .map(Conversation::getKnowledgeBaseId).orElse(null);
 
-        // 2. 构建消息历史 + RAG 上下文
+        // 2. 构建消息历史（截断窗口）+ RAG 上下文
         List<Message> history = messageRepository.findAllByConversationIdOrderByCreatedAtAsc(conversationId);
-        List<Map<String, String>> aiMessages = new ArrayList<>();
-        List<Map<String, Object>> relevant = knowledgeIndexService.search(userId, content, 3, kbId);
-        if (!relevant.isEmpty()) {
-            String scopeHint = kbId != null ? "当前知识库" : "你的知识库";
-            StringBuilder ctx = new StringBuilder();
-            ctx.append("以下是").append(scopeHint).append("中与当前问题相关的知识条目，请在回答时参考：\n");
-            for (Map<String, Object> e : relevant) {
-                String body = (String) e.getOrDefault("content", "");
-                if (body == null || body.isEmpty()) {
-                    body = (String) e.getOrDefault("contentPlain", "");
-                }
-                if (body != null && body.length() > 2000) {
-                    body = body.substring(0, 2000) + "...(已截断)";
-                }
-                ctx.append("- ").append(e.getOrDefault("title", "")).append(": ").append(body).append("\n");
-            }
-            ctx.append("---\n请基于以上知识库内容回答用户问题。如果知识库内容不足以回答，请如实告知并提供你自己的知识。");
-            aiMessages.add(Map.of("role", "system", "content", ctx.toString()));
-        }
-        history.forEach(m -> aiMessages.add(Map.of(
-            "role", m.getRole() == Message.MessageRole.USER ? "user" : "assistant",
-            "content", m.getContent())));
+        boolean initialExchange = history.size() <= 2;
+        history = truncateHistory(history);
+        List<Map<String, String>> aiMessages = buildAiMessages(userId, content, history, kbId);
 
         // 3. 获取 OutputStream，客户端断开后自动降级为 nullOutputStream
         OutputStream out = response.getOutputStream();
@@ -350,7 +354,7 @@ public class ConversationService {
             // ★ 无论客户端是否断开，只要 AI 返回了内容就保存
             if (fullResponse.length() > 0) {
                 Message assistantMsg = conversationPersistenceService.saveAssistantMessage(
-                    conversationId, userId, fullResponse.toString(), content, history.size() <= 2);
+                    conversationId, userId, fullResponse.toString(), content, initialExchange);
 
                 // 异步入队提取任务
                 enqueueExtractionIfAuto(userId, conversationId, assistantMsg.getId(), aiMessages);
@@ -371,7 +375,7 @@ public class ConversationService {
     private void enqueueExtractionIfAuto(UUID userId, UUID conversationId,
                                           UUID messageId, List<Map<String, String>> aiMessages) {
         try {
-            Conversation convo = conversationRepository.findById(conversationId).orElse(null);
+            Conversation convo = conversationRepository.findByIdAndUserId(conversationId, userId).orElse(null);
             if (convo == null) return;
 
             // 无知识库对话 — 绝不提取
@@ -467,12 +471,15 @@ public class ConversationService {
             );
 
             if (response == null || !response.containsKey("knowledge_points")) {
+                log.warn("[extraction] AI 服务返回异常响应（null 或缺少 knowledge_points），conversationId={} response={}",
+                    conversationId, response);
                 return;
             }
 
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> points =
                 (List<Map<String, Object>>) response.get("knowledge_points");
+            log.info("[extraction] AI 返回知识点 {} 个 conversationId={}", points.size(), conversationId);
 
             List<KnowledgeDraft> drafts = new ArrayList<>();
             for (Map<String, Object> point : points) {
@@ -493,7 +500,7 @@ public class ConversationService {
 
                 // 防御性校验：ARTICLE 纯文本 < 500 字 → 降级为 FRAGMENT
                 if (extractType == KnowledgeDraft.ExtractType.ARTICLE) {
-                    int plainLen = plainTextLength(content);
+                    int plainLen = MarkdownUtils.plainTextLength(content);
                     if (plainLen < 500) {
                         log.warn("[extraction] ARTICLE 内容过短({}字)，降级为 FRAGMENT: {}",
                             plainLen, title);
@@ -512,7 +519,9 @@ public class ConversationService {
 
                 // 根据提取类型 + 去重结果决定处理方式
                 if (dedupService.shouldAutoReject(result)) {
-                    continue; // 高分重复，静默丢弃
+                    log.info("[extraction] 高分重复(score={})，静默丢弃: {}",
+                        String.format("%.2f", result.getScore()), title);
+                    continue;
                 }
 
                 if (extractType == KnowledgeDraft.ExtractType.SUPPLEMENT) {
@@ -552,9 +561,11 @@ public class ConversationService {
                         draft.setRelationType(KnowledgeDraft.RelationType.NEW);
                     }
                 } else {
-                    // FRAGMENT：碎片知识。如果有强匹配文章 → 默认嵌入；否则 → 碎片库兜底
+                    // FRAGMENT：碎片知识。如果有强匹配文章 → 默认嵌入；否则 → 碎片库兜底。
+                    // 阈值 0.55：实测无关文档对归一化后可达 0.26~0.29，完全相同内容≈ 0.59，
+                    // 旧值 0.4 会把无关文章误判为嵌入目标（见 docs/pain-points.md P13）。
                     double matchScore = result.getScore();
-                    if (result.isDuplicate() && result.getMatchedEntryId() != null && matchScore > 0.4) {
+                    if (result.isDuplicate() && result.getMatchedEntryId() != null && matchScore > 0.55) {
                         // 强匹配已有文章 → 默认嵌入
                         draft.setRelationType(KnowledgeDraft.RelationType.SUPPLEMENTS);
                         draft.setRelationDetail("{\"parentEntryId\":\"" + result.getMatchedEntryId()
@@ -570,27 +581,15 @@ public class ConversationService {
 
             if (!drafts.isEmpty()) {
                 knowledgeDraftService.saveExtractedDrafts(userId, conversationId, messageId, drafts);
+                log.info("[extraction] 保存草稿 {} 条 conversationId={}", drafts.size(), conversationId);
+            } else {
+                log.warn("[extraction] 知识点 {} 个但无草稿产出（全部被去重丢弃）conversationId={}",
+                    points.size(), conversationId);
             }
         } catch (Exception e) {
             log.error("[extraction] 草稿提取失败，将由消息队列重试", e);
             throw new IllegalStateException("Knowledge extraction failed", e);
         }
-    }
-
-    /** 去除 Markdown 标记，返回纯文本字符数。用于 ARTICLE 长度门槛校验。 */
-    private int plainTextLength(String markdown) {
-        if (markdown == null) return 0;
-        String text = markdown
-            .replaceAll("```[\\s\\S]*?```", " ")   // 代码块
-            .replaceAll("`[^`]+`", " ")              // 行内代码
-            .replaceAll("!\\[[^]]*]\\([^)]*\\)", " ") // 图片
-            .replaceAll("\\[[^]]*]\\([^)]*\\)", "$1") // 链接保留文字
-            .replaceAll("#+\\s*", "")                 // 标题标记
-            .replaceAll("[*_~>]", "")                 // 粗体/斜体/删除线/引用
-            .replaceAll("^[\\s]*[-*+]\\s", "")        // 无序列表
-            .replaceAll("^[\\s]*\\d+\\.\\s", "")      // 有序列表
-            .replaceAll("\\s+", "");                  // 合并空白，统计有效字符
-        return text.length();
     }
 
     /**

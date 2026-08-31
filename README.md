@@ -32,13 +32,14 @@
 ## 技术架构
 
 ```
-React (Next.js 16) + React Native (Expo)  ←  Web + App 前端
+React (Next.js 16)                       ←  Web 前端
          │ REST + SSE
-Java Spring Boot 3 (:8081)               ←  业务逻辑、认证、CRUD
-         │ HTTP
-Python FastAPI (:8001, Docker)           ←  AI 对话、知识提取、RAG
-         │
-PostgreSQL (:5434) + Qdrant (:6333)     ←  数据 + 向量搜索
+Java Spring Boot 3 (:8081)               ←  业务逻辑、认证、CRUD、任务队列
+         │ HTTP                          │ AMQP
+Python FastAPI (:8001, Docker)           ←  AI 对话、知识提取、推荐、RAG 检索服务化（预留）
+         │                               ↓
+PostgreSQL (:5434) + Elasticsearch (:9201) + RabbitMQ
+         数据存储        全文检索（SmartCN）    提取任务队列 + DLQ 重试
 ```
 
 **三语言架构**：Java 做高并发业务逻辑、Python 做 AI/ML、TypeScript 做跨平台前端。Python 运行在 Docker 中隔离。
@@ -48,11 +49,10 @@ PostgreSQL (:5434) + Qdrant (:6333)     ←  数据 + 向量搜索
 | 层 | 技术 |
 |---|---|
 | Web 前端 | Next.js 16 (Turbopack), TypeScript, Radix UI, CSS Modules |
-| App 前端 | React Native 0.76+ / Expo SDK 52+ |
 | 后端 | Java 21 + Spring Boot 3.2, Spring Security (JWT), JPA + Hibernate |
 | AI 服务 | Python 3.12 + FastAPI, DeepSeek V3, OpenAI-compatible SDK |
-| 数据库 | PostgreSQL 16 (ltree 树形分类), Qdrant (向量搜索) |
-| 基础设施 | Docker Compose, Nginx |
+| 数据库 | PostgreSQL 16 (ltree 树形分类), Elasticsearch 8 (SmartCN 全文检索) |
+| 基础设施 | Docker Compose, RabbitMQ, Nginx |
 
 ---
 
@@ -65,8 +65,8 @@ PostgreSQL (:5434) + Qdrant (:6333)     ←  数据 + 向量搜索
 - ✅ **草稿管理** — 确认入库 / 编辑后入库 / 驳回 / 批量操作
 - ✅ **知识 CRUD** — Markdown 编辑 + 实时预览，全文搜索
 - ✅ **RAG 检索增强** — 对话中自动注入相关知识库内容
-- ✅ **用户系统** — JWT 双 Token (Access 15min / Refresh 7d)
-- ✅ **数据安全** — 全链路 `user_id` 校验，Qdrant 多租户过滤
+- ✅ **用户系统** — JWT 双 Token (Access 1h / Refresh 7d)，httpOnly Cookie + CSRF 防护
+- ✅ **数据安全** — 全链路 `user_id` 归属校验，ES 检索多租户隔离
 
 ### 路线图
 
@@ -107,7 +107,7 @@ cp docker/.env.example docker/.env
 ```bash
 cd docker
 docker-compose up -d
-# 启动 PostgreSQL + Qdrant + Python AI 服务
+# 启动 PostgreSQL + Elasticsearch + RabbitMQ + Python AI 服务
 ```
 
 ### 4. 启动后端
@@ -157,8 +157,7 @@ komo/
 │   └── frontend/                   # 前端 Monorepo
 │       └── packages/
 │           ├── shared/             # 共享类型 & API 客户端
-│           ├── web/                # Next.js Web 端
-│           └── mobile/             # React Native App 端
+│           └── web/                # Next.js Web 端
 │
 ├── docker/                         # Docker Compose 配置
 │   ├── docker-compose.yml

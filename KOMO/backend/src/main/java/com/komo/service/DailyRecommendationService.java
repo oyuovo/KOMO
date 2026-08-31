@@ -2,12 +2,14 @@ package com.komo.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.komo.entity.Conversation;
 import com.komo.entity.DailyRecommendation;
 import com.komo.entity.KnowledgeBase;
 import com.komo.entity.KnowledgeEntry;
 import com.komo.entity.User;
 import com.komo.exception.BusinessException;
 import com.komo.exception.ErrorCode;
+import com.komo.repository.ConversationRepository;
 import com.komo.repository.DailyRecommendationRepository;
 import com.komo.repository.KnowledgeRepository;
 import com.komo.security.SecurityContext;
@@ -21,6 +23,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
@@ -45,9 +48,14 @@ public class DailyRecommendationService {
     private final KnowledgeRepository knowledgeRepository;
     private final KnowledgeBaseService knowledgeBaseService;
     private final UserService userService;
+    private final ConversationRepository conversationRepository;
+    private final TransactionTemplate transactionTemplate;
+    private final RestTemplate restTemplate;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final RestTemplate restTemplate = new RestTemplate();
+
+    /** 用户级锁：防止同一用户并发触发 generate 时双写 ACTIVE 记录。 */
+    private final java.util.concurrent.ConcurrentHashMap<UUID, Object> userLocks = new java.util.concurrent.ConcurrentHashMap<>();
 
     @Value("${komo.ai.base-url}")
     private String aiBaseUrl;
@@ -63,36 +71,59 @@ public class DailyRecommendationService {
             return null;
         }
 
-        // 查找今天已有的活跃推荐
+        // 查找今天已有的活跃推荐（容错同日重复，取最新一条）
         LocalDateTime todayStart = LocalDate.now().atStartOfDay();
         return recommendationRepository
-            .findByUserIdAndStatusAndCreatedAtAfter(userId, "ACTIVE", todayStart)
+            .findTopByUserIdAndStatusAndCreatedAtAfterOrderByCreatedAtDesc(userId, "ACTIVE", todayStart)
             .orElse(null);
     }
 
     /**
      * 触发生成推荐问题（调用 AI 服务 + 入库）。
-     * 如果今天已有活跃推荐，先将其标记为 DISMISSED。
+     *
+     * @param force false=幂等：今日已有 ACTIVE 推荐则直接返回；
+     *              true=强制重新生成（先把旧推荐标记为 DISMISSED）。
+     *
+     * 事务拆分（硬性约束：外部 API 调用不能在 @Transactional 内）：
+     * TX1 处理旧推荐 → 外部调用 AI → TX2 保存新推荐。
      */
-    @Transactional
-    public DailyRecommendation generateTodayRecommendation(UUID userId) {
+    public DailyRecommendation generateTodayRecommendation(UUID userId, boolean force) {
+        // 用户级互斥：前端可能并发发起两次生成（如 StrictMode 双挂载），
+        // 不加锁会产生同日双 ACTIVE 记录。
+        synchronized (userLocks.computeIfAbsent(userId, k -> new Object())) {
+            return doGenerateTodayRecommendation(userId, force);
+        }
+    }
+
+    private DailyRecommendation doGenerateTodayRecommendation(UUID userId, boolean force) {
         User user = userService.findById(userId);
         if (Boolean.FALSE.equals(user.getDailyRecommendationEnabled())) {
             return null;
         }
 
-        // 将旧的活跃推荐标记为已处理
-        List<DailyRecommendation> oldActive = recommendationRepository
-            .findByUserIdAndStatus(userId, "ACTIVE");
-        for (DailyRecommendation old : oldActive) {
-            old.setStatus("DISMISSED");
-            recommendationRepository.save(old);
+        // 幂等检查：非强制模式下，今日已有推荐则直接返回，不重复调 AI。
+        LocalDateTime todayStart = LocalDate.now().atStartOfDay();
+        DailyRecommendation existing = recommendationRepository
+            .findTopByUserIdAndStatusAndCreatedAtAfterOrderByCreatedAtDesc(userId, "ACTIVE", todayStart)
+            .orElse(null);
+        if (existing != null && !force) {
+            return existing;
         }
 
-        // 构建知识概况
+        // TX1: 将旧的活跃推荐标记为已处理（短事务）
+        transactionTemplate.executeWithoutResult(status -> {
+            List<DailyRecommendation> oldActive = recommendationRepository
+                .findByUserIdAndStatus(userId, "ACTIVE");
+            for (DailyRecommendation old : oldActive) {
+                old.setStatus("DISMISSED");
+                recommendationRepository.save(old);
+            }
+        });
+
+        // 构建知识概况（含近期话题与已忽略话题）
         Map<String, Object> summary = buildKnowledgeSummary(userId);
 
-        // 调用 Python AI 服务
+        // 外部调用 Python AI 服务（无事务）
         List<Map<String, Object>> questions = callAiRecommendation(userId.toString(), summary);
 
         if (questions.isEmpty()) {
@@ -100,7 +131,7 @@ public class DailyRecommendationService {
             return null;
         }
 
-        // 取第一个问题入库
+        // 取第一个问题，在新事务中入库（AI 调用已完成）
         Map<String, Object> first = questions.get(0);
         DailyRecommendation rec = DailyRecommendation.builder()
             .userId(userId)
@@ -112,9 +143,10 @@ public class DailyRecommendationService {
             .status("ACTIVE")
             .build();
 
-        rec = recommendationRepository.save(rec);
-        log.info("[daily-rec] user={} 新推荐已入库 id={} dimension={}", userId, rec.getId(), rec.getDimension());
-        return rec;
+        DailyRecommendation saved = transactionTemplate.execute(status -> recommendationRepository.save(rec));
+        log.info("[daily-rec] user={} 新推荐已入库 id={} dimension={}", userId,
+            saved != null ? saved.getId() : null, rec.getDimension());
+        return saved;
     }
 
     /**
@@ -160,11 +192,28 @@ public class DailyRecommendationService {
             ))
             .collect(Collectors.toList());
 
+        // 最近 5 个对话主题（对话标题），供 AI 参考近期讨论方向，避免重复提问。
+        List<String> recentTopics = conversationRepository
+            .findAllByUserIdOrderByUpdatedAtDesc(userId, PageRequest.of(0, 5))
+            .stream()
+            .map(Conversation::getTitle)
+            .filter(t -> t != null && !t.isBlank() && !"新对话".equals(t))
+            .collect(Collectors.toList());
+
+        // 最近 10 条已忽略推荐的问题，避免重复推荐用户不感兴趣的话题。
+        List<String> dismissedTopics = recommendationRepository
+            .findByUserIdAndStatusOrderByCreatedAtDesc(userId, "DISMISSED")
+            .stream()
+            .limit(10)
+            .map(DailyRecommendation::getQuestion)
+            .filter(q -> q != null && !q.isBlank())
+            .collect(Collectors.toList());
+
         return Map.of(
             "kbs", kbList,
             "recent_entries", entryList,
-            "recent_topics", List.of(),
-            "dismissed_topics", List.of()
+            "recent_topics", recentTopics,
+            "dismissed_topics", dismissedTopics
         );
     }
 
@@ -199,12 +248,8 @@ public class DailyRecommendationService {
     }
 
     private DailyRecommendation findOwnRecommendation(UUID id, UUID userId) {
-        DailyRecommendation rec = recommendationRepository.findById(id)
+        return recommendationRepository.findByIdAndUserId(id, userId)
             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "推荐不存在"));
-        if (!rec.getUserId().equals(userId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "无权操作此推荐");
-        }
-        return rec;
     }
 
     private String toJson(Object obj) {

@@ -48,7 +48,7 @@ class KnowledgeServiceMergeTest {
 
         assertSame(merged, result);
         verify(transactions, times(2)).execute(any());
-        verify(indexService).updateEntry(targetId, userId, "target", "merged");
+        verify(indexService).updateEntry(targetId, userId, null, "target", "merged", "merged");
         verify(indexService).deleteEntry(fragmentId);
     }
 }

@@ -582,7 +582,7 @@ export async function switchConversationKb(
   knowledgeBaseId: string | null
 ): Promise<ConversationData> {
   return put(`/conversations/${conversationId}/kb`, {
-    knowledgeBaseId: knowledgeBaseId ?? '',
+    knowledgeBaseId,
   });
 }
 
@@ -614,8 +614,8 @@ export async function getTodayRecommendation(): Promise<DailyRecommendationData 
   return get('/recommendations/today');
 }
 
-export async function generateRecommendation(): Promise<DailyRecommendationData | null> {
-  return post('/recommendations/generate', {});
+export async function generateRecommendation(force = false): Promise<DailyRecommendationData | null> {
+  return post(`/recommendations/generate${force ? '?force=true' : ''}`, {});
 }
 
 export async function dismissRecommendation(id: string): Promise<void> {

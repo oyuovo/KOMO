@@ -9,6 +9,7 @@ import com.komo.repository.KnowledgeDraftRepository;
 import com.komo.repository.KnowledgeLinkRepository;
 import com.komo.repository.KnowledgeRepository;
 import com.komo.security.SecurityContext;
+import com.komo.util.MarkdownUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,16 +48,8 @@ public class KnowledgeDraftService {
     /** 获取当前用户的待处理草稿列表 */
     public List<KnowledgeDraft> listPending() {
         UUID userId = SecurityContext.getCurrentUserId();
-        return draftRepository.findByUserIdOrderByCreatedAtDesc(userId)
-            .stream()
-            .filter(d -> d.getStatus() == KnowledgeDraft.DraftStatus.PENDING)
-            .toList();
-    }
-
-    /** 获取所有草稿（含已处理的） */
-    public List<KnowledgeDraft> listAll() {
-        return draftRepository.findByUserIdOrderByCreatedAtDesc(
-            SecurityContext.getCurrentUserId());
+        return draftRepository.findByUserIdAndStatusOrderByCreatedAtDesc(
+            userId, KnowledgeDraft.DraftStatus.PENDING);
     }
 
     /** 确认草稿 — 按提取类型路由到对应知识库，可通过 overrideKbId 覆盖，可通过 parentEntryId 嵌入 */
@@ -103,7 +96,7 @@ public class KnowledgeDraftService {
             .userId(draft.getUserId())
             .title(draft.getTitle())
             .content(draft.getContent())
-            .contentPlain(stripMarkdown(draft.getContent()))
+            .contentPlain(MarkdownUtils.stripMarkdown(draft.getContent()))
             .source(KnowledgeEntry.KnowledgeSource.AI_EXTRACT)
             .entryType(KnowledgeEntry.KnowledgeType.FACT)
             .knowledgeBaseId(targetKbId)
@@ -162,7 +155,7 @@ public class KnowledgeDraftService {
             .userId(draft.getUserId())
             .title(title != null ? title : draft.getTitle())
             .content(content != null ? content : draft.getContent())
-            .contentPlain(stripMarkdown(content != null ? content : draft.getContent()))
+            .contentPlain(MarkdownUtils.stripMarkdown(content != null ? content : draft.getContent()))
             .source(KnowledgeEntry.KnowledgeSource.AI_EXTRACT)
             .entryType(KnowledgeEntry.KnowledgeType.FACT)
             .knowledgeBaseId(targetKbId)
@@ -247,12 +240,10 @@ public class KnowledgeDraftService {
         return draftRepository.findByConversationIdAndUserId(conversationId, userId);
     }
 
-    /** 获取用户所有待处理草稿（全局去重） */
+    /** 获取用户所有待处理草稿（全局去重，不设上限以保证去重正确性） */
     public List<KnowledgeDraft> listAllPending(UUID userId) {
-        return draftRepository.findByUserIdOrderByCreatedAtDesc(userId)
-            .stream()
-            .filter(d -> d.getStatus() == KnowledgeDraft.DraftStatus.PENDING)
-            .toList();
+        return draftRepository.findByUserIdAndStatusOrderByCreatedAtDesc(
+            userId, KnowledgeDraft.DraftStatus.PENDING);
     }
 
     /** 删除对话关联的所有草稿 */
@@ -261,24 +252,9 @@ public class KnowledgeDraftService {
         draftRepository.deleteByConversationId(conversationId);
     }
 
-    /** 安全查询：校验草稿归属 */
+    /** 安全查询：带归属校验的草稿单条查询 */
     private KnowledgeDraft findOwnDraft(UUID draftId) {
-        KnowledgeDraft draft = draftRepository.findById(draftId)
+        return draftRepository.findByIdAndUserId(draftId, SecurityContext.getCurrentUserId())
             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "草稿不存在"));
-        if (!draft.getUserId().equals(SecurityContext.getCurrentUserId())) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "无权访问此草稿");
-        }
-        return draft;
-    }
-
-    private String stripMarkdown(String markdown) {
-        if (markdown == null) return "";
-        return markdown
-            .replaceAll("#{1,6}\\s", "")
-            .replaceAll("[*_~`>]", "")
-            .replaceAll("\\[([^]]+)]\\([^)]+\\)", "$1")
-            .replaceAll("```[\\s\\S]*?```", "")
-            .replaceAll("\\s+", " ")
-            .trim();
     }
 }

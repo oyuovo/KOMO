@@ -3,7 +3,6 @@ package com.komo.service;
 import com.komo.repository.ConversationRepository;
 import com.komo.repository.MessageRepository;
 import org.junit.jupiter.api.Test;
-import org.mockito.MockedConstruction;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
@@ -13,42 +12,44 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.mockConstruction;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class ConversationServiceTest {
 
-    @Test
-    void extractionFailurePropagatesSoRabbitListenerCanRetry() {
-        ConversationService service = new ConversationService(
+    private ConversationService newService(RestTemplate restTemplate, KnowledgeDraftService draftService) {
+        return new ConversationService(
             mock(ConversationRepository.class),
             mock(MessageRepository.class),
             mock(ConversationPersistenceService.class),
-            mock(KnowledgeDraftService.class),
+            draftService,
             mock(KnowledgeIndexService.class),
             mock(KnowledgeBaseService.class),
             mock(DedupService.class),
-            mock(RabbitTemplate.class)
+            mock(RabbitTemplate.class),
+            mock(UserService.class),
+            restTemplate
         );
+    }
 
-        try (MockedConstruction<RestTemplate> ignored = mockConstruction(
-            RestTemplate.class,
-            (restTemplate, context) -> when(restTemplate.postForObject(
-                anyString(), any(), eq(Map.class)
-            )).thenThrow(new RestClientException("AI service unavailable"))
-        )) {
-            assertThrows(IllegalStateException.class, () -> service.extractAndSaveDrafts(
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                List.of(Map.of("role", "user", "content", "test"))
-            ));
-        }
+    @Test
+    void extractionFailurePropagatesSoRabbitListenerCanRetry() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        when(restTemplate.postForObject(anyString(), any(), eq(Map.class)))
+            .thenThrow(new RestClientException("AI service unavailable"));
+
+        ConversationService service = newService(restTemplate, mock(KnowledgeDraftService.class));
+
+        assertThrows(IllegalStateException.class, () -> service.extractAndSaveDrafts(
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            List.of(Map.of("role", "user", "content", "test"))
+        ));
     }
 
     @Test
@@ -58,26 +59,17 @@ class ConversationServiceTest {
         KnowledgeDraftService draftService = mock(KnowledgeDraftService.class);
         when(draftService.hasDraftsForMessage(messageId, userId)).thenReturn(true);
 
-        ConversationService service = new ConversationService(
-            mock(ConversationRepository.class),
-            mock(MessageRepository.class),
-            mock(ConversationPersistenceService.class),
-            draftService,
-            mock(KnowledgeIndexService.class),
-            mock(KnowledgeBaseService.class),
-            mock(DedupService.class),
-            mock(RabbitTemplate.class)
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        ConversationService service = newService(restTemplate, draftService);
+
+        service.extractAndSaveDrafts(
+            userId,
+            UUID.randomUUID(),
+            messageId,
+            List.of(Map.of("role", "user", "content", "test"))
         );
 
-        try (MockedConstruction<RestTemplate> construction = mockConstruction(RestTemplate.class)) {
-            service.extractAndSaveDrafts(
-                userId,
-                UUID.randomUUID(),
-                messageId,
-                List.of(Map.of("role", "user", "content", "test"))
-            );
-
-            assertTrue(construction.constructed().isEmpty());
-        }
+        // 已有草稿时应直接跳过，不再调用 AI 提取服务
+        verifyNoInteractions(restTemplate);
     }
 }

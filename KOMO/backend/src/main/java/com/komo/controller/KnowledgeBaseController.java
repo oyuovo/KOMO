@@ -1,8 +1,10 @@
 package com.komo.controller;
 
+import com.komo.dto.request.KnowledgeBaseRequest;
 import com.komo.dto.response.ApiResponse;
 import com.komo.entity.KnowledgeBase;
 import com.komo.service.KnowledgeBaseService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,7 +18,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -32,27 +33,17 @@ public class KnowledgeBaseController {
     }
 
     @PostMapping
-    public ResponseEntity<ApiResponse<KnowledgeBase>> create(@RequestBody Map<String, String> body) {
-        String name = body.get("name");
-        if (name == null || name.isBlank()) {
-            return ResponseEntity.badRequest()
-                .body(ApiResponse.error(400, "知识库名称不能为空"));
-        }
-        KnowledgeBase kb = knowledgeBaseService.create(name.trim());
+    public ResponseEntity<ApiResponse<KnowledgeBase>> create(@Valid @RequestBody KnowledgeBaseRequest body) {
+        KnowledgeBase kb = knowledgeBaseService.create(body.getName().trim());
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(kb));
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<KnowledgeBase>> rename(
         @PathVariable UUID id,
-        @RequestBody Map<String, String> body
+        @Valid @RequestBody KnowledgeBaseRequest body
     ) {
-        String name = body.get("name");
-        if (name == null || name.isBlank()) {
-            return ResponseEntity.badRequest()
-                .body(ApiResponse.error(400, "名称不能为空"));
-        }
-        return ResponseEntity.ok(ApiResponse.success(knowledgeBaseService.rename(id, name.trim())));
+        return ResponseEntity.ok(ApiResponse.success(knowledgeBaseService.rename(id, body.getName().trim())));
     }
 
     @DeleteMapping("/{id}")

@@ -1,6 +1,10 @@
 package com.komo.controller;
 
 import com.komo.dto.BatchDeleteResult;
+import com.komo.dto.request.BatchIdsRequest;
+import com.komo.dto.request.ConversationCreateRequest;
+import com.komo.dto.request.ConversationKbRequest;
+import com.komo.dto.request.MessageSendRequest;
 import com.komo.dto.response.ApiResponse;
 import com.komo.entity.Conversation;
 import com.komo.entity.Message;
@@ -11,6 +15,7 @@ import jakarta.servlet.AsyncEvent;
 import jakarta.servlet.AsyncListener;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -27,7 +32,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -54,15 +58,9 @@ public class ConversationController {
     }
 
     @PostMapping
-    public ResponseEntity<ApiResponse<Conversation>> create(@RequestBody Map<String, String> body) {
+    public ResponseEntity<ApiResponse<Conversation>> create(@Valid @RequestBody ConversationCreateRequest body) {
         UUID userId = SecurityContext.getCurrentUserId();
-        String title = body.getOrDefault("title", null);
-        UUID knowledgeBaseId = null;
-        if (body.containsKey("knowledgeBaseId") && body.get("knowledgeBaseId") != null
-            && !body.get("knowledgeBaseId").isEmpty()) {
-            knowledgeBaseId = UUID.fromString(body.get("knowledgeBaseId"));
-        }
-        Conversation convo = conversationService.create(userId, title, knowledgeBaseId);
+        Conversation convo = conversationService.create(userId, body.getTitle(), body.getKnowledgeBaseId());
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(ApiResponse.success(convo));
     }
@@ -76,15 +74,10 @@ public class ConversationController {
     @PostMapping("/{id}/messages")
     public ResponseEntity<ApiResponse<Message>> sendMessage(
         @PathVariable UUID id,
-        @RequestBody Map<String, String> body
+        @Valid @RequestBody MessageSendRequest body
     ) {
         UUID userId = SecurityContext.getCurrentUserId();
-        String content = body.get("content");
-        if (content == null || content.isBlank()) {
-            return ResponseEntity.badRequest()
-                .body(ApiResponse.error(400, "消息内容不能为空"));
-        }
-        Message reply = conversationService.sendMessage(id, userId, content);
+        Message reply = conversationService.sendMessage(id, userId, body.getContent());
         return ResponseEntity.ok(ApiResponse.success(reply));
     }
 
@@ -96,19 +89,14 @@ public class ConversationController {
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
-    /** 切换对话归属的知识库。只影响后续消息。 */
+    /** 切换对话归属的知识库。只影响后续消息。knowledgeBaseId 为 null 表示切为无知识库对话。 */
     @PutMapping("/{id}/kb")
     public ResponseEntity<ApiResponse<Conversation>> switchKnowledgeBase(
         @PathVariable UUID id,
-        @RequestBody Map<String, String> body
+        @Valid @RequestBody ConversationKbRequest body
     ) {
         UUID userId = SecurityContext.getCurrentUserId();
-        UUID knowledgeBaseId = null;
-        if (body.containsKey("knowledgeBaseId") && body.get("knowledgeBaseId") != null
-            && !body.get("knowledgeBaseId").isEmpty()) {
-            knowledgeBaseId = UUID.fromString(body.get("knowledgeBaseId"));
-        }
-        Conversation updated = conversationService.switchKnowledgeBase(id, userId, knowledgeBaseId);
+        Conversation updated = conversationService.switchKnowledgeBase(id, userId, body.getKnowledgeBaseId());
         return ResponseEntity.ok(ApiResponse.success(updated));
     }
 
@@ -121,12 +109,9 @@ public class ConversationController {
 
     /** 批量删除对话（含消息和关联草稿） */
     @DeleteMapping("/batch")
-    public ResponseEntity<ApiResponse<BatchDeleteResult>> batchDelete(@RequestBody Map<String, List<String>> body) {
+    public ResponseEntity<ApiResponse<BatchDeleteResult>> batchDelete(@Valid @RequestBody BatchIdsRequest body) {
         UUID userId = SecurityContext.getCurrentUserId();
-        List<UUID> ids = body.get("ids").stream()
-            .map(UUID::fromString)
-            .toList();
-        BatchDeleteResult result = conversationService.batchDelete(ids, userId);
+        BatchDeleteResult result = conversationService.batchDelete(body.getIds(), userId);
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 
@@ -134,17 +119,12 @@ public class ConversationController {
     @PostMapping(value = "/{id}/messages/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public void streamMessage(
         @PathVariable UUID id,
-        @RequestBody Map<String, String> body,
+        @Valid @RequestBody MessageSendRequest body,
         HttpServletRequest request,
         HttpServletResponse response
     ) throws IOException {
         UUID userId = SecurityContext.getCurrentUserId();
-        String content = body.get("content");
-        if (content == null || content.isBlank()) {
-            response.setStatus(400);
-            response.getWriter().write("{\"error\":\"消息内容不能为空\"}");
-            return;
-        }
+        String content = body.getContent();
         // 响应头
         response.setContentType("text/event-stream");
         response.setCharacterEncoding("UTF-8");

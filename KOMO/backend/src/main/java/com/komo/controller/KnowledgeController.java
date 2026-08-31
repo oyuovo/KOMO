@@ -1,6 +1,8 @@
 package com.komo.controller;
 
 import com.komo.dto.BatchDeleteResult;
+import com.komo.dto.request.AddLinkRequest;
+import com.komo.dto.request.BatchIdsRequest;
 import com.komo.dto.request.KnowledgeCreateRequest;
 import com.komo.dto.request.KnowledgeUpdateRequest;
 import com.komo.dto.response.ApiResponse;
@@ -84,11 +86,8 @@ public class KnowledgeController {
 
     /** 批量软删除知识条目 */
     @DeleteMapping("/batch")
-    public ResponseEntity<ApiResponse<BatchDeleteResult>> batchDelete(@RequestBody Map<String, List<String>> body) {
-        List<UUID> ids = body.get("ids").stream()
-            .map(UUID::fromString)
-            .toList();
-        BatchDeleteResult result = knowledgeService.batchSoftDelete(ids);
+    public ResponseEntity<ApiResponse<BatchDeleteResult>> batchDelete(@Valid @RequestBody BatchIdsRequest body) {
+        BatchDeleteResult result = knowledgeService.batchSoftDelete(body.getIds());
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 
@@ -100,11 +99,10 @@ public class KnowledgeController {
     @PostMapping("/{id}/links")
     public ResponseEntity<ApiResponse<KnowledgeLink>> addLink(
         @PathVariable UUID id,
-        @RequestBody Map<String, String> body
+        @Valid @RequestBody AddLinkRequest body
     ) {
-        UUID targetId = UUID.fromString(body.get("targetEntryId"));
-        String relation = body.getOrDefault("relation", "RELATED");
-        KnowledgeLink link = knowledgeService.addLink(id, targetId, relation);
+        String relation = body.getRelation() != null ? body.getRelation() : "RELATED";
+        KnowledgeLink link = knowledgeService.addLink(id, body.getTargetEntryId(), relation);
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(ApiResponse.success(link));
     }

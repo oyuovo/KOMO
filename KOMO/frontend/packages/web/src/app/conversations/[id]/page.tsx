@@ -295,14 +295,20 @@ export default function ConversationDetailPage() {
     let result: 'success' | 'empty' = 'empty';
     try {
       await extractConversation(conversationId);
-      // 等待异步 Worker 处理
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      const drafts = await listDrafts();
-      const newCount = drafts.filter(d => d.status === 'PENDING').length;
-      if (newCount > prevCount) {
-        result = 'success';
-        setDraftCount(newCount);
-        setShowDraftHint(true);
+      // 轮询等待异步 Worker 处理：每 1.5s 查一次草稿列表，
+      // 发现新增立即结束；最多等 30s（提取含 LLM 调用，可能较慢）。
+      const POLL_INTERVAL_MS = 1500;
+      const POLL_DEADLINE = Date.now() + 30000;
+      while (Date.now() < POLL_DEADLINE) {
+        await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
+        const drafts = await listDrafts();
+        const newCount = drafts.filter(d => d.status === 'PENDING').length;
+        if (newCount > prevCount) {
+          result = 'success';
+          setDraftCount(newCount);
+          setShowDraftHint(true);
+          break;
+        }
       }
     } catch {
       result = 'empty';

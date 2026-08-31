@@ -27,6 +27,14 @@ public final class SecurityContext {
         return userId;
     }
 
+    /**
+     * 可空版本：未认证时返回 null 而非抛异常。
+     * 仅用于 permitAll 端点（如 /api/auth/me），这些端点允许未登录请求到达控制器。
+     */
+    public static UUID getCurrentUserIdOrNull() {
+        return CURRENT_USER.get();
+    }
+
     public static void clear() {
         CURRENT_USER.remove();
     }

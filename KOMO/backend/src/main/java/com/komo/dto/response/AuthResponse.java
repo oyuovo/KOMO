@@ -1,5 +1,6 @@
 package com.komo.dto.response;
 
+import com.komo.entity.User;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -23,5 +24,17 @@ public class AuthResponse {
         private boolean autoExtract;
         private boolean dailyRecommendationEnabled;
         private boolean onboardingCompleted;
+
+        /** 统一的 User → UserInfo 映射（唯一入口，避免多处 builder 重复） */
+        public static UserInfo from(User user) {
+            return UserInfo.builder()
+                .id(user.getId().toString())
+                .email(user.getEmail())
+                .nickname(user.getNickname())
+                .autoExtract(Boolean.TRUE.equals(user.getAutoExtract()))
+                .dailyRecommendationEnabled(!Boolean.FALSE.equals(user.getDailyRecommendationEnabled()))
+                .onboardingCompleted(Boolean.TRUE.equals(user.getOnboardingCompleted()))
+                .build();
+        }
     }
 }

@@ -126,14 +126,7 @@ public class UserService {
             .accessToken(accessToken)
             .refreshToken(refreshToken)
             .expiresIn(jwtConfig.getAccessTokenExpiration())
-            .user(AuthResponse.UserInfo.builder()
-                .id(user.getId().toString())
-                .email(user.getEmail())
-                .nickname(user.getNickname())
-                .autoExtract(Boolean.TRUE.equals(user.getAutoExtract()))
-            .dailyRecommendationEnabled(!Boolean.FALSE.equals(user.getDailyRecommendationEnabled()))
-            .onboardingCompleted(Boolean.TRUE.equals(user.getOnboardingCompleted()))
-                .build())
+            .user(AuthResponse.UserInfo.from(user))
             .build();
     }
 }

@@ -13,6 +13,7 @@ import com.komo.exception.ErrorCode;
 import com.komo.repository.KnowledgeLinkRepository;
 import com.komo.repository.KnowledgeRepository;
 import com.komo.security.SecurityContext;
+import com.komo.util.MarkdownUtils;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -72,9 +73,13 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
         return PageResponse.of(result, items);
     }
 
-    /** 查看单条详情（含归属校验） */
+    /** 查看单条详情（含归属校验；软删条目视为不存在，与列表/搜索行为一致） */
     public KnowledgeEntry getById(UUID id) {
-        return findByIdOrThrow(id);
+        KnowledgeEntry entry = findByIdOrThrow(id);
+        if (entry.getDeletedAt() != null) {
+            throw new BusinessException(ErrorCode.KNOWLEDGE_NOT_FOUND, "知识条目不存在");
+        }
+        return entry;
     }
 
     public KnowledgeEntry create(KnowledgeCreateRequest request) {
@@ -87,7 +92,7 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
                 .userId(getCurrentUserId())
                 .title(request.getTitle())
                 .content(request.getContent())
-                .contentPlain(stripMarkdown(request.getContent()))
+                .contentPlain(MarkdownUtils.stripMarkdown(request.getContent()))
                 .source(KnowledgeSource.MANUAL)
                 .entryType(request.getEntryType() != null
                     ? request.getEntryType() : KnowledgeEntry.KnowledgeType.FACT)
@@ -105,7 +110,7 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
             KnowledgeEntry current = findByIdOrThrow(id);
             current.setTitle(request.getTitle());
             current.setContent(request.getContent());
-            current.setContentPlain(stripMarkdown(request.getContent()));
+            current.setContentPlain(MarkdownUtils.stripMarkdown(request.getContent()));
             current.setEntryType(request.getEntryType());
             current.setCategoryId(request.getCategoryId());
             current.setTagNames(request.getTags());
@@ -249,7 +254,7 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
         String mergedContent = insertAtBestSection(targetContent, fragmentTitle, fragmentContent);
 
         target.setContent(mergedContent);
-        target.setContentPlain(stripMarkdown(mergedContent));
+        target.setContentPlain(MarkdownUtils.stripMarkdown(mergedContent));
         target = repository.save(target);
 
         // 创建关联记录
@@ -352,23 +357,5 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
         UUID userId = SecurityContext.getCurrentUserId();
         List<KnowledgeEntry> allActive = repository.findAllByUserIdAndDeletedAtIsNull(userId);
         return indexService.reindexAll(allActive);
-    }
-
-    /**
-     * 简易 Markdown 清洗：移除格式标记，保留纯文本。
-     * Phase 2 由 Python AI 服务提供更精确的清洗。
-     */
-    private String stripMarkdown(String markdown) {
-        if (markdown == null) {
-            return "";
-        }
-        return markdown
-            .replaceAll("#{1,6}\\s", "")
-            .replaceAll("[*_~`>]", "")
-            .replaceAll("\\[([^]]+)]\\([^)]+\\)", "$1")
-            .replaceAll("!\\[[^]]*]\\([^)]+\\)", "")
-            .replaceAll("```[\\s\\S]*?```", "")
-            .replaceAll("\\s+", " ")
-            .trim();
     }
 }

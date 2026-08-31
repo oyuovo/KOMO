@@ -24,9 +24,21 @@ public class DedupService {
     private final KnowledgeIndexService indexService;
     private final KnowledgeDraftService draftService;
 
-    /** 去重阈值 */
-    private static final double MLT_NORMAL_SCALE = 20.0;  // ES MLT 得分归一化系数
-    private static final double DUPLICATE_THRESHOLD = 0.6;
+    /**
+     * 去重阈值。
+     *
+     * MLT_NORMAL_SCALE 校准依据（2026-08-31 实测，见 docs/pain-points.md P13）：
+     * SmartCN 下中文文档共享大量常见词，无关文档对 MLT 原始分可达 15~18，
+     * 同主题文档 10~11，完全相同内容 35+。
+     * 旧值 20 导致无关文档归一化后达 0.77~0.92，超过 DUPLICATE_THRESHOLD 被静默丢弃，
+     * 新知识点永远无法入草稿箱。改为 60 后：无关≈ 0.26，同主题≈ 0.19，重复≈ 0.59。
+     */
+    private static final double MLT_NORMAL_SCALE = 60.0;  // ES MLT 得分归一化系数
+    /**
+     * 高分重复阈值。取 0.65：实测完全相同内容归一化≈ 0.59，同主题≈ 0.19，无关≈ 0.26；
+     * 仅标题 LCS 完全相同（1.0）或接近相同时才自动丢弃，内容层重复交给 Layer 3 LLM 判定。
+     */
+    private static final double DUPLICATE_THRESHOLD = 0.65;
     private static final double NEW_THRESHOLD = 0.2;
 
     /**
