@@ -2,6 +2,7 @@ package com.komo.controller;
 
 import com.komo.dto.request.LoginRequest;
 import com.komo.dto.request.PreferenceUpdateRequest;
+import com.komo.dto.request.RefreshRequest;
 import com.komo.dto.request.RegisterRequest;
 import com.komo.dto.response.ApiResponse;
 import com.komo.dto.response.AuthResponse;
@@ -41,12 +42,16 @@ public class AuthController {
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<AuthResponse>> register(
         @Valid @RequestBody RegisterRequest request,
+        HttpServletRequest httpRequest,
         HttpServletResponse response
     ) {
         AuthResponse auth = userService.register(request);
         setAuthCookies(response, auth.getAccessToken(), auth.getRefreshToken());
-        auth.setAccessToken(null);
-        auth.setRefreshToken(null);
+        // 原生 App（无 Cookie 环境）需要在 body 中拿到 token；Web 端置 null，token 只存 httpOnly Cookie
+        if (!isMobileClient(httpRequest)) {
+            auth.setAccessToken(null);
+            auth.setRefreshToken(null);
+        }
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(ApiResponse.success(auth));
     }
@@ -54,21 +59,29 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<AuthResponse>> login(
         @Valid @RequestBody LoginRequest request,
+        HttpServletRequest httpRequest,
         HttpServletResponse response
     ) {
         AuthResponse auth = userService.login(request);
         setAuthCookies(response, auth.getAccessToken(), auth.getRefreshToken());
-        auth.setAccessToken(null);
-        auth.setRefreshToken(null);
+        if (!isMobileClient(httpRequest)) {
+            auth.setAccessToken(null);
+            auth.setRefreshToken(null);
+        }
         return ResponseEntity.ok(ApiResponse.success(auth));
     }
 
     @PostMapping("/refresh")
     public ResponseEntity<ApiResponse<AuthResponse>> refresh(
+        @RequestBody(required = false) @Valid RefreshRequest body,
         HttpServletRequest request,
         HttpServletResponse response
     ) {
+        // 优先 Cookie（Web 端），其次 body（原生 App）
         String refreshToken = extractCookie(request, "refresh_token");
+        if ((refreshToken == null || refreshToken.isBlank()) && body != null) {
+            refreshToken = body.getRefreshToken();
+        }
         if (refreshToken == null || refreshToken.isBlank()) {
             return ResponseEntity.badRequest()
                 .body(ApiResponse.error(400, "refreshToken 不能为空"));
@@ -76,10 +89,13 @@ public class AuthController {
         try {
             AuthResponse auth = userService.refreshToken(refreshToken);
             setAuthCookies(response, auth.getAccessToken(), auth.getRefreshToken());
-            auth.setAccessToken(null);
-            auth.setRefreshToken(null);
+            if (!isMobileClient(request)) {
+                auth.setAccessToken(null);
+                auth.setRefreshToken(null);
+            }
             return ResponseEntity.ok(ApiResponse.success(auth));
         } catch (Exception e) {
+            log.warn("refreshToken 刷新失败", e);
             return ResponseEntity.status(401)
                 .body(ApiResponse.error(401, "refreshToken 无效或已过期"));
         }
@@ -141,6 +157,11 @@ public class AuthController {
     }
 
     // ── cookie helpers ──
+
+    /** 原生 App 客户端标识：携带此头的请求在 auth 响应 body 中返回 token */
+    private static boolean isMobileClient(HttpServletRequest request) {
+        return "mobile".equals(request.getHeader("X-Komo-Client"));
+    }
 
     private void setAuthCookies(HttpServletResponse response, String accessToken, String refreshToken) {
         ResponseCookie accessCookie = ResponseCookie.from("access_token", accessToken)

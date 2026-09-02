@@ -18,6 +18,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.util.StringUtils;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -50,6 +51,9 @@ public class SecurityConfig {
                     request.setAttribute(token.getParameterName(), token);
                 })
                 .ignoringRequestMatchers("/api/auth/**")
+                // 原生 App 走 Authorization: Bearer 认证：浏览器不会自动携带该头，
+                // 不存在 CSRF 攻击面，豁免 Double Submit Cookie 校验（Web 端 Cookie 认证仍强制 CSRF）
+                .ignoringRequestMatchers(request -> StringUtils.hasText(request.getHeader("Authorization")))
             )
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
