@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -53,7 +54,7 @@ export default function ChatScreen() {
     loadHistory();
   }, [loadHistory]);
 
-  // 标题栏右侧：知识提取按钮
+  // 标题栏右侧：知识提取按钮（描边式，同 Web extractBtn）
   useEffect(() => {
     navigation.setOptions({
       headerRight: () => (
@@ -62,7 +63,11 @@ export default function ChatScreen() {
           onPress={triggerExtract}
           disabled={extracting || sending}
         >
-          <Text style={styles.extractBtnText}>{extracting ? '…' : '⚡ 提取'}</Text>
+          {extracting ? (
+            <ActivityIndicator size="small" color={colors.accent} />
+          ) : (
+            <Text style={styles.extractBtnText}>⚡ 提取</Text>
+          )}
         </TouchableOpacity>
       ),
     });
@@ -159,7 +164,7 @@ export default function ChatScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -179,7 +184,7 @@ export default function ChatScreen() {
         onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyGlyph}>🤖</Text>
+            <Feather name="cpu" size={44} color={colors.textTertiary} />
             <Text style={styles.emptyText}>向 AI 提问，聊完后点右上「⚡ 提取」沉淀知识</Text>
           </View>
         }
@@ -201,7 +206,7 @@ export default function ChatScreen() {
           onPress={send}
           disabled={!input.trim() || sending}
         >
-          <Text style={styles.sendBtnText}>↑</Text>
+          <Feather name="arrow-up" size={22} color="#fff" />
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -213,7 +218,6 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
   list: { padding: spacing.md, paddingBottom: spacing.sm },
   empty: { alignItems: 'center', paddingTop: 120, gap: spacing.sm },
-  emptyGlyph: { fontSize: 44 },
   emptyText: { fontSize: 13, color: colors.textSecondary, paddingHorizontal: spacing.xl, textAlign: 'center' },
   bubbleRow: { flexDirection: 'row', marginBottom: spacing.md },
   bubbleRowUser: { justifyContent: 'flex-end' },
@@ -223,17 +227,17 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     padding: spacing.md,
   },
-  bubbleUser: { backgroundColor: colors.userBubble, borderBottomRightRadius: radius.sm },
-  bubbleAi: { backgroundColor: colors.aiBubble, borderWidth: 1, borderColor: colors.border, borderBottomLeftRadius: radius.sm },
+  bubbleUser: { backgroundColor: colors.userBubble, borderBottomRightRadius: 4 },
+  bubbleAi: { backgroundColor: colors.aiBubble, borderWidth: 1, borderColor: colors.border, borderBottomLeftRadius: 4 },
   bubbleFailed: { borderColor: colors.danger },
   bubbleUserText: { color: '#fff', fontSize: 15, lineHeight: 22 },
-  cursor: { color: colors.primary, fontSize: 15 },
+  cursor: { color: colors.accent, fontSize: 15 },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     padding: spacing.sm,
     paddingBottom: Platform.OS === 'ios' ? spacing.lg : spacing.sm,
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     gap: spacing.sm,
@@ -248,14 +252,14 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     fontSize: 15,
     color: colors.text,
-    backgroundColor: '#FAFAF9',
+    backgroundColor: colors.bg,
     maxHeight: 120,
   },
   sendBtn: {
     width: 44,
     height: 44,
     borderRadius: radius.full,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -264,9 +268,11 @@ const styles = StyleSheet.create({
   extractBtn: {
     paddingHorizontal: spacing.md,
     paddingVertical: 6,
-    borderRadius: radius.full,
-    backgroundColor: colors.primarySoft,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: 'transparent',
   },
   extractBtnBusy: { opacity: 0.6 },
-  extractBtnText: { color: colors.primary, fontSize: 13, fontWeight: '600' },
+  extractBtnText: { color: colors.accent, fontSize: 13, fontWeight: '500' },
 });

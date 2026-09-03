@@ -24,7 +24,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   if (status === 'loading') {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg }}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -38,9 +38,10 @@ export default function RootLayout() {
         <StatusBar style="dark" />
         <Stack
           screenOptions={{
-            headerStyle: { backgroundColor: colors.bg },
-            headerTitleStyle: { fontWeight: '700' },
-            contentStyle: { backgroundColor: colors.bg },
+            headerStyle: { backgroundColor: colors.surface },
+            headerTitleStyle: { fontWeight: '700', color: colors.text },
+            headerShadowVisible: false,
+            contentStyle: { backgroundColor: colors.bg, borderTopWidth: 1, borderTopColor: colors.border },
           }}
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

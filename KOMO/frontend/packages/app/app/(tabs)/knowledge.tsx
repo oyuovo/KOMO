@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -85,7 +86,7 @@ export default function KnowledgeScreen() {
 
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={colors.accent} />
         </View>
       ) : (
         <FlatList
@@ -105,7 +106,7 @@ export default function KnowledgeScreen() {
           contentContainerStyle={entries.length === 0 ? styles.emptyWrap : styles.list}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Text style={styles.emptyGlyph}>📚</Text>
+              <Feather name="book-open" size={44} color={colors.textTertiary} />
               <Text style={styles.emptyText}>
                 {activeQuery ? '没有匹配的知识条目' : '知识库还是空的'}
               </Text>
@@ -160,14 +161,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.full,
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     paddingHorizontal: spacing.lg,
     paddingVertical: 8,
     fontSize: 14,
     color: colors.text,
   },
   searchBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.accent,
     borderRadius: radius.full,
     paddingHorizontal: spacing.lg,
     justifyContent: 'center',
@@ -175,7 +176,7 @@ const styles = StyleSheet.create({
   searchBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   list: { padding: spacing.md, paddingTop: spacing.sm },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
@@ -187,8 +188,7 @@ const styles = StyleSheet.create({
   cardMeta: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
   cardMetaText: { fontSize: 11, color: colors.textTertiary },
   emptyWrap: { flexGrow: 1 },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.xs },
-  emptyGlyph: { fontSize: 44 },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   emptyText: { fontSize: 15, color: colors.textSecondary },
   emptyHint: { fontSize: 12, color: colors.textTertiary, paddingHorizontal: spacing.xl, textAlign: 'center' },
 });

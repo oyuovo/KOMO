@@ -27,7 +27,7 @@ export default function ArticleScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }

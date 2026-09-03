@@ -1,25 +1,21 @@
+import { Feather } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
 import { colors } from '../../src/lib/theme';
 
-/** 底部 Tab 图标 — 纯文本符号，避免引入图标库依赖 */
-function TabIcon({ glyph, focused }: { glyph: string; focused: boolean }) {
-  return (
-    <View style={styles.iconWrap}>
-      <Text style={[styles.icon, focused && styles.iconFocused]}>{glyph}</Text>
-    </View>
-  );
-}
-
+/** 底部 Tab — Feather 线性图标，气质与 Web 端一致 */
 export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: colors.bg },
-        headerTitleStyle: { fontWeight: '700' },
-        tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border },
-        tabBarActiveTintColor: colors.primary,
+        headerStyle: { backgroundColor: colors.surface },
+        headerTitleStyle: { fontWeight: '700', color: colors.text },
+        headerShadowVisible: false,
+        tabBarStyle: {
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
+        },
+        tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textTertiary,
       }}
     >
@@ -27,36 +23,30 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: '对话',
-          tabBarIcon: ({ focused }) => <TabIcon glyph="💬" focused={focused} />,
+          tabBarIcon: ({ color }) => <Feather name="message-circle" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="drafts"
         options={{
           title: '草稿箱',
-          tabBarIcon: ({ focused }) => <TabIcon glyph="📝" focused={focused} />,
+          tabBarIcon: ({ color }) => <Feather name="edit-3" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="knowledge"
         options={{
           title: '知识库',
-          tabBarIcon: ({ focused }) => <TabIcon glyph="📚" focused={focused} />,
+          tabBarIcon: ({ color }) => <Feather name="book-open" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: '设置',
-          tabBarIcon: ({ focused }) => <TabIcon glyph="⚙️" focused={focused} />,
+          tabBarIcon: ({ color }) => <Feather name="settings" size={22} color={color} />,
         }}
       />
     </Tabs>
   );
 }
-
-const styles = StyleSheet.create({
-  iconWrap: { alignItems: 'center', justifyContent: 'center', paddingTop: 4 },
-  icon: { fontSize: 18, opacity: 0.5 },
-  iconFocused: { opacity: 1 },
-});

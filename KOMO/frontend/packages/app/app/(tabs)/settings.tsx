@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
   section: { marginBottom: spacing.lg },
   sectionTitle: { fontSize: 13, color: colors.textSecondary, marginBottom: spacing.sm, marginLeft: spacing.xs },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
@@ -115,11 +115,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
     color: colors.text,
-    backgroundColor: '#FAFAF9',
+    backgroundColor: colors.bg,
     marginBottom: spacing.md,
   },
   saveBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.accent,
     borderRadius: radius.md,
     paddingVertical: 11,
     alignItems: 'center',
@@ -127,7 +127,7 @@ const styles = StyleSheet.create({
   saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   btnDisabled: { opacity: 0.6 },
   logoutBtn: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,

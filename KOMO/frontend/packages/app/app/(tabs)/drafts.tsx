@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -23,9 +24,9 @@ const EXTRACT_LABEL: Record<string, string> = {
 };
 
 const EXTRACT_COLOR: Record<string, { fg: string; bg: string }> = {
-  ARTICLE: { fg: colors.primary, bg: colors.primarySoft },
-  FRAGMENT: { fg: colors.warn, bg: colors.warnSoft },
-  SUPPLEMENT: { fg: colors.ok, bg: colors.okSoft },
+  ARTICLE: { fg: colors.accent, bg: colors.accentSoft },
+  FRAGMENT: { fg: colors.warning, bg: colors.warningSoft },
+  SUPPLEMENT: { fg: colors.success, bg: colors.successSoft },
 };
 
 export default function DraftsScreen() {
@@ -84,7 +85,7 @@ export default function DraftsScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -100,7 +101,7 @@ export default function DraftsScreen() {
         contentContainerStyle={drafts.length === 0 ? styles.emptyWrap : styles.list}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyGlyph}>📝</Text>
+            <Feather name="edit-3" size={44} color={colors.textTertiary} />
             <Text style={styles.emptyText}>草稿箱是空的</Text>
             <Text style={styles.emptyHint}>
               在对话中点「⚡ 提取」，AI 会把有价值的内容整理成草稿放在这里
@@ -215,14 +216,14 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
   list: { padding: spacing.md },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.md,
     marginBottom: spacing.md,
   },
-  cardPressed: { backgroundColor: '#F0F4FF' },
+  cardPressed: { backgroundColor: colors.accentSoft },
   cardHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   badge: { borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 2 },
   badgeText: { fontSize: 11, fontWeight: '600' },
@@ -231,19 +232,18 @@ const styles = StyleSheet.create({
   cardPreview: { fontSize: 13, color: colors.textSecondary, marginTop: 4, lineHeight: 19 },
   cardActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.md },
   emptyWrap: { flexGrow: 1 },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.xs },
-  emptyGlyph: { fontSize: 44 },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   emptyText: { fontSize: 15, color: colors.textSecondary },
   emptyHint: { fontSize: 12, color: colors.textTertiary, paddingHorizontal: spacing.xl, textAlign: 'center' },
   btn: { borderRadius: radius.md, paddingVertical: 8, paddingHorizontal: spacing.lg, alignItems: 'center', justifyContent: 'center' },
   btnLarge: { flex: 1, paddingVertical: 12 },
-  btnPrimary: { backgroundColor: colors.primary },
+  btnPrimary: { backgroundColor: colors.accent },
   btnPrimaryText: { color: '#fff', fontSize: 14, fontWeight: '600' },
-  btnGhost: { backgroundColor: '#F3F4F6' },
+  btnGhost: { backgroundColor: colors.surfaceHover },
   btnGhostText: { color: colors.textSecondary, fontSize: 14 },
   modalRoot: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
   modalSheet: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
     maxHeight: '88%',
@@ -253,7 +253,7 @@ const styles = StyleSheet.create({
   modalMeta: { fontSize: 12, color: colors.textSecondary, marginTop: 4, marginBottom: spacing.md },
   modalBody: { paddingBottom: spacing.md },
   quoteBox: {
-    backgroundColor: '#FAFAF9',
+    backgroundColor: colors.surfaceHover,
     borderRadius: radius.md,
     padding: spacing.md,
     marginBottom: spacing.md,

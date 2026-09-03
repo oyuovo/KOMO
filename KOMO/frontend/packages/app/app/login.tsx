@@ -59,7 +59,10 @@ export default function LoginScreen() {
     >
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <View style={styles.brand}>
-          <Text style={styles.logo}>KOMO</Text>
+          <View style={styles.brandRow}>
+            <View style={styles.brandDot} />
+            <Text style={styles.logo}>KOMO</Text>
+          </View>
           <Text style={styles.slogan}>AI 驱动的个人知识管理</Text>
         </View>
 
@@ -146,10 +149,12 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   container: { flexGrow: 1, justifyContent: 'center', padding: spacing.xl },
   brand: { alignItems: 'center', marginBottom: spacing.xl },
-  logo: { fontSize: 40, fontWeight: '800', color: colors.primary, letterSpacing: 2 },
-  slogan: { fontSize: 14, color: colors.textSecondary, marginTop: spacing.xs },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  brandDot: { width: 9, height: 9, borderRadius: radius.full, backgroundColor: colors.accent },
+  logo: { fontSize: 34, fontWeight: '700', color: colors.text, letterSpacing: -1 },
+  slogan: { fontSize: 14, color: colors.textSecondary, marginTop: spacing.sm },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     borderRadius: radius.lg,
     padding: spacing.lg,
     borderWidth: 1,
@@ -164,7 +169,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 15,
     color: colors.text,
-    backgroundColor: '#FAFAF9',
+    backgroundColor: colors.bg,
     marginBottom: spacing.md,
   },
   serverToggle: { alignSelf: 'flex-start', marginBottom: spacing.sm },
@@ -172,7 +177,7 @@ const styles = StyleSheet.create({
   serverInput: { marginBottom: spacing.md },
   error: { color: colors.danger, fontSize: 13, marginBottom: spacing.md },
   primaryBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.accent,
     borderRadius: radius.md,
     paddingVertical: 13,
     alignItems: 'center',
@@ -180,6 +185,6 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   btnDisabled: { opacity: 0.6 },
-  switchText: { color: colors.primary, fontSize: 13, textAlign: 'center' },
+  switchText: { color: colors.accent, fontSize: 13, textAlign: 'center' },
   footer: { textAlign: 'center', color: colors.textTertiary, fontSize: 11, marginTop: spacing.xl },
 });

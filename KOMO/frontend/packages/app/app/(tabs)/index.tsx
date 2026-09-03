@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -14,7 +15,7 @@ import {
   View,
 } from 'react-native';
 import { api } from '../../src/lib/api';
-import { colors, radius, spacing } from '../../src/lib/theme';
+import { colors, radius, shadow, spacing } from '../../src/lib/theme';
 import type { Conversation, KnowledgeBase } from '../../src/lib/types';
 
 function fmtTime(iso: string): string {
@@ -105,7 +106,7 @@ export default function ConversationsScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -121,7 +122,7 @@ export default function ConversationsScreen() {
         contentContainerStyle={conversations.length === 0 ? styles.emptyWrap : styles.list}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyGlyph}>💬</Text>
+            <Feather name="message-circle" size={44} color={colors.textTertiary} />
             <Text style={styles.emptyText}>还没有对话</Text>
             <Text style={styles.emptyHint}>点右下角 + 开始和 AI 聊天，聊完可一键提取知识</Text>
           </View>
@@ -150,7 +151,7 @@ export default function ConversationsScreen() {
         onPress={() => setModalVisible(true)}
         activeOpacity={0.85}
       >
-        <Text style={styles.fabText}>＋</Text>
+        <Feather name="plus" size={26} color="#fff" />
       </TouchableOpacity>
 
       <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>
@@ -196,21 +197,20 @@ const styles = StyleSheet.create({
   item: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.md,
     marginBottom: spacing.sm,
   },
-  itemPressed: { backgroundColor: '#F0F4FF' },
+  itemPressed: { backgroundColor: colors.accentSoft, borderColor: colors.border },
   itemBody: { flex: 1 },
   itemTitle: { fontSize: 15, fontWeight: '600', color: colors.text },
   itemMeta: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
   chevron: { fontSize: 20, color: colors.textTertiary, marginLeft: spacing.sm },
   emptyWrap: { flexGrow: 1 },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.xs },
-  emptyGlyph: { fontSize: 44 },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   emptyText: { fontSize: 15, color: colors.textSecondary },
   emptyHint: { fontSize: 12, color: colors.textTertiary, paddingHorizontal: spacing.xl, textAlign: 'center' },
   fab: {
@@ -220,16 +220,11 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: radius.full,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
+    ...shadow.lg,
   },
-  fabText: { color: '#fff', fontSize: 28, fontWeight: '300', marginTop: -2 },
   modalMask: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -239,7 +234,7 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: '100%',
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     borderRadius: radius.lg,
     padding: spacing.lg,
   },
@@ -252,14 +247,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 15,
     color: colors.text,
-    backgroundColor: '#FAFAF9',
+    backgroundColor: colors.bg,
     marginBottom: spacing.lg,
   },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
   modalBtnGhost: { paddingVertical: 10, paddingHorizontal: spacing.lg, borderRadius: radius.md },
   modalBtnGhostText: { color: colors.textSecondary, fontSize: 15 },
   modalBtnPrimary: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.accent,
     paddingVertical: 10,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.md,
