@@ -1,0 +1,38 @@
+# docker/docker-compose.prod.yml — 生产覆盖层，不单独使用
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# 作用：把只该被同机进程访问的数据端口收口到回环地址，并去掉开发期便利配置。
+# 基础文件把端口发布到 0.0.0.0，在公网服务器上等于把 PostgreSQL、Elasticsearch、
+# RabbitMQ（含 15672 管理台）直接摆到全网扫描器面前。后端与 nginx 都跑在宿主机，
+# 走 127.0.0.1 完全够用；确实要从本机之外访问时，用 SSH 端口转发，不要改这里：
+#
+#   ssh -L 15672:127.0.0.1:15672 user@server
+#
+# ports / volumes 用 !override 而非直接列举：Compose 对这两个多值字段默认是
+# 「追加合并」，只写新值会得到新旧并存的结果（端口重复发布直接启动失败，
+# 源码挂载也删不掉）。!override 表示整段替换基础文件里的值。
+
+services:
+  postgres:
+    ports: !override
+      - "127.0.0.1:5434:5432"
+
+  ai-service:
+    ports: !override
+      - "127.0.0.1:8001:8001"
+    # 生产不挂载源码目录：跑的必须是镜像里构建进去的代码，
+    # 否则宿主机上的任何文件漂移都会直接改变线上行为，且 requirements
+    # 变更后镜像内的依赖与挂载进来的源码会互相不匹配。
+    volumes: !override []
+    # 去掉 --reload：文件监视器在生产是白占内存，还会在文件变动时自行重启
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001
+
+  rabbitmq:
+    ports: !override
+      - "127.0.0.1:5672:5672"   # AMQP，仅本机后端连接
+    # 15672 管理台不发布到任何地址，需要时用上面的 SSH 转发临时看
+
+  elasticsearch:
+    ports: !override
+      - "127.0.0.1:9201:9200"

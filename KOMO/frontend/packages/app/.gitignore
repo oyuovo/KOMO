@@ -31,7 +31,12 @@ yarn-error.*
 *.pem
 
 # local env files
+# EXPO_PUBLIC_* 会被内联进 bundle，不是密钥，但仍按仓库约定不入库：
+# 里面的地址是各人自己的环境，提交了只会互相覆盖。
+.env
+.env.*
 .env*.local
+!.env.example
 
 # typescript
 *.tsbuildinfo

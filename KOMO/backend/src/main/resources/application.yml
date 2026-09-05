@@ -50,6 +50,18 @@ komo:
     secret: ${JWT_SECRET}
     access-token-expiration: 3600000     # 1 hour (ms)
     refresh-token-expiration: 604800000  # 7 days (ms)
+  # 安全 — 可信反向代理地址（逗号分隔）
+  # 只有来自这些地址的请求，其 X-Forwarded-For / X-Real-IP 才被采信，
+  # 否则客户端可伪造转发头绕过按 IP 的登录限流。
+  # 生产部署 nginx 与后端同机，默认回环地址即可；
+  # 若代理跑在容器或其他主机，必须通过 TRUSTED_PROXIES 补上其地址。
+  security:
+    trusted-proxies: "${TRUSTED_PROXIES:127.0.0.1,0:0:0:0:0:0:0:1,::1}"
+  # 认证 Cookie 的 Secure 标记
+  # 生产（HTTPS）必须为 true，否则 token 可能在明文请求中被窃听；
+  # 本地 http://localhost 开发保持 false —— 为 true 时浏览器会丢弃 Cookie，登录态无法保持。
+  cookie:
+    secure: ${COOKIE_SECURE:false}
   # Elasticsearch 认证
   es:
     username: ${ES_USERNAME:elastic}

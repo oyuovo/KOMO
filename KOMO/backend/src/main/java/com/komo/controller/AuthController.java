@@ -7,6 +7,7 @@ import com.komo.dto.request.RegisterRequest;
 import com.komo.dto.response.ApiResponse;
 import com.komo.dto.response.AuthResponse;
 import com.komo.entity.User;
+import com.komo.security.AuthCookieWriter;
 import com.komo.security.SecurityContext;
 import com.komo.service.UserService;
 import jakarta.servlet.http.Cookie;
@@ -16,9 +17,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -38,6 +37,7 @@ public class AuthController {
     private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
     private final UserService userService;
+    private final AuthCookieWriter authCookieWriter;
 
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<AuthResponse>> register(
@@ -46,7 +46,7 @@ public class AuthController {
         HttpServletResponse response
     ) {
         AuthResponse auth = userService.register(request);
-        setAuthCookies(response, auth.getAccessToken(), auth.getRefreshToken());
+        authCookieWriter.write(response, auth.getAccessToken(), auth.getRefreshToken());
         // 原生 App（无 Cookie 环境）需要在 body 中拿到 token；Web 端置 null，token 只存 httpOnly Cookie
         if (!isMobileClient(httpRequest)) {
             auth.setAccessToken(null);
@@ -63,7 +63,7 @@ public class AuthController {
         HttpServletResponse response
     ) {
         AuthResponse auth = userService.login(request);
-        setAuthCookies(response, auth.getAccessToken(), auth.getRefreshToken());
+        authCookieWriter.write(response, auth.getAccessToken(), auth.getRefreshToken());
         if (!isMobileClient(httpRequest)) {
             auth.setAccessToken(null);
             auth.setRefreshToken(null);
@@ -78,7 +78,7 @@ public class AuthController {
         HttpServletResponse response
     ) {
         // 优先 Cookie（Web 端），其次 body（原生 App）
-        String refreshToken = extractCookie(request, "refresh_token");
+        String refreshToken = extractCookie(request, AuthCookieWriter.REFRESH_TOKEN_COOKIE);
         if ((refreshToken == null || refreshToken.isBlank()) && body != null) {
             refreshToken = body.getRefreshToken();
         }
@@ -88,7 +88,7 @@ public class AuthController {
         }
         try {
             AuthResponse auth = userService.refreshToken(refreshToken);
-            setAuthCookies(response, auth.getAccessToken(), auth.getRefreshToken());
+            authCookieWriter.write(response, auth.getAccessToken(), auth.getRefreshToken());
             if (!isMobileClient(request)) {
                 auth.setAccessToken(null);
                 auth.setRefreshToken(null);
@@ -152,43 +152,15 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ResponseEntity<ApiResponse<Void>> logout(HttpServletResponse response) {
-        clearAuthCookies(response);
+        authCookieWriter.clear(response);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
-    // ── cookie helpers ──
+    // ── request helpers ──
 
     /** 原生 App 客户端标识：携带此头的请求在 auth 响应 body 中返回 token */
     private static boolean isMobileClient(HttpServletRequest request) {
         return "mobile".equals(request.getHeader("X-Komo-Client"));
-    }
-
-    private void setAuthCookies(HttpServletResponse response, String accessToken, String refreshToken) {
-        ResponseCookie accessCookie = ResponseCookie.from("access_token", accessToken)
-            .httpOnly(true)
-            .secure(false) // 生产改为 true
-            .sameSite("Lax")
-            .path("/api")
-            .maxAge(3600)
-            .build();
-        ResponseCookie refreshCookie = ResponseCookie.from("refresh_token", refreshToken)
-            .httpOnly(true)
-            .secure(false)
-            .sameSite("Strict")
-            .path("/api/auth/refresh")
-            .maxAge(604800)
-            .build();
-        response.addHeader(HttpHeaders.SET_COOKIE, accessCookie.toString());
-        response.addHeader(HttpHeaders.SET_COOKIE, refreshCookie.toString());
-    }
-
-    private void clearAuthCookies(HttpServletResponse response) {
-        ResponseCookie accessCookie = ResponseCookie.from("access_token", "")
-            .httpOnly(true).secure(false).sameSite("Lax").path("/api").maxAge(0).build();
-        ResponseCookie refreshCookie = ResponseCookie.from("refresh_token", "")
-            .httpOnly(true).secure(false).sameSite("Strict").path("/api/auth/refresh").maxAge(0).build();
-        response.addHeader(HttpHeaders.SET_COOKIE, accessCookie.toString());
-        response.addHeader(HttpHeaders.SET_COOKIE, refreshCookie.toString());
     }
 
     private String extractCookie(HttpServletRequest request, String name) {
