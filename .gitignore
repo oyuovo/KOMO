@@ -38,6 +38,7 @@ Thumbs.db
 # Internal / Claude
 .superpowers/
 .claude/
+.codex/
 CLAUDE.md
 AGENTS.md
 
