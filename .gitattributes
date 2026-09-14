@@ -1,0 +1,19 @@
+# 部署产物必须以 LF 落地到 Linux。
+#
+# 本仓库在 Windows 上开发，git 的 core.autocrlf=true 会在 checkout 时把 LF 转成 CRLF。
+# 若不声明 eol=lf，这些文件从 Windows 工作区拷到服务器后会带上 \r：
+#
+#   *.sh      → bash 报 "bad interpreter: /bin/bash^M"，或每行 "$'\r': command not found"。
+#               backup.sh 这样失败是静默的 —— crontab 照跑、不产出备份，
+#               直到真要恢复数据时才发现一直没有备份。
+#   *.service → systemd 把 \r 读进配置值，例如 Environment=COOKIE_SECURE=true\r，
+#               或 ExecStart 的路径末尾多一个不可见字符导致启动失败。
+#   *.conf    → nginx 多数情况能容忍，但没必要留这个风险。
+#
+# 注意这个坑的触发条件很窄：在 Linux 上直接 clone 不会出问题（那边 autocrlf 默认关闭），
+# 只有「在 Windows 上改完再拷到服务器」才会踩到，而且报错信息完全不会指向行尾，
+# 排查时很容易往别处想。所以在这里显式钉死。
+
+*.sh       text eol=lf
+*.service  text eol=lf
+*.conf     text eol=lf

@@ -26,7 +26,7 @@ import java.util.stream.Collectors;
 
 /**
  * 简易内存限流过滤器。
- * 登录接口按 IP 限频，AI 消息接口按用户限频。
+ * 登录/注册接口按 IP 限频，AI 消息接口按用户限频。
  * 生产环境建议替换为 Redis + Bucket4j 方案。
  *
  * <p>客户端 IP 的可信边界见 {@link #getClientIp(HttpServletRequest)}：转发头只在
@@ -42,11 +42,17 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final int LOGIN_MAX = 5;
     private static final long LOGIN_WINDOW_MS = TimeUnit.MINUTES.toMillis(1);
 
+    // 注册：每小时每个 IP 最多 10 次 —— 注册是一次性动作，正常用户不会触发；
+    // 限频是防脚本刷号（每个新账号自动创建 2 个知识库，刷号直接灌爆数据库）
+    private static final int REGISTER_MAX = 10;
+    private static final long REGISTER_WINDOW_MS = TimeUnit.HOURS.toMillis(1);
+
     // AI 消息：每分钟每个用户最多 10 次
     private static final int AI_MAX = 10;
     private static final long AI_WINDOW_MS = TimeUnit.MINUTES.toMillis(1);
 
     private final ConcurrentHashMap<String, long[]> loginCounts = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, long[]> registerCounts = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, long[]> aiCounts = new ConcurrentHashMap<>();
 
     /**
@@ -76,6 +82,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
             if (isRateLimited(loginCounts, ip, LOGIN_MAX, LOGIN_WINDOW_MS)) {
                 log.warn("登录限流触发 ip={}", ip);
                 sendError(response, ErrorCode.TOO_MANY_REQUESTS, "登录请求过于频繁，请稍后再试");
+                return;
+            }
+        }
+
+        // 注册接口限流（防脚本刷号）
+        if ("POST".equals(method) && path.equals("/api/auth/register")) {
+            String ip = getClientIp(request);
+            if (isRateLimited(registerCounts, ip, REGISTER_MAX, REGISTER_WINDOW_MS)) {
+                log.warn("注册限流触发 ip={}", ip);
+                sendError(response, ErrorCode.TOO_MANY_REQUESTS, "注册请求过于频繁，请稍后再试");
                 return;
             }
         }

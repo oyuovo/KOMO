@@ -16,6 +16,7 @@ class RateLimitFilterTest {
     /** 与 application.yml 中 komo.security.trusted-proxies 的默认值保持一致 */
     private static final String TRUSTED_PROXIES = "127.0.0.1,0:0:0:0:0:0:0:1,::1";
     private static final String LOGIN_PATH = "/api/auth/login";
+    private static final String REGISTER_PATH = "/api/auth/register";
 
     @AfterEach
     void clearSecurityContext() {
@@ -41,6 +42,48 @@ class RateLimitFilterTest {
         }
 
         assertEquals(429, lastResponse.getStatus());
+    }
+
+    /**
+     * 注册接口必须限流：脚本刷号会在公网无限注册新账号（每个自动建 2 个知识库）。
+     * 同 IP 超过每小时上限后必须返回 429。
+     */
+    @Test
+    void limitsRegistrationEndpointByIp() throws Exception {
+        RateLimitFilter filter = new RateLimitFilter(TRUSTED_PROXIES);
+
+        MockHttpServletResponse lastResponse = null;
+        for (int i = 0; i < 11; i++) {
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", REGISTER_PATH);
+            request.setRemoteAddr("203.0.113.20");
+            lastResponse = new MockHttpServletResponse();
+            filter.doFilter(request, lastResponse, (req, response) -> { });
+        }
+
+        assertEquals(429, lastResponse.getStatus());
+    }
+
+    /**
+     * 注册限流与登录限流是独立桶：登录被打满不应影响同 IP 的注册，反之亦然。
+     */
+    @Test
+    void registerLimitIsIndependentOfLoginLimit() throws Exception {
+        RateLimitFilter filter = new RateLimitFilter(TRUSTED_PROXIES);
+
+        // 打满登录限流（5 次/分）
+        for (int i = 0; i < 6; i++) {
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", LOGIN_PATH);
+            request.setRemoteAddr("203.0.113.21");
+            filter.doFilter(request, new MockHttpServletResponse(), (req, response) -> { });
+        }
+
+        // 同 IP 注册仍应放行（远未到 10 次/小时）
+        MockHttpServletRequest registerRequest = new MockHttpServletRequest("POST", REGISTER_PATH);
+        registerRequest.setRemoteAddr("203.0.113.21");
+        MockHttpServletResponse registerResponse = new MockHttpServletResponse();
+        filter.doFilter(registerRequest, registerResponse, (req, response) -> { });
+
+        assertEquals(200, registerResponse.getStatus());
     }
 
     /**

@@ -181,7 +181,12 @@ mvn spring-boot:run -Dmaven.test.skip=true -Dspring-boot.run.profiles=prod
 
 ### 使用 systemd 管理后端
 
-创建 `/etc/systemd/system/komo-backend.service`：
+> unit 文件已随仓库提供：**`deploy/komo-backend.service`**（含 `COOKIE_SECURE=true`、`JPA_DDL_AUTO`、
+> `JAVA_TOOL_OPTIONS` 限堆、`ES_HOST/ES_PORT` 等生产必设项，比下面的示例更全）。
+> 安装：`sudo cp deploy/komo-backend.service /etc/systemd/system/ && sudo systemctl daemon-reload`。
+> 首次部署用 `JPA_DDL_AUTO=update` 建表，确认表结构后改 `validate` 并重启。
+
+手工创建时参照（`/etc/systemd/system/komo-backend.service`）：
 
 ```ini
 [Unit]
@@ -220,10 +225,14 @@ sudo systemctl enable --now komo-backend
 
 ### 生产构建
 
+> 构建脚本已随仓库提供：**`deploy/frontend-build.sh <生产域名>`** —— 自动写 `.env.production`、
+> 构建、并把 standalone 缺失的静态资源拷进去（monorepo 两个坑都已处理）。
+
+手工步骤（等价）：
+
 ```bash
 cd /opt/komo/KOMO/frontend/packages/web
 
-# 创建生产环境配置 .env.production
 echo "NEXT_PUBLIC_API_URL=https://komo.example.com/api" > .env.production
 
 npm install
@@ -301,7 +310,11 @@ WantedBy=multi-user.target
 
 ### 站点配置
 
-创建 `/etc/nginx/sites-available/komo`：
+> 配置已随仓库提供：**`deploy/nginx-komo.conf`**（含 SSE 与 XFF 两处关键修复及说明）。
+> 安装：`sudo cp deploy/nginx-komo.conf /etc/nginx/sites-available/komo`，把 `komo.example.com`
+> 全局替换为真实域名，再软链启用 + certbot。
+
+手工创建时参照（`/etc/nginx/sites-available/komo`）：
 
 ```nginx
 # HTTP → HTTPS 重定向
@@ -389,7 +402,15 @@ sudo certbot --nginx -d komo.example.com
 
 ### PostgreSQL 定时备份
 
-创建 `/opt/komo/scripts/backup.sh`：
+> 脚本已随仓库提供：**`deploy/backup.sh`**（`set -euo pipefail` + 产物非空校验）。
+> 直接用它配 crontab，不要手敲：
+
+```bash
+chmod +x /opt/komo/deploy/backup.sh
+(crontab -l 2>/dev/null; echo "0 2 * * * /opt/komo/deploy/backup.sh >> /var/log/komo-backup.log 2>&1") | crontab -
+```
+
+脚本内容（`deploy/backup.sh`）：
 
 ```bash
 #!/bin/bash
@@ -414,8 +435,8 @@ echo "Backup completed: komo_$TIMESTAMP.sql.gz"
 添加 crontab（每天凌晨 2:00）：
 
 ```bash
-chmod +x /opt/komo/scripts/backup.sh
-(crontab -l 2>/dev/null; echo "0 2 * * * /opt/komo/scripts/backup.sh >> /var/log/komo-backup.log 2>&1") | crontab -
+chmod +x /opt/komo/deploy/backup.sh
+(crontab -l 2>/dev/null; echo "0 2 * * * /opt/komo/deploy/backup.sh >> /var/log/komo-backup.log 2>&1") | crontab -
 ```
 
 ### 恢复
@@ -502,10 +523,8 @@ sudo certbot renew --dry-run
 - [ ] 配置 `docker/.env`（所有密码和密钥）
 - [ ] 确认 `docker-compose.prod.yml` 展开后端口均绑 `127.0.0.1`、无 15672
 - [ ] `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d` 启动基础设施
-- [ ] 后端 systemd 设 `COOKIE_SECURE=true`（nginx 不同机时还需 `TRUSTED_PROXIES`）
-- [ ] 配置后端 systemd service 并启动
-- [ ] `npx next build` 构建前端，配置 systemd service
-- [ ] Nginx 配置 HTTPS + 反向代理
-- [ ] Certbot 获取 SSL 证书
-- [ ] 配置数据库定时备份
+- [ ] 后端：安装 `deploy/komo-backend.service`（已含 `COOKIE_SECURE=true` 与 JVM 限堆；首次建表后把 `JPA_DDL_AUTO` 改 `validate`）
+- [ ] 前端：`deploy/frontend-build.sh <域名>` 构建，安装 `deploy/komo-frontend.service`
+- [ ] Nginx：安装 `deploy/nginx-komo.conf`，替换域名，Certbot 获取 SSL 证书
+- [ ] 备份：`deploy/backup.sh` 配 crontab，并实际演练一次恢复
 - [ ] 验证全链路 `curl https://domain/api/health`

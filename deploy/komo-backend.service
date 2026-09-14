@@ -1,0 +1,36 @@
+# KOMO Backend — systemd unit
+# 安装：sudo cp deploy/komo-backend.service /etc/systemd/system/ && sudo systemctl daemon-reload
+# 说明：/opt/komo 为仓库 clone 路径；首次部署 JPA_DDL_AUTO=update 建表，
+#       确认表结构正确后改为 validate（beta-deployment 计划 Task 3.2）。
+[Unit]
+Description=KOMO Backend
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=komo
+WorkingDirectory=/opt/komo/KOMO/backend
+EnvironmentFile=/opt/komo/docker/.env
+Environment=DB_HOST=localhost
+Environment=DB_PORT=5434
+Environment=RABBITMQ_HOST=localhost
+Environment=RABBITMQ_PORT=5672
+Environment=ES_HOST=localhost
+Environment=ES_PORT=9201
+Environment=ES_USERNAME=elastic
+Environment=AI_SERVICE_URL=http://localhost:8001
+# 生产必设项（HTTPS 反代后）：
+Environment=COOKIE_SECURE=true
+Environment=JPA_DDL_AUTO=update
+# 域名确定后替换（nginx 同源反代不触发 CORS，此项为分离部署兜底）：
+# Environment=CORS_ORIGINS=https://your-domain
+# 4G 内存机器 JVM 限堆，防 OOM Killer（B4）：
+Environment=JAVA_TOOL_OPTIONS=-Xms256m -Xmx512m -XX:MaxMetaspaceSize=192m
+Environment=JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+ExecStart=/usr/bin/mvn spring-boot:run -Dmaven.test.skip=true
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

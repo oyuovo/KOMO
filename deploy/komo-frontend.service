@@ -1,0 +1,19 @@
+# KOMO Frontend — systemd unit
+# 安装：sudo cp deploy/komo-frontend.service /etc/systemd/system/ && sudo systemctl daemon-reload
+# 注意：HOSTNAME=127.0.0.1 不能省 —— server.js 默认 0.0.0.0 会绕过 nginx 直接对公网监听 3000。
+[Unit]
+Description=KOMO Frontend
+After=network.target
+
+[Service]
+Type=simple
+User=komo
+WorkingDirectory=/opt/komo/KOMO/frontend/packages/web
+Environment=PORT=3000
+Environment=HOSTNAME=127.0.0.1
+ExecStart=/usr/bin/node /opt/komo/KOMO/frontend/packages/web/.next/standalone/packages/web/server.js
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

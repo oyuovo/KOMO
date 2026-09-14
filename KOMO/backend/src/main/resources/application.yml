@@ -17,7 +17,9 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      # 生产环境建议 validate：update 会在启动时自动改表结构，回滚困难。
+      # 首次部署可先用 update 建表，确认表结构正确后切 validate。
+      ddl-auto: ${JPA_DDL_AUTO:update}
     show-sql: false
     properties:
       hibernate:
@@ -57,13 +59,19 @@ komo:
   # 若代理跑在容器或其他主机，必须通过 TRUSTED_PROXIES 补上其地址。
   security:
     trusted-proxies: "${TRUSTED_PROXIES:127.0.0.1,0:0:0:0:0:0:0:1,::1}"
+    # CORS 白名单（逗号分隔）。同源反代部署（nginx / -> 3000、/api/ -> 8081）不触发 CORS；
+    # 分离部署时需通过 CORS_ORIGINS 补上前端真实域名。
+    cors-origins: "${CORS_ORIGINS:http://localhost:3000,http://localhost:3001}"
   # 认证 Cookie 的 Secure 标记
   # 生产（HTTPS）必须为 true，否则 token 可能在明文请求中被窃听；
   # 本地 http://localhost 开发保持 false —— 为 true 时浏览器会丢弃 Cookie，登录态无法保持。
   cookie:
     secure: ${COOKIE_SECURE:false}
-  # Elasticsearch 认证
+  # Elasticsearch 连接与认证
   es:
+    host: ${ES_HOST:localhost}
+    port: ${ES_PORT:9201}
+    scheme: ${ES_SCHEME:http}
     username: ${ES_USERNAME:elastic}
     password: ${ES_PASSWORD}
   # Python AI 服务

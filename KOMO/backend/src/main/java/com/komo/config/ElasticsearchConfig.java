@@ -14,10 +14,19 @@ import org.springframework.context.annotation.Configuration;
 
 /**
  * Elasticsearch 客户端配置。
- * 连接本地 ES 容器（localhost:9201），使用 Basic Auth 认证。
+ * 连接地址由 komo.es.host/port/scheme 配置（默认 localhost:9201），使用 Basic Auth 认证。
  */
 @Configuration
 public class ElasticsearchConfig {
+
+    @Value("${komo.es.host:localhost}")
+    private String host;
+
+    @Value("${komo.es.port:9201}")
+    private int port;
+
+    @Value("${komo.es.scheme:http}")
+    private String scheme;
 
     @Value("${komo.es.username:elastic}")
     private String username;
@@ -34,7 +43,7 @@ public class ElasticsearchConfig {
         );
 
         RestClient restClient = RestClient.builder(
-            new HttpHost("localhost", 9201, "http")
+            new HttpHost(host, port, scheme)
         ).setHttpClientConfigCallback(hcb ->
             hcb.setDefaultCredentialsProvider(credentialsProvider)
         ).build();

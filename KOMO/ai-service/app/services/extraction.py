@@ -14,12 +14,45 @@ logger = logging.getLogger(__name__)
 # ARTICLE 最低纯文本字数门槛（去 Markdown 标记后）
 ARTICLE_MIN_PLAIN_CHARS = 500
 
+# 输入护栏：单次提取的消息数 / 总字符数上限（B6 成本护栏）
+# 超限则保留最新部分并 log.warning。60000 字符 ≈ 30K token（中文），
+# 对应高峰输入成本约 ¥0.09 —— 远大于正常对话，只有异常长的对话才会触到。
+MAX_INPUT_MESSAGES = 200
+MAX_INPUT_CHARS = 60_000
+
+
+def _truncate_messages(messages: list[dict[str, str]]) -> list[dict[str, str]]:
+    """按 MAX_INPUT_MESSAGES / MAX_INPUT_CHARS 截断，保留最新的部分（提取更关心近期内容）。"""
+    truncated = messages[-MAX_INPUT_MESSAGES:] if len(messages) > MAX_INPUT_MESSAGES else messages
+    total_chars = sum(len(m.get("content", "")) for m in truncated)
+    if total_chars > MAX_INPUT_CHARS:
+        kept: list[dict[str, str]] = []
+        acc = 0
+        for m in reversed(truncated):
+            size = len(m.get("content", ""))
+            if acc + size > MAX_INPUT_CHARS and kept:
+                break
+            kept.append(m)
+            acc += size
+        kept.reverse()
+        logger.warning(
+            "[extraction] 输入超限截断：原 %d 条消息 / %d 字符 → 保留 %d 条 / %d 字符（上限 %d 条 / %d 字符）",
+            len(messages), total_chars, len(kept), acc, MAX_INPUT_MESSAGES, MAX_INPUT_CHARS,
+        )
+        return kept
+    if len(messages) > MAX_INPUT_MESSAGES:
+        logger.warning(
+            "[extraction] 输入消息数超限：原 %d 条 → 保留最新 %d 条（上限 %d）",
+            len(messages), len(truncated), MAX_INPUT_MESSAGES,
+        )
+    return truncated
+
 
 async def extract_knowledge(
     messages: list[dict[str, str]],
 ) -> list[dict]:
     """
-    从对话消息中提取知识点（异步模式 — 使用全量消息，不做截断）。
+    从对话消息中提取知识点（异步模式 — 输入有护栏截断，见 _truncate_messages）。
 
     Args:
         messages: 对话消息列表，格式 [{"role": "user/assistant", "content": "..."}]
@@ -27,6 +60,8 @@ async def extract_knowledge(
     Returns:
         知识点列表，每个包含 type, title, content, confidence
     """
+    # 成本护栏：超长输入截断（B6）
+    messages = _truncate_messages(messages)
     # 构建对话摘要供 LLM 判断特征
     total_assistant_chars = sum(
         len(m.get("content", "")) for m in messages if m.get("role") == "assistant"
@@ -41,7 +76,7 @@ async def extract_knowledge(
     )
     logger.info("[extraction] %s", conversation_context)
 
-    # 构建提取请求：系统提示 + 全量对话内容（异步模式，不赶时间）
+    # 构建提取请求：系统提示 + 对话内容（输入已过护栏，见 _truncate_messages）
     extraction_messages = [
         {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
         {
