@@ -1,5 +1,10 @@
 # KOMO Backend — application.yml
 server:
+  # 默认监听所有网卡：本地开发时 Expo 真机需通过局域网 IP 访问后端。
+  # 生产必须显式设 SERVER_ADDRESS=127.0.0.1（见 deploy/komo-backend.service），
+  # 让外部流量只能经 nginx 进来；否则 8081 会绕过 HTTPS、proxy_buffering off
+  # 与 X-Forwarded-For 处理直接暴露（ufw 能挡，但少一道应用层收口）。
+  address: ${SERVER_ADDRESS:0.0.0.0}
   port: 8081
 
 spring:

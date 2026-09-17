@@ -21,6 +21,10 @@ Environment=ES_PORT=9201
 Environment=ES_USERNAME=elastic
 Environment=AI_SERVICE_URL=http://localhost:8001
 # 生产必设项（HTTPS 反代后）：
+# 8081 只监听回环，外部流量必须经 nginx：否则直连后端会绕过 HTTPS、
+# proxy_buffering off（SSE 变卡）与 X-Forwarded-For 处理（登录限流退化）。
+# 本地开发保持默认 0.0.0.0，Expo 真机需走局域网 IP 访问。
+Environment=SERVER_ADDRESS=127.0.0.1
 Environment=COOKIE_SECURE=true
 Environment=JPA_DDL_AUTO=update
 # 域名确定后替换（nginx 同源反代不触发 CORS，此项为分离部署兜底）：
