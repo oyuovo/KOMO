@@ -21,10 +21,14 @@ services:
   ai-service:
     ports: !override
       - "127.0.0.1:8001:8001"
-    # 生产不挂载源码目录：跑的必须是镜像里构建进去的代码，
-    # 否则宿主机上的任何文件漂移都会直接改变线上行为，且 requirements
-    # 变更后镜像内的依赖与挂载进来的源码会互相不匹配。
-    volumes: !override []
+    # 必须挂载源码：镜像并未打包 app/ —— Dockerfile 的构建上下文是 docker/python，
+    # 里面只有 Dockerfile 和 requirements.txt，COPY 也只复制了 requirements.txt。
+    # 之前这里写 volumes: !override [] 是误以为「源码已构建进镜像」，实际删掉挂载后
+    # uvicorn 找不到 app.main，容器 exit 1 崩溃重启。代码经 archive+scp 落在
+    # /opt/komo/KOMO/ai-service，与后端 JAR、前端 standalone 同源；:ro 防容器内改写。
+    # （真正的「源码打进镜像」需重构构建上下文 + Dockerfile COPY，挂账 Beta 后。）
+    volumes: !override
+      - ../KOMO/ai-service:/app:ro
     # 去掉 --reload：文件监视器在生产是白占内存，还会在文件变动时自行重启
     command: uvicorn app.main:app --host 0.0.0.0 --port 8001
 
