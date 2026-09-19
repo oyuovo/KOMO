@@ -34,5 +34,10 @@ services:
     # 15672 管理台不发布到任何地址，需要时用上面的 SSH 转发临时看
 
   elasticsearch:
+    # docker.elastic.co 在国内不可达，而 registry-mirrors 只加速 docker.io，
+    # 对它无效。Docker Hub 的 library/elasticsearch 是 Elastic 官方同源镜像
+    # （同 tag 同内容），改走 Hub 才能吃到加速器。image 是标量字段，
+    # 直接写就是覆盖基础文件的值，不需要 !override。
+    image: elasticsearch:8.12.0
     ports: !override
       - "127.0.0.1:9201:9200"

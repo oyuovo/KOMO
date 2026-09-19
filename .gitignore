@@ -28,6 +28,12 @@ venv/
 # Docker
 docker/data/
 
+# Deploy transfer artifact
+# /opt/komo has no .git (GitHub is unreachable from the server), so code
+# updates go through `git archive` + scp, which drops this tarball at the
+# repo root on every deploy.
+komo.tar.gz
+
 # Docs (working files, not product)
 docs/
 
