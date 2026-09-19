@@ -1,7 +1,10 @@
 # KOMO Backend — systemd unit
 # 安装：sudo cp deploy/komo-backend.service /etc/systemd/system/ && sudo systemctl daemon-reload
-# 说明：/opt/komo 为仓库 clone 路径；首次部署 JPA_DDL_AUTO=update 建表，
+# 说明：/opt/komo 为仓库路径（archive+scp 部署，无 .git）；首次部署 JPA_DDL_AUTO=update 建表，
 #       确认表结构正确后改为 validate（beta-deployment 计划 Task 3.2）。
+# 启动方式：本地 mvn package 构建 fat JAR → scp 到 /opt/komo/komo-backend.jar → java -jar。
+#       不用 mvn spring-boot:run：服务器未装 Maven，且 mvn 首次会从 Maven Central 拉全部
+#       依赖（境外，实测同 pip/apt 极慢）。java -jar 只需已装的 JDK 21。
 [Unit]
 Description=KOMO Backend
 After=network.target docker.service
@@ -32,7 +35,7 @@ Environment=JPA_DDL_AUTO=update
 # 4G 内存机器 JVM 限堆，防 OOM Killer（B4）：
 Environment=JAVA_TOOL_OPTIONS=-Xms256m -Xmx512m -XX:MaxMetaspaceSize=192m
 Environment=JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
-ExecStart=/usr/bin/mvn spring-boot:run -Dmaven.test.skip=true
+ExecStart=/usr/bin/java -jar /opt/komo/komo-backend.jar
 Restart=on-failure
 RestartSec=10
 

@@ -165,18 +165,26 @@ docker ps --format "{{.Names}}: {{.Status}}"
 
 ## 6. 构建并启动后端
 
+> ⚠️ **服务器不跑 Maven**：Task 1.2 只装了 JDK，没有 Maven；且 `mvn` 首次会从 Maven Central
+> 拉全部依赖（境外，与 pip/apt 同样极慢甚至超时）。正确做法是**本地构建 fat JAR，scp 上去用
+> `java -jar` 跑**，服务器只用已装的 JDK 21。
+
+**本地构建 + 上传（本地 PowerShell）：**
+```powershell
+cd e:\KnowledgeOnMyOwn_Project\KOMO\backend
+mvn clean package -DskipTests
+# 产物 target\komo-backend-0.1.0.jar（约 50~60MB，含全部依赖）
+scp target\komo-backend-0.1.0.jar ubuntu@<服务器IP>:/opt/komo/komo-backend.jar
+```
+
+**服务器上手动前台跑（调试用，正式用下面的 systemd）：**
 ```bash
-cd /opt/komo/KOMO/backend
-
-# 导出生产环境变量（或使用 systemd EnvironmentFile）
+cd /opt/komo
 export $(grep -v '^#' /opt/komo/docker/.env | xargs)
-export DB_HOST=localhost DB_PORT=5434
-export RABBITMQ_HOST=localhost RABBITMQ_PORT=5672
-export ES_USERNAME=elastic
-export AI_SERVICE_URL=http://localhost:8001
-
-# 编译并启动
-mvn spring-boot:run -Dmaven.test.skip=true -Dspring-boot.run.profiles=prod
+export DB_HOST=localhost DB_PORT=5434 RABBITMQ_HOST=localhost RABBITMQ_PORT=5672
+export ES_USERNAME=elastic ES_HOST=localhost ES_PORT=9201 AI_SERVICE_URL=http://localhost:8001
+export SERVER_ADDRESS=127.0.0.1 COOKIE_SECURE=true JPA_DDL_AUTO=update
+java -jar /opt/komo/komo-backend.jar
 ```
 
 ### 使用 systemd 管理后端
@@ -205,7 +213,8 @@ Environment=RABBITMQ_PORT=5672
 Environment=ES_USERNAME=elastic
 Environment=AI_SERVICE_URL=http://localhost:8001
 Environment=JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
-ExecStart=/usr/bin/mvn spring-boot:run -Dmaven.test.skip=true
+# fat JAR 由本地 mvn package 构建后 scp 到此路径（见 §6）；服务器无 Maven。
+ExecStart=/usr/bin/java -jar /opt/komo/komo-backend.jar
 Restart=on-failure
 RestartSec=10
 
@@ -215,11 +224,14 @@ WantedBy=multi-user.target
 
 启动：
 ```bash
-sudo useradd -r -s /bin/false komo
-sudo chown -R komo:komo /opt/komo
+sudo useradd -r -s /bin/false komo 2>/dev/null || echo "komo 用户已存在"
+sudo cp /opt/komo/deploy/komo-backend.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now komo-backend
 ```
+
+> 不用 `chown -R komo:komo /opt/komo`：komo 只需读 JAR（scp 默认 644 全局可读），`.env` 由
+> systemd 以 root 读取后降权，komo 无需读它；保持 /opt/komo 归 ubuntu 才能继续 scp 更新 JAR。
 
 ## 7. 构建并部署前端
 
