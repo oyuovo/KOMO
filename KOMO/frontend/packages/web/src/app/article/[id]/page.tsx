@@ -226,10 +226,10 @@ export default function ArticlePage() {
         <main className={styles.main}>
           <div style={{ textAlign: 'center', padding: 80 }}>
             <p style={{ fontSize: 17, color: 'var(--komo-text-secondary)', marginBottom: 16 }}>
-              请先返回首页登录
+              请先登录
             </p>
-            <Link href="/" style={{ color: 'var(--komo-link)', fontWeight: 600 }}>
-              ← 返回首页
+            <Link href="/login" style={{ color: 'var(--komo-link)', fontWeight: 600 }}>
+              前往登录 →
             </Link>
           </div>
         </main>

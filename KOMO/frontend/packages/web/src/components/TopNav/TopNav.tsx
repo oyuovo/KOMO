@@ -17,19 +17,21 @@ export default function TopNav() {
   const pathname = usePathname();
   const [draftCount, setDraftCount] = useState(0);
   const [user, setUser] = useState<UserInfo | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
 
   // 每次路由切换时刷新用户信息和草稿数量
   useEffect(() => {
     getMe()
       .then((u) => {
+        setUser(u);
         if (u) {
-          setUser(u);
           listDrafts()
             .then((drafts) => setDraftCount(drafts.length))
             .catch(() => {});
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setAuthChecked(true));
   }, [pathname]);
 
   const handleHelpReset = async () => {
@@ -48,7 +50,7 @@ export default function TopNav() {
         KOMO
       </Link>
 
-      {navItems.map((item) => {
+      {user && navItems.map((item) => {
         const isActive = item.href === '/'
           ? pathname === '/'
           : pathname.startsWith(item.href);
@@ -82,6 +84,14 @@ export default function TopNav() {
           <div className={styles.avatar}>
             {user.nickname ? user.nickname[0].toUpperCase() : 'U'}
           </div>
+        </div>
+      )}
+
+      {!user && authChecked && (
+        <div className={styles.right}>
+          <Link href="/login" className={styles.loginBtn}>
+            登录
+          </Link>
         </div>
       )}
     </nav>

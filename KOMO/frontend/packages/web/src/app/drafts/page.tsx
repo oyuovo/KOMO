@@ -94,7 +94,7 @@ export default function DraftsPage() {
   useEffect(() => {
     getMe().then((u) => {
       if (!u) {
-        router.push('/');
+        router.push('/login');
         return;
       }
       fetchDrafts();

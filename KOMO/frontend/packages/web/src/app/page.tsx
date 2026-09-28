@@ -3,9 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-  login,
   getMe,
-  logout,
   type UserInfo,
   type KnowledgeBaseData,
 } from '@komo/shared/api-client';
@@ -13,6 +11,7 @@ import KnowledgeList from '@/components/KnowledgeList/KnowledgeList';
 import KnowledgeBaseSidebar from '@/components/KnowledgeBaseSidebar/KnowledgeBaseSidebar';
 import DailyRecommendation from '@/components/DailyRecommendation/DailyRecommendation';
 import OnboardingGuide from '@/components/OnboardingGuide/OnboardingGuide';
+import IcpFooter from '@/components/IcpFooter/IcpFooter';
 import styles from './page.module.css';
 
 export default function HomePage() {
@@ -22,10 +21,6 @@ export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedKb, setSelectedKb] = useState<KnowledgeBaseData | null>(null);
   const [stats, setStats] = useState({ count: 0, latestDate: null as string | null });
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loggingIn, setLoggingIn] = useState(false);
-  const [loginError, setLoginError] = useState<string | null>(null);
 
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
 
@@ -37,23 +32,7 @@ export default function HomePage() {
       .finally(() => setAuthChecked(true));
   }, []);
 
-  const handleLogin = async () => {
-    setLoggingIn(true);
-    setLoginError(null);
-    try {
-      const auth = await login({ email, password });
-      setUser(auth.user);
-    } catch (err) {
-      setLoginError((err as Error).message || '登录失败');
-    } finally {
-      setLoggingIn(false);
-    }
-  };
-
-  const handleLogout = () => {
-    logout();
-    setUser(null);
-  };
+  // Show landing page if not authenticated
 
   // Auth check loading state
   if (!authChecked) {
@@ -69,39 +48,24 @@ export default function HomePage() {
   // Show login if not authenticated
   if (!user) {
     return (
-      <div className={styles.page}>
-        <div className={styles.startConvo} style={{ maxWidth: 420, margin: '60px auto' }}>
-          <h3 className={styles.startConvoTitle}>登录 KOMO</h3>
-          <p className={styles.startConvoDesc} style={{ marginBottom: 20 }}>
-            使用已有账号登录，或输入新邮箱自动注册
+      <div className={styles.landing}>
+        <div className={styles.landingHero}>
+          <span className={styles.landingBadge}>Knowledge On My Own</span>
+          <h1 className={styles.landingTitle}>
+            把每一次对话
+            <br />
+            沉淀为自己的知识
+          </h1>
+          <p className={styles.landingDesc}>
+            KOMO 是 AI 驱动的个人知识管理工具：与 AI 对话探索新知，系统自动提取要点、查重整合，形成属于你自己的知识库。
           </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
-            <input
-              className={styles.startConvoInput}
-              type="email"
-              placeholder="邮箱"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-            <input
-              className={styles.startConvoInput}
-              type="password"
-              placeholder="密码（至少6位）"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            <button
-              className={styles.btnPrimary}
-              onClick={handleLogin}
-              disabled={loggingIn}
-              style={{ width: '100%', maxWidth: 520, justifyContent: 'center', padding: '12px 18px' }}
-            >
-              {loggingIn ? '登录中...' : '登录 / 注册'}
-            </button>
-            {loginError && (
-              <p style={{ color: 'var(--komo-danger)', fontSize: 13 }}>{loginError}</p>
-            )}
-          </div>
+          <Link href="/login" className={styles.landingCta}>
+            登录体验
+          </Link>
+          <p className={styles.landingNote}>Beta 内测阶段</p>
+        </div>
+        <div className={styles.landingFooter}>
+          <IcpFooter />
         </div>
       </div>
     );
@@ -192,6 +156,8 @@ export default function HomePage() {
             开始对话
           </Link>
         </div>
+
+        <IcpFooter />
       </div>
     </div>
   );

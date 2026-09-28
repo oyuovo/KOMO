@@ -156,3 +156,75 @@
   border-color: var(--komo-accent);
   box-shadow: 0 0 0 3px rgba(184, 92, 56, 0.08);
 }
+
+/* ===== Landing（未登录首页） ===== */
+.landing {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--komo-topnav-height));
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 24px;
+  width: 100%;
+}
+
+.landingHero {
+  text-align: center;
+  margin: auto 0;
+  padding: 80px 0 60px;
+}
+
+.landingBadge {
+  display: inline-block;
+  font-size: var(--komo-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--komo-accent);
+  background: var(--komo-accent-soft);
+  padding: 4px 12px;
+  border-radius: 999px;
+  margin-bottom: 20px;
+}
+
+.landingTitle {
+  font-family: var(--komo-font-serif);
+  font-size: 40px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: 16px;
+}
+
+.landingDesc {
+  font-size: var(--komo-text-base);
+  color: var(--komo-text-secondary);
+  max-width: 480px;
+  margin: 0 auto 32px;
+  line-height: 1.7;
+}
+
+.landingCta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 36px;
+  border-radius: var(--komo-radius-sm);
+  font-size: var(--komo-text-base);
+  font-weight: 600;
+  background: var(--komo-accent);
+  color: white;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+.landingCta:hover { background: var(--komo-accent-hover); }
+
+.landingNote {
+  margin-top: 20px;
+  font-size: var(--komo-text-sm);
+  color: var(--komo-text-tertiary);
+}
+
+.landingFooter {
+  margin-top: auto;
+}

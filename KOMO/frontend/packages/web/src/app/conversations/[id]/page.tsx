@@ -48,7 +48,7 @@ export default function ConversationDetailPage() {
   useEffect(() => {
     getMe().then((u) => {
       if (!u) {
-        router.push('/');
+        router.push('/login');
         return;
       }
       setAutoExtract(u.autoExtract);

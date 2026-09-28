@@ -1,0 +1,83 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--komo-topnav-height));
+}
+
+.card {
+  max-width: 420px;
+  width: 100%;
+  margin: 60px auto 0;
+  padding: 32px;
+  background: var(--komo-surface);
+  border: 1px solid var(--komo-border);
+  border-radius: var(--komo-radius-lg);
+  box-shadow: var(--komo-shadow-md);
+}
+
+.title {
+  font-size: var(--komo-text-md);
+  font-weight: 600;
+  margin-bottom: 6px;
+  text-align: center;
+}
+
+.desc {
+  font-size: var(--komo-text-sm);
+  color: var(--komo-text-secondary);
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+
+.input {
+  width: 100%;
+  padding: 12px 18px;
+  border: 1px solid var(--komo-border);
+  border-radius: var(--komo-radius-md);
+  font-size: var(--komo-text-sm);
+  font-family: var(--komo-font-sans);
+  outline: none;
+  background: var(--komo-bg);
+  color: var(--komo-text);
+}
+.input:focus {
+  border-color: var(--komo-accent);
+  box-shadow: 0 0 0 3px rgba(184, 92, 56, 0.08);
+}
+
+.submitBtn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 18px;
+  border-radius: var(--komo-radius-sm);
+  font-size: var(--komo-text-sm);
+  font-weight: 600;
+  background: var(--komo-accent);
+  color: white;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+.submitBtn:hover { background: var(--komo-accent-hover); }
+.submitBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+.submitBtn:disabled:hover { background: var(--komo-accent); }
+
+.error {
+  color: var(--komo-danger);
+  font-size: var(--komo-text-sm);
+}
+
+.footer {
+  margin-top: auto;
+}

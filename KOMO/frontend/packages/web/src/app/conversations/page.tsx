@@ -19,7 +19,7 @@ function ConversationsContent() {
 
   useEffect(() => {
     getMe().then((u) => {
-      if (!u) { router.push('/'); return; }
+      if (!u) { router.push('/login'); return; }
       setAuthed(true);
       setLoading(false);
     });

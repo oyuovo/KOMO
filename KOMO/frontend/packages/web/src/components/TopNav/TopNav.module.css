@@ -107,3 +107,15 @@
   font-size: 12px;
   margin-left: 4px;
 }
+
+.loginBtn {
+  padding: 6px 18px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--komo-accent);
+  color: white;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+.loginBtn:hover { background: var(--komo-accent-hover); }

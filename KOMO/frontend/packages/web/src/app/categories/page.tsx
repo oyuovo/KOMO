@@ -110,6 +110,11 @@ export default function CategoriesPage() {
         <p style={{ textAlign: 'center', padding: 60, color: 'var(--komo-text-secondary)' }}>
           请先登录
         </p>
+        <div style={{ textAlign: 'center' }}>
+          <Link href="/login" style={{ color: 'var(--komo-link)', fontWeight: 600 }}>
+            前往登录 →
+          </Link>
+        </div>
       </div>
     );
   }
