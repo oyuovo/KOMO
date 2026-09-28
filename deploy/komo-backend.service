@@ -30,8 +30,11 @@ Environment=AI_SERVICE_URL=http://localhost:8001
 Environment=SERVER_ADDRESS=127.0.0.1
 Environment=COOKIE_SECURE=true
 Environment=JPA_DDL_AUTO=update
-# 域名确定后替换（nginx 同源反代不触发 CORS，此项为分离部署兜底）：
-# Environment=CORS_ORIGINS=https://your-domain
+# 【生产必设】CORS 白名单 = 前端对外访问的 Origin（协议+域名，https 不写 443 端口）。
+# ⚠️ 别信"同源反代不触发 CORS"：nginx 同源反代下浏览器发 POST/PUT/DELETE 仍会带 Origin 头，
+# Spring CorsFilter 照样校验它是否在白名单，缺域名会让登录等写操作直接 403 Invalid CORS request。
+# 多个域名（如 www 与裸域）用逗号分隔。部署时必须把 your-domain 换成真实域名：
+Environment=CORS_ORIGINS=https://your-domain
 # 4G 内存机器 JVM 限堆，防 OOM Killer（B4）：
 Environment=JAVA_TOOL_OPTIONS=-Xms256m -Xmx512m -XX:MaxMetaspaceSize=192m
 Environment=JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64

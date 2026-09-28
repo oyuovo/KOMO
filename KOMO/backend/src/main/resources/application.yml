@@ -64,8 +64,10 @@ komo:
   # 若代理跑在容器或其他主机，必须通过 TRUSTED_PROXIES 补上其地址。
   security:
     trusted-proxies: "${TRUSTED_PROXIES:127.0.0.1,0:0:0:0:0:0:0:1,::1}"
-    # CORS 白名单（逗号分隔）。同源反代部署（nginx / -> 3000、/api/ -> 8081）不触发 CORS；
-    # 分离部署时需通过 CORS_ORIGINS 补上前端真实域名。
+    # CORS 白名单（逗号分隔）。⚠️ 即使是 nginx 同源反代（/ -> 3000、/api/ -> 8081），
+    # 浏览器对 POST/PUT/DELETE 仍会发送 Origin 头，Spring CorsFilter 会校验它是否在白名单，
+    # 不在则直接返回 403 Invalid CORS request（登录等写操作全部失败）。
+    # 故生产必须通过 CORS_ORIGINS 设前端真实 Origin（如 https://your-domain）；默认值仅供本地开发。
     cors-origins: "${CORS_ORIGINS:http://localhost:3000,http://localhost:3001}"
   # 认证 Cookie 的 Secure 标记
   # 生产（HTTPS）必须为 true，否则 token 可能在明文请求中被窃听；
