@@ -1,0 +1,17 @@
+.icpFooter {
+  text-align: center;
+  padding: 16px 0 24px;
+  font-size: var(--komo-text-sm);
+  color: var(--komo-text-tertiary);
+}
+
+.icpLink {
+  color: var(--komo-text-tertiary);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.icpLink:hover {
+  color: var(--komo-text-secondary);
+  text-decoration: underline;
+}
