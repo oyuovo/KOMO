@@ -52,3 +52,4 @@ AGENTS.md
 .env
 .env.local
 *.log
+komo-frontend.tar.gz
