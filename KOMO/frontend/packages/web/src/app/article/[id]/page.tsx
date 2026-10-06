@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -11,12 +11,12 @@ import {
   getLinks,
   mergeInto,
   listKnowledgeBases,
-  createConversation,
   type KnowledgeItem,
   type KnowledgeLinkData,
 } from '@komo/shared/api-client';
 import MarkdownRenderer from '@/components/MarkdownRenderer/MarkdownRenderer';
 import ContextMenu from '@/components/ContextMenu/ContextMenu';
+import ReadingAgentPanel from '@/components/ReadingAgentPanel/ReadingAgentPanel';
 import { slugifyHeading } from '@/lib/slugify';
 import styles from './page.module.css';
 
@@ -64,6 +64,10 @@ export default function ArticlePage() {
     x: number; y: number; quote: string;
   } | null>(null);
 
+  // 右侧栏：目录 / AI 问答 tab；划词追问预填引用
+  const [rightTab, setRightTab] = useState<'toc' | 'agent'>('toc');
+  const [agentQuote, setAgentQuote] = useState<string | null>(null);
+
   const handleArticleContextMenu = useCallback((e: React.MouseEvent) => {
     const selection = window.getSelection();
     const text = selection?.toString().trim() || '';
@@ -72,23 +76,12 @@ export default function ArticlePage() {
     setContextMenu({ x: e.clientX, y: e.clientY, quote: text });
   }, []);
 
-  const handleQuoteToChat = async () => {
-    if (!contextMenu || !article) return;
-    const { quote } = contextMenu;
-    const title = quote.length > 20 ? quote.slice(0, 20) + '...' : quote;
-    try {
-      const conv = await createConversation(
-        title,
-        article.knowledgeBaseId ?? undefined
-      );
-      const params = new URLSearchParams();
-      params.set('quote', quote);
-      params.set('source', article.title);
-      params.set('sourceId', article.id);
-      router.push(`/conversations/${conv.id}?${params.toString()}`);
-    } catch {
-      // ignore
-    }
+  // 划词追问 → 打开右侧阅读问答面板并预填引用
+  const handleQuoteAsk = () => {
+    if (!contextMenu) return;
+    setAgentQuote(contextMenu.quote);
+    setRightTab('agent');
+    setContextMenu(null);
   };
 
   const handleDelete = async () => {
@@ -143,6 +136,25 @@ export default function ArticlePage() {
       setLinks(l);
     } catch { /* ignore */ }
   };
+
+  // 出链（本文 → 其他文章）：用于 [[wiki 链接]] 渲染映射 + footer 展示
+  const outgoingLinks = useMemo(
+    () => (article ? links.filter((l) => l.sourceEntryId === article.id) : []),
+    [links, article]
+  );
+  // 入链（其他文章 → 本文）：反向引用
+  const incomingLinks = useMemo(
+    () => (article ? links.filter((l) => l.sourceEntryId !== article.id) : []),
+    [links, article]
+  );
+  // [[标题]] → 文章 ID 映射（命中才渲染为站内链接）
+  const wikiLinkMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const l of outgoingLinks) {
+      if (l.targetTitle) map[l.targetTitle] = l.targetEntryId;
+    }
+    return map;
+  }, [outgoingLinks]);
 
   useEffect(() => {
     if (!id) return;
@@ -331,7 +343,7 @@ export default function ArticlePage() {
           <h1 className={styles.articleTitle}>{article.title}</h1>
 
           <div className={styles.articleBody} ref={articleBodyRef} onContextMenu={handleArticleContextMenu}>
-            <MarkdownRenderer content={article.content} />
+            <MarkdownRenderer content={article.content} linkMap={wikiLinkMap} />
           </div>
 
           {/* Article Footer — metadata */}
@@ -351,16 +363,37 @@ export default function ArticlePage() {
                 )}
               </div>
 
-              {links.length > 0 && (
+              {outgoingLinks.length > 0 && (
                 <div className={styles.sourceCard}>
-                  <div className={styles.sourceLabel}>知识关联 ({links.length})</div>
-                  {links.map((link) => (
-                    <p key={link.id} style={{ fontSize: 13 }}>
+                  <div className={styles.sourceLabel}>引用了 ({outgoingLinks.length})</div>
+                  {outgoingLinks.map((link) => (
+                    <Link
+                      key={link.id}
+                      href={`/article/${link.targetEntryId}`}
+                      className={styles.footerLink}
+                      title={link.targetTitle || ''}
+                    >
                       {link.relation === 'RELATED' ? '🔗' :
                        link.relation === 'EXTENDS' ? '📖' :
                        link.relation === 'CONTRADICTS' ? '⚠️' : '💡'}
                       {' '}{link.targetTitle || link.targetEntryId.slice(0, 8)}
-                    </p>
+                    </Link>
+                  ))}
+                </div>
+              )}
+
+              {incomingLinks.length > 0 && (
+                <div className={styles.sourceCard}>
+                  <div className={styles.sourceLabel}>被引用于 ({incomingLinks.length})</div>
+                  {incomingLinks.map((link) => (
+                    <Link
+                      key={link.id}
+                      href={`/article/${link.sourceEntryId}`}
+                      className={styles.footerLink}
+                      title={link.sourceTitle || ''}
+                    >
+                      🔗 {' '}{link.sourceTitle || link.sourceEntryId.slice(0, 8)}
+                    </Link>
                   ))}
                 </div>
               )}
@@ -379,60 +412,94 @@ export default function ArticlePage() {
           onClose={() => setContextMenu(null)}
           items={[
             {
-              label: '\u{1F4AC} 追问 KOMO',
-              onClick: handleQuoteToChat,
+              label: '\u{1F4AC} 向 AI 追问这段话',
+              onClick: handleQuoteAsk,
             },
           ]}
         />
       )}
 
-      {(tocItems.length > 0 || isInFragmentsKb) && (
-        <aside className={styles.tocFloat}>
-          {tocItems.length > 0 && (
-            <>
-              <div className={styles.tocFloatTitle}>📑 在本页中</div>
-              {tocItems.map((item) => (
-                <button
-                  key={item.id}
-                  className={`${styles.tocFloatItem} ${
-                    item.level === 3 ? styles.tocFloatItemH3 : ''
-                  } ${activeTocId === item.id ? styles.tocFloatItemActive : ''}`}
-                  onClick={() => scrollToHeading(item.id)}
-                >
-                  {item.text}
-                </button>
-              ))}
-            </>
-          )}
+      <aside
+        className={`${styles.tocFloat} ${
+          rightTab === 'agent' ? styles.tocFloatAgent : ''
+        }`}
+      >
+          <div className={styles.sideTabs}>
+            <button
+              className={`${styles.sideTab} ${
+                rightTab === 'toc' ? styles.sideTabActive : ''
+              }`}
+              onClick={() => setRightTab('toc')}
+            >
+              📑 目录
+            </button>
+            <button
+              className={`${styles.sideTab} ${
+                rightTab === 'agent' ? styles.sideTabActive : ''
+              }`}
+              onClick={() => setRightTab('agent')}
+            >
+              💬 问答
+            </button>
+          </div>
 
-          {isInFragmentsKb && (
-            <div className={styles.tocFloatEmbed}>
-              <div className={styles.tocFloatTitle}>合并进文章</div>
-              <input
-                className={styles.tocFloatEmbedInput}
-                type="text"
-                placeholder="搜索目标文章..."
-                value={embedSearch}
-                onChange={(e) => handleEmbedSearch(e.target.value)}
-              />
-              {embedResults.length > 0 && (
-                <div className={styles.tocFloatEmbedDropdown}>
-                  {embedResults.map((item) => (
+          {rightTab === 'toc' ? (
+            <>
+              {tocItems.length > 0 ? (
+                <>
+                  <div className={styles.tocFloatTitle}>在本页中</div>
+                  {tocItems.map((item) => (
                     <button
                       key={item.id}
-                      className={styles.tocFloatEmbedItem}
-                      onClick={() => handleEmbed(item.id)}
-                      disabled={embedding}
+                      className={`${styles.tocFloatItem} ${
+                        item.level === 3 ? styles.tocFloatItemH3 : ''
+                      } ${activeTocId === item.id ? styles.tocFloatItemActive : ''}`}
+                      onClick={() => scrollToHeading(item.id)}
                     >
-                      {item.title}
+                      {item.text}
                     </button>
                   ))}
+                </>
+              ) : (
+                <p className={styles.sideTabEmpty}>文章暂无小节标题</p>
+              )}
+
+              {isInFragmentsKb && (
+                <div className={styles.tocFloatEmbed}>
+                  <div className={styles.tocFloatTitle}>合并进文章</div>
+                  <input
+                    className={styles.tocFloatEmbedInput}
+                    type="text"
+                    placeholder="搜索目标文章..."
+                    value={embedSearch}
+                    onChange={(e) => handleEmbedSearch(e.target.value)}
+                  />
+                  {embedResults.length > 0 && (
+                    <div className={styles.tocFloatEmbedDropdown}>
+                      {embedResults.map((item) => (
+                        <button
+                          key={item.id}
+                          className={styles.tocFloatEmbedItem}
+                          onClick={() => handleEmbed(item.id)}
+                          disabled={embedding}
+                        >
+                          {item.title}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
+            </>
+          ) : (
+            <ReadingAgentPanel
+              articleId={article.id}
+              articleTitle={article.title}
+              quote={agentQuote}
+              onQuoteConsumed={() => setAgentQuote(null)}
+            />
           )}
-        </aside>
-      )}
+      </aside>
     </div>
   );
 }

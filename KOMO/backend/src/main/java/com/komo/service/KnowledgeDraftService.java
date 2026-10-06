@@ -38,6 +38,7 @@ public class KnowledgeDraftService {
     private final KnowledgeIndexService indexService;
     private final KnowledgeBaseService knowledgeBaseService;
     private final KnowledgeLinkRepository knowledgeLinkRepository;
+    private final WikiLinkService wikiLinkService;
     private final TransactionTemplate transactionTemplate;
 
     /** 判断某条 AI 消息是否已经生成过草稿，用于消息队列幂等消费。 */
@@ -64,6 +65,7 @@ public class KnowledgeDraftService {
         indexService.indexEntry(
             entry.getId(), entry.getUserId(), entry.getKnowledgeBaseId(),
             entry.getTitle(), entry.getContentPlain(), entry.getContent());
+        wikiLinkService.syncLinks(entry.getUserId(), entry.getId());
         return entry;
     }
 
@@ -128,6 +130,7 @@ public class KnowledgeDraftService {
         indexService.indexEntry(
             entry.getId(), entry.getUserId(), entry.getKnowledgeBaseId(),
             entry.getTitle(), entry.getContentPlain(), entry.getContent());
+        wikiLinkService.syncLinks(entry.getUserId(), entry.getId());
         return entry;
     }
 

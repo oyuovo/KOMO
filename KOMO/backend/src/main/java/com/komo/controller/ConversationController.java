@@ -65,6 +65,16 @@ public class ConversationController {
             .body(ApiResponse.success(convo));
     }
 
+    /** 获取或创建文章的侧边栏阅读问答会话（每篇文章一个，不产生草稿） */
+    @GetMapping("/reading/{articleId}")
+    public ResponseEntity<ApiResponse<Conversation>> getOrCreateReading(
+        @PathVariable UUID articleId
+    ) {
+        UUID userId = SecurityContext.getCurrentUserId();
+        Conversation convo = conversationService.getOrCreateReadingConversation(userId, articleId);
+        return ResponseEntity.ok(ApiResponse.success(convo));
+    }
+
     @GetMapping("/{id}/messages")
     public ResponseEntity<ApiResponse<List<Message>>> getMessages(@PathVariable UUID id) {
         UUID userId = SecurityContext.getCurrentUserId();

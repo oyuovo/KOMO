@@ -1,14 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import MarkdownRenderer from '@/components/MarkdownRenderer/MarkdownRenderer';
 import ConversationSidebar from '@/components/ConversationSidebar/ConversationSidebar';
 import {
   getMe,
-  getCsrfToken,
-  getApiBase,
   getMessages,
   listConversations,
   listDrafts,
@@ -19,6 +17,10 @@ import {
   type ConversationData,
   type KnowledgeBaseData,
 } from '@komo/shared/api-client';
+import {
+  conversationStreamStore,
+  type ConversationStreamState,
+} from '@/lib/conversationStream';
 import styles from './page.module.css';
 
 export default function ConversationDetailPage() {
@@ -29,7 +31,6 @@ export default function ConversationDetailPage() {
   const [messages, setMessages] = useState<MessageData[]>([]);
   const [conversations, setConversations] = useState<ConversationData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [draftCount, setDraftCount] = useState(0);
@@ -43,6 +44,20 @@ export default function ConversationDetailPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // 最近一次消息列表拉取完成时间（客户端时钟），
+  // 用于判断流式交换是否已存在于服务端消息中
+  const lastFetchTimeRef = useRef(0);
+
+  // 流式状态存放在模块级 store：切换页面（unmount）不中断流，
+  // 返回页面重新挂载即恢复展示。后端断连时照常落库，done 后重拉对齐。
+  const streams = useSyncExternalStore(
+    conversationStreamStore.subscribe,
+    conversationStreamStore.getSnapshot,
+    conversationStreamStore.getServerSnapshot
+  );
+  const activeStream: ConversationStreamState | null =
+    streams[conversationId] ?? null;
+  const sending = activeStream?.phase === 'streaming';
 
   // 验证登录，加载数据
   useEffect(() => {
@@ -67,6 +82,7 @@ export default function ConversationDetailPage() {
         listConversations(),
       ]);
       setMessages(msgs);
+      lastFetchTimeRef.current = Date.now();
       setConversations(convs);
       const current = convs.find(c => c.id === conversationId);
       if (current) {
@@ -79,11 +95,6 @@ export default function ConversationDetailPage() {
     }
   };
 
-  // 发送消息后自动滚到底部
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
   // 页面加载完成后聚焦输入框
   useEffect(() => {
     if (!loading) {
@@ -91,26 +102,16 @@ export default function ConversationDetailPage() {
     }
   }, [loading]);
 
-  // 检查 URL 中是否有引用参数（来自文章页追问 或 每日推荐）
+  // 检查 URL 中是否有预填参数（来自每日推荐）
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const urlParams = new URLSearchParams(window.location.search);
-    const quote = urlParams.get('quote');
-    const source = urlParams.get('source');
     const question = urlParams.get('question');
-    if (quote) {
-      const lines = [`> ${quote}`];
-      if (source) lines.push(`> 来源：${source}`);
-      lines.push('', '');
-      setInput(lines.join('\n'));
-    } else if (question) {
+    if (question) {
       setInput(question);
     }
     // Clean URL params
     const url = new URL(window.location.href);
-    url.searchParams.delete('quote');
-    url.searchParams.delete('source');
-    url.searchParams.delete('sourceId');
     url.searchParams.delete('question');
     url.searchParams.delete('kb');
     window.history.replaceState({}, '', url.toString());
@@ -138,152 +139,9 @@ export default function ConversationDetailPage() {
     if (!content || sending) return;
 
     setInput('');
-    setSending(true);
-
-    // 乐观更新：先显示用户消息
-    const tempUserMsg: MessageData = {
-      id: `temp-${Date.now()}`,
-      conversationId,
-      role: 'USER',
-      content,
-      tokensUsed: null,
-      createdAt: new Date().toISOString(),
-    };
-    // 创建占位 AI 消息用于流式更新
-    const aiMsgId = `ai-${Date.now()}`;
-    const tempAiMsg: MessageData = {
-      id: aiMsgId,
-      conversationId,
-      role: 'ASSISTANT',
-      content: '',
-      tokensUsed: null,
-      createdAt: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, tempUserMsg, tempAiMsg]);
-
-    try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      const csrf = getCsrfToken();
-      if (csrf) headers['X-XSRF-TOKEN'] = csrf;
-
-      const response = await fetch(
-        `${getApiBase()}/conversations/${conversationId}/messages/stream`,
-        {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ content }),
-          credentials: 'include',
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('AI 服务请求失败');
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No response body');
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let fullContent = '';
-      let streamError: string | null = null;
-
-      // SSE 解析状态
-      let currentEvent = '';
-      let firstDataLine = true;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            currentEvent = line.slice(7).trim();
-            firstDataLine = true;
-          } else if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (currentEvent === 'error') {
-              streamError = data;
-            } else if (currentEvent === 'done') {
-              // done 事件的 data 忽略
-            } else {
-              // 多行 data: 用 \n 连接，还原原始换行
-              if (firstDataLine) {
-                fullContent += data;
-                firstDataLine = false;
-              } else {
-                fullContent += '\n' + data;
-              }
-            }
-          } else if (line === '') {
-            // 空行 = SSE 事件边界，重置状态
-            currentEvent = '';
-            firstDataLine = true;
-          }
-        }
-
-        // 每个 chunk 更新一次 UI，避免过多重渲染
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === aiMsgId ? { ...m, content: fullContent } : m
-          )
-        );
-      }
-
-      // 流结束 — 刷新 decoder 和 buffer 中残留的数据
-      buffer += decoder.decode(); // stream: false, flush final bytes
-      if (buffer.trim()) {
-        const lines = buffer.split('\n');
-        for (const line of lines) {
-          if (line.startsWith('data: ') && !line.startsWith('data: [DONE]')) {
-            fullContent += line.slice(6);
-          }
-        }
-      }
-      // 最终更新
-      if (fullContent) {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === aiMsgId ? { ...m, content: fullContent } : m
-          )
-        );
-      }
-
-      // 流结束 — 用已接收的内容更新 AI 消息，不依赖 getMessages
-      if (fullContent) {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === tempUserMsg.id
-              ? { ...m, id: `user-${Date.now()}` } // 去掉 temp 前缀
-              : m
-          )
-        );
-        checkDraftCount();
-      }
-      if (streamError) {
-        setError('AI 服务提示: ' + streamError);
-      }
-    } catch (err) {
-      // 只有在完全没有收到流内容时才是真正的网络错误
-      setMessages((prev) => {
-        const aiMsg = prev.find((m) => m.id === aiMsgId);
-        if (aiMsg && aiMsg.content.length > 0) {
-          return prev; // 已经有内容了，保留不删
-        }
-        // 真的失败了才回滚
-        setError((err as Error).message);
-        setInput(content);
-        return prev.filter((m) => m.id !== tempUserMsg.id && m.id !== aiMsgId);
-      });
-    } finally {
-      setSending(false);
-    }
+    // SSE reader 在模块级 store 中运行，切换页面不中断；
+    // 乐观消息（用户消息 + AI 占位）由 displayMessages 从流状态拼装
+    await conversationStreamStore.start(conversationId, content);
   };
 
   const handleExtract = async () => {
@@ -330,6 +188,72 @@ export default function ConversationDetailPage() {
       // ignore
     }
   };
+
+  // 合并服务端消息与流式状态：发送中的乐观消息、切页返回后的部分回复都在这里拼装。
+  // 判断依据（同一客户端时钟，无服务器时钟偏差问题）：
+  //   - 消息列表在流开始之后拉取过 → 后端已落库用户消息（streamMessage 先存用户消息再流式）
+  //   - 此时尾条已是 AI 回复 → 本次回复也已落库（done/断连后重进页面）
+  const displayMessages = useMemo<MessageData[]>(() => {
+    if (!activeStream) return messages;
+    // 网络错误且未收到任何内容 → 回滚乐观消息
+    if (activeStream.phase === 'error' && !activeStream.aiContent) return messages;
+
+    const userPersisted = lastFetchTimeRef.current > activeStream.startedAt;
+    const tail = messages[messages.length - 1];
+    const assistantPersisted = userPersisted && tail?.role === 'ASSISTANT';
+
+    const result = [...messages];
+    if (!userPersisted) {
+      result.push({
+        id: `stream-user-${activeStream.startedAt}`,
+        conversationId,
+        role: 'USER',
+        content: activeStream.userContent,
+        tokensUsed: null,
+        createdAt: new Date(activeStream.startedAt).toISOString(),
+      });
+    }
+    if (!assistantPersisted) {
+      result.push({
+        id: `stream-ai-${activeStream.startedAt}`,
+        conversationId,
+        role: 'ASSISTANT',
+        content: activeStream.aiContent,
+        tokensUsed: null,
+        createdAt: new Date(activeStream.startedAt).toISOString(),
+      });
+    }
+    return result;
+  }, [messages, activeStream, conversationId]);
+
+  // 流结束/出错后的对齐：done → 重拉已落库消息并清理流状态；error → 提示与回滚。
+  // 后端在客户端断连时仍会完整落库，所以无论流是否在本页完成，重拉都能拿到完整回复。
+  useEffect(() => {
+    if (!activeStream || loading) return;
+    if (activeStream.phase === 'done') {
+      getMessages(conversationId)
+        .then((msgs) => {
+          setMessages(msgs);
+          conversationStreamStore.clear(conversationId);
+          checkDraftCount();
+        })
+        .catch(() => {
+          // 拉取失败：保留流式内容展示，下次进入页面再对齐
+        });
+    } else if (activeStream.phase === 'error') {
+      setError(activeStream.error ?? 'AI 服务连接中断');
+      if (!activeStream.aiContent) {
+        // 完全没收到内容：回滚乐观消息，恢复输入框
+        setInput(activeStream.userContent);
+        conversationStreamStore.clear(conversationId);
+      }
+    }
+  }, [activeStream, loading, conversationId]);
+
+  // 发送消息后自动滚到底部（流式期间 displayMessages 随 chunk 更新）
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [displayMessages]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -432,7 +356,7 @@ export default function ConversationDetailPage() {
             <p className={styles.errorMsg}>{error}</p>
           )}
           {!loading &&
-            messages.map((msg) => (
+            displayMessages.map((msg) => (
               <div
                 key={msg.id}
                 className={`${styles.message} ${

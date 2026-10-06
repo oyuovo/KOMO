@@ -168,8 +168,11 @@ export default function EditKnowledgePage() {
           <MarkdownRenderer content={content || '（暂无内容）'} />
         </div>
       ) : (
-        <textarea className={styles.contentInput} placeholder="Markdown 内容"
-          value={content} onChange={(e) => setContent(e.target.value)} />
+        <>
+          <p className={styles.editorHint}>使用 [[文章标题]] 链接到你保存的文章，保存后可点击跳转</p>
+          <textarea className={styles.contentInput} placeholder="Markdown 内容"
+            value={content} onChange={(e) => setContent(e.target.value)} />
+        </>
       )}
     </div>
   );

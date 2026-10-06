@@ -333,6 +333,8 @@ export interface KnowledgeLinkData {
   targetEntryId: string;
   relation: string;
   createdAt: string;
+  /** 两端标题（服务端富化填充，前端据 sourceEntryId 判断出链/入链方向） */
+  sourceTitle?: string;
   targetTitle?: string;
 }
 
@@ -391,6 +393,10 @@ export interface ConversationData {
   id: string;
   title: string;
   knowledgeBaseId: string | null;
+  /** 对话类型：CHAT 普通对话 / READING 文章侧边栏阅读问答 */
+  type?: 'CHAT' | 'READING' | null;
+  /** READING 对话关联的文章 ID */
+  articleId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -417,6 +423,13 @@ export async function createConversation(
   if (title) body.title = title;
   if (knowledgeBaseId) body.knowledgeBaseId = knowledgeBaseId;
   return post('/conversations', body);
+}
+
+/** 获取或创建文章的侧边栏阅读问答会话（每篇文章一个，不产生草稿） */
+export async function getOrCreateReadingConversation(
+  articleId: string
+): Promise<ConversationData> {
+  return get(`/conversations/reading/${articleId}`);
 }
 
 export async function getMessages(conversationId: string): Promise<MessageData[]> {

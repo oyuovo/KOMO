@@ -36,11 +36,13 @@ class KnowledgeServiceMergeTest {
             .thenThrow(new ObjectOptimisticLockingFailureException(KnowledgeEntry.class, targetId))
             .thenReturn(merged);
         KnowledgeIndexService indexService = mock(KnowledgeIndexService.class);
+        WikiLinkService wikiLinkService = mock(WikiLinkService.class);
         KnowledgeService service = new KnowledgeService(
             mock(KnowledgeRepository.class),
             mock(KnowledgeLinkRepository.class),
             indexService,
             mock(KnowledgeBaseService.class),
+            wikiLinkService,
             transactions
         );
 
@@ -50,5 +52,6 @@ class KnowledgeServiceMergeTest {
         verify(transactions, times(2)).execute(any());
         verify(indexService).updateEntry(targetId, userId, null, "target", "merged", "merged");
         verify(indexService).deleteEntry(fragmentId);
+        verify(wikiLinkService).syncLinks(userId, targetId);
     }
 }

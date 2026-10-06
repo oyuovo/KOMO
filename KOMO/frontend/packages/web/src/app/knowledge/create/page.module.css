@@ -93,6 +93,13 @@
 }
 .titleInput::placeholder { color: var(--komo-text-tertiary); }
 
+/* [[wiki 链接]] 输入提示 */
+.editorHint {
+  margin: 0 0 6px;
+  font-size: var(--komo-text-sm, 13px);
+  color: var(--komo-text-tertiary);
+}
+
 .contentInput {
   width: 100%;
   min-height: 420px;

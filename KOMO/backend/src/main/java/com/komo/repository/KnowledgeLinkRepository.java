@@ -16,4 +16,14 @@ public interface KnowledgeLinkRepository extends JpaRepository<KnowledgeLink, UU
 
     /** 检查关联是否已存在 */
     boolean existsBySourceEntryIdAndTargetEntryId(UUID sourceEntryId, UUID targetEntryId);
+
+    /** 某条目作为源的指定类型关联（wiki 链接全量重建用） */
+    List<KnowledgeLink> findAllBySourceEntryIdAndRelation(UUID sourceEntryId,
+                                                          KnowledgeLink.RelationType relation);
+
+    /** 删除某条目作为源的指定类型关联 */
+    void deleteBySourceEntryIdAndRelation(UUID sourceEntryId, KnowledgeLink.RelationType relation);
+
+    /** 删除指向某条目的指定类型关联 */
+    void deleteByTargetEntryIdAndRelation(UUID targetEntryId, KnowledgeLink.RelationType relation);
 }

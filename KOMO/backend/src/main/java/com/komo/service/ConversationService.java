@@ -4,11 +4,14 @@ import com.komo.dto.BatchDeleteResult;
 import com.komo.dto.DedupResult;
 import com.komo.dto.ExtractionTaskPayload;
 import com.komo.entity.Conversation;
+import com.komo.entity.Conversation.ConversationType;
 import com.komo.entity.KnowledgeDraft;
+import com.komo.entity.KnowledgeEntry;
 import com.komo.entity.Message;
 import com.komo.exception.BusinessException;
 import com.komo.exception.ErrorCode;
 import com.komo.repository.ConversationRepository;
+import com.komo.repository.KnowledgeRepository;
 import com.komo.repository.MessageRepository;
 import com.komo.util.MarkdownUtils;
 import jakarta.servlet.http.HttpServletResponse;
@@ -48,6 +51,7 @@ public class ConversationService {
     private final KnowledgeDraftService knowledgeDraftService;
     private final KnowledgeIndexService knowledgeIndexService;
     private final KnowledgeBaseService knowledgeBaseService;
+    private final KnowledgeRepository knowledgeRepository;
     private final DedupService dedupService;
     private final RabbitTemplate rabbitTemplate;
     private final UserService userService;
@@ -59,6 +63,10 @@ public class ConversationService {
     private static final int MAX_LIST_SIZE = 200;
     /** 发给 AI 的历史消息窗口（最近 N 条），防止长对话撞穿上下文窗口 */
     private static final int MAX_HISTORY_MESSAGES = 20;
+    /** READING 对话文章全文护栏（字符），防止长文章撞穿 token 预算 */
+    private static final int MAX_ARTICLE_CONTEXT = 12000;
+    /** 选区引用上下文窗口（选区前后各取的字符数） */
+    private static final int QUOTE_WINDOW = 2000;
 
     @Value("${komo.ai.base-url}")
     private String aiBaseUrl;
@@ -69,6 +77,7 @@ public class ConversationService {
                                KnowledgeDraftService knowledgeDraftService,
                                KnowledgeIndexService knowledgeIndexService,
                                KnowledgeBaseService knowledgeBaseService,
+                               KnowledgeRepository knowledgeRepository,
                                DedupService dedupService,
                                RabbitTemplate rabbitTemplate,
                                UserService userService,
@@ -79,6 +88,7 @@ public class ConversationService {
         this.knowledgeDraftService = knowledgeDraftService;
         this.knowledgeIndexService = knowledgeIndexService;
         this.knowledgeBaseService = knowledgeBaseService;
+        this.knowledgeRepository = knowledgeRepository;
         this.dedupService = dedupService;
         this.rabbitTemplate = rabbitTemplate;
         this.userService = userService;
@@ -99,16 +109,41 @@ public class ConversationService {
         return conversationRepository.save(convo);
     }
 
-    /** 获取用户的对话列表（限最近 MAX_LIST_SIZE 条） */
+    /** 获取用户的对话列表（限最近 MAX_LIST_SIZE 条，不含 READING 侧边栏问答） */
     public List<Conversation> list(UUID userId) {
-        return conversationRepository.findAllByUserIdOrderByUpdatedAtDesc(
-            userId, PageRequest.of(0, MAX_LIST_SIZE));
+        return conversationRepository.findChatsByUserId(
+            userId, ConversationType.CHAT, PageRequest.of(0, MAX_LIST_SIZE));
     }
 
-    /** 获取用户指定知识库下的对话列表（限最近 MAX_LIST_SIZE 条） */
+    /** 获取用户指定知识库下的对话列表（限最近 MAX_LIST_SIZE 条，不含 READING） */
     public List<Conversation> listByKnowledgeBase(UUID userId, UUID knowledgeBaseId) {
-        return conversationRepository.findAllByUserIdAndKnowledgeBaseIdOrderByUpdatedAtDesc(
-            userId, knowledgeBaseId, PageRequest.of(0, MAX_LIST_SIZE));
+        return conversationRepository.findChatsByUserIdAndKnowledgeBaseId(
+            userId, knowledgeBaseId, ConversationType.CHAT, PageRequest.of(0, MAX_LIST_SIZE));
+    }
+
+    /** 判断对话是否为阅读问答类型（历史行 type 为 NULL 视为 CHAT） */
+    private boolean isReading(Conversation convo) {
+        return convo.getType() == ConversationType.READING;
+    }
+
+    /** 获取或创建文章的侧边栏阅读问答会话（每篇文章复用同一个会话） */
+    @Transactional
+    public Conversation getOrCreateReadingConversation(UUID userId, UUID articleId) {
+        KnowledgeEntry article = knowledgeRepository.findByIdAndUserId(articleId, userId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.KNOWLEDGE_NOT_FOUND, "文章不存在或无权访问"));
+        if (article.getDeletedAt() != null) {
+            throw new BusinessException(ErrorCode.KNOWLEDGE_NOT_FOUND, "文章不存在或无权访问");
+        }
+
+        return conversationRepository
+            .findFirstByUserIdAndArticleIdAndTypeOrderByUpdatedAtDesc(userId, articleId, ConversationType.READING)
+            .orElseGet(() -> conversationRepository.save(Conversation.builder()
+                .userId(userId)
+                .title(article.getTitle())
+                .knowledgeBaseId(article.getKnowledgeBaseId())
+                .type(ConversationType.READING)
+                .articleId(articleId)
+                .build()));
     }
 
     /** 切换对话所属知识库 */
@@ -116,6 +151,11 @@ public class ConversationService {
     public Conversation switchKnowledgeBase(UUID conversationId, UUID userId, UUID knowledgeBaseId) {
         Conversation convo = conversationRepository.findByIdAndUserId(conversationId, userId)
             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "对话不存在"));
+
+        // READING 对话的知识库由其关联文章决定，不允许手动切换
+        if (isReading(convo)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "阅读问答对话不支持切换知识库");
+        }
 
         if (knowledgeBaseId != null) {
             knowledgeBaseService.findByIdOrThrow(knowledgeBaseId);
@@ -167,17 +207,15 @@ public class ConversationService {
         // 1. 保存用户消息（内部已校验对话归属）
         conversationPersistenceService.saveUserMessage(conversationId, userId, content);
 
-        // 1b. 获取对话所属知识库（用于 KB 范围内的 RAG）
-        UUID kbId = conversationRepository.findByIdAndUserId(conversationId, userId)
-            .map(Conversation::getKnowledgeBaseId).orElse(null);
+        // 1b. 获取对话（类型 + 知识库用于 RAG 范围）
+        Conversation convo = conversationRepository.findByIdAndUserId(conversationId, userId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "对话不存在"));
 
         // 2. 构建消息历史（截断窗口）+ RAG 上下文
         List<Message> history = messageRepository.findAllByConversationIdOrderByCreatedAtAsc(conversationId);
         boolean initialExchange = history.size() <= 2;
         history = truncateHistory(history);
-        List<Map<String, String>> aiMessages = buildAiMessages(userId, content, history, kbId);
-
-        // 3. 调用 Python AI 服务
+        List<Map<String, String>> aiMessages = buildAiMessages(userId, content, history, convo);
         String aiResponse;
         try {
             Map<String, Object> requestBody = Map.of("messages", aiMessages);
@@ -218,10 +256,25 @@ public class ConversationService {
         return new ArrayList<>(history.subList(history.size() - MAX_HISTORY_MESSAGES, history.size()));
     }
 
-    /** 拼装发给 AI 的消息列表：RAG 系统提示（如有）+ 历史消息。 */
+    /** 拼装发给 AI 的消息列表：READING 走文章上下文，否则 RAG 系统提示（如有）+ 历史消息。 */
     private List<Map<String, String>> buildAiMessages(UUID userId, String content,
-                                                       List<Message> history, UUID kbId) {
+                                                       List<Message> history, Conversation convo) {
+        if (isReading(convo)) {
+            return buildReadingMessages(userId, content, history, convo);
+        }
+
         List<Map<String, String>> aiMessages = new ArrayList<>();
+        appendRagContext(aiMessages, userId, content, convo.getKnowledgeBaseId());
+        history.forEach(m -> aiMessages.add(Map.of(
+            "role", m.getRole() == Message.MessageRole.USER ? "user" : "assistant",
+            "content", m.getContent()
+        )));
+        return aiMessages;
+    }
+
+    /** RAG 上下文拼装（普通对话）：KB 内相关条目作为 system 消息。 */
+    private void appendRagContext(List<Map<String, String>> aiMessages, UUID userId,
+                                  String content, UUID kbId) {
         List<Map<String, Object>> relevantEntries = knowledgeIndexService.search(userId, content, 3, kbId);
         if (!relevantEntries.isEmpty()) {
             StringBuilder context = new StringBuilder();
@@ -241,11 +294,114 @@ public class ConversationService {
             context.append("---\n请基于以上知识库内容回答用户问题。如果知识库内容不足以回答，请如实告知并提供你自己的知识。");
             aiMessages.add(Map.of("role", "system", "content", context.toString()));
         }
+    }
+
+    /** READING 对话上下文拼装：文章全文 + 选区窗口 + KB 相关条目 + 历史消息。 */
+    private List<Map<String, String>> buildReadingMessages(UUID userId, String content,
+                                                            List<Message> history, Conversation convo) {
+        List<Map<String, String>> aiMessages = new ArrayList<>();
+
+        KnowledgeEntry article = convo.getArticleId() != null
+            ? knowledgeRepository.findByIdAndUserId(convo.getArticleId(), userId).orElse(null) : null;
+        if (article != null && article.getDeletedAt() == null) {
+            StringBuilder sys = new StringBuilder();
+            sys.append("你是一名阅读助理，正在帮助用户理解他们保存的一篇文章。用户的问题可能针对全文，也可能针对文中某段选中的原文。\n\n");
+            sys.append("文章标题：").append(article.getTitle()).append("\n\n");
+
+            String body = article.getContent() != null ? article.getContent() : "";
+            if (body.length() > MAX_ARTICLE_CONTEXT) {
+                body = body.substring(0, MAX_ARTICLE_CONTEXT) + "\n\n...(文章过长，已截断)";
+            }
+            sys.append("=== 文章全文 ===\n").append(body).append("\n\n");
+
+            // 选区引用：前端以 "> 引用文本" 前缀拼接，定位原文位置取上下文窗口
+            String quote = extractQuotedSelection(content);
+            if (!quote.isEmpty()) {
+                String window = locateQuoteWindow(article.getContent(), quote);
+                if (window != null) {
+                    sys.append("=== 用户选中的原文段落（含前后上下文） ===\n")
+                      .append(window).append("\n\n");
+                }
+            }
+
+            // KB 内相关条目作补充参考（排除本文自身）
+            String query = stripQuotedSelection(content);
+            if (!query.isBlank()) {
+                List<Map<String, Object>> relevant = knowledgeIndexService.search(
+                    userId, query, 3, convo.getKnowledgeBaseId());
+                List<Map<String, Object>> others = relevant.stream()
+                    .filter(e -> !article.getId().toString().equals(String.valueOf(e.get("_id"))))
+                    .toList();
+                if (!others.isEmpty()) {
+                    sys.append("=== 用户知识库中的相关条目（仅作补充参考） ===\n");
+                    for (Map<String, Object> entry : others) {
+                        sys.append("### ").append(entry.getOrDefault("title", "")).append("\n");
+                        String entryBody = (String) entry.getOrDefault("content", "");
+                        if (entryBody == null || entryBody.isEmpty()) {
+                            entryBody = (String) entry.getOrDefault("contentPlain", "");
+                        }
+                        if (entryBody != null && entryBody.length() > 2000) {
+                            entryBody = entryBody.substring(0, 2000) + "\n\n...(内容过长，已截断)";
+                        }
+                        sys.append(entryBody).append("\n\n");
+                    }
+                    sys.append("---\n");
+                }
+            }
+
+            sys.append("请优先基于文章内容回答用户关于这篇文章的问题；知识库条目仅作补充。如果文章内容不足以回答，请如实说明。");
+            aiMessages.add(Map.of("role", "system", "content", sys.toString()));
+        }
+
         history.forEach(m -> aiMessages.add(Map.of(
             "role", m.getRole() == Message.MessageRole.USER ? "user" : "assistant",
             "content", m.getContent()
         )));
         return aiMessages;
+    }
+
+    /** 提取用户消息开头的 "> " 引用选区（可能多行）。 */
+    private String extractQuotedSelection(String content) {
+        if (content == null) return "";
+        StringBuilder quote = new StringBuilder();
+        for (String line : content.split("\n", -1)) {
+            if (line.startsWith("> ")) {
+                if (quote.length() > 0) quote.append("\n");
+                quote.append(line.substring(2));
+            } else if (!quote.isEmpty()) {
+                break; // 引用块结束
+            }
+        }
+        return quote.toString();
+    }
+
+    /** 去掉引用块后的提问正文（用于 ES 检索，避免引用文本干扰查询）。 */
+    private String stripQuotedSelection(String content) {
+        if (content == null) return "";
+        StringBuilder query = new StringBuilder();
+        for (String line : content.split("\n", -1)) {
+            if (!line.startsWith("> ") && !line.isBlank()) {
+                if (query.length() > 0) query.append(" ");
+                query.append(line.trim());
+            }
+        }
+        return query.toString();
+    }
+
+    /** 定位选区在原文中的位置，取前后各 QUOTE_WINDOW 字符的上下文窗口。找不到返回 null。 */
+    private String locateQuoteWindow(String articleContent, String quote) {
+        if (articleContent == null || quote.isEmpty()) return null;
+        int idx = articleContent.indexOf(quote);
+        if (idx < 0) {
+            // 引用可能因换行/空格差异未精确命中，退化用首行匹配
+            String firstLine = quote.split("\n", 2)[0];
+            if (firstLine.length() < 5) return null;
+            idx = articleContent.indexOf(firstLine);
+            if (idx < 0) return null;
+        }
+        int from = Math.max(0, idx - QUOTE_WINDOW);
+        int to = Math.min(articleContent.length(), idx + quote.length() + QUOTE_WINDOW);
+        return (from > 0 ? "..." : "") + articleContent.substring(from, to) + (to < articleContent.length() ? "..." : "");
     }
 
     /** SSE 流式对话 — 直接写 HttpServletResponse OutputStream。
@@ -255,15 +411,15 @@ public class ConversationService {
         // 1. 保存用户消息（内部已校验对话归属）
         conversationPersistenceService.saveUserMessage(conversationId, userId, content);
 
-        // 1b. 获取对话所属知识库（用于 KB 范围内的 RAG）
-        UUID kbId = conversationRepository.findByIdAndUserId(conversationId, userId)
-            .map(Conversation::getKnowledgeBaseId).orElse(null);
+        // 1b. 获取对话（类型 + 知识库用于上下文构建）
+        Conversation convo = conversationRepository.findByIdAndUserId(conversationId, userId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "对话不存在"));
 
-        // 2. 构建消息历史（截断窗口）+ RAG 上下文
+        // 2. 构建消息历史（截断窗口）+ 上下文
         List<Message> history = messageRepository.findAllByConversationIdOrderByCreatedAtAsc(conversationId);
         boolean initialExchange = history.size() <= 2;
         history = truncateHistory(history);
-        List<Map<String, String>> aiMessages = buildAiMessages(userId, content, history, kbId);
+        List<Map<String, String>> aiMessages = buildAiMessages(userId, content, history, convo);
 
         // 3. 获取 OutputStream，客户端断开后自动降级为 nullOutputStream
         OutputStream out = response.getOutputStream();
@@ -378,6 +534,12 @@ public class ConversationService {
             Conversation convo = conversationRepository.findByIdAndUserId(conversationId, userId).orElse(null);
             if (convo == null) return;
 
+            // 阅读问答不产生草稿 — 答疑内容不进入知识提取管线
+            if (isReading(convo)) {
+                log.debug("[extraction] READING对话，跳过提取 conversationId={}", conversationId);
+                return;
+            }
+
             // 无知识库对话 — 绝不提取
             if (convo.getKnowledgeBaseId() == null) {
                 log.debug("[extraction] 无KB对话，跳过提取 conversationId={}", conversationId);
@@ -399,6 +561,11 @@ public class ConversationService {
     public void triggerExtraction(UUID conversationId, UUID userId) {
         Conversation convo = conversationRepository.findByIdAndUserId(conversationId, userId)
             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "对话不存在"));
+
+        // 阅读问答不产生草稿
+        if (isReading(convo)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "阅读问答对话不支持知识提取");
+        }
 
         if (convo.getKnowledgeBaseId() == null) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "无知识库对话不支持知识提取");

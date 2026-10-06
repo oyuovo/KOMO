@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { slugifyHeading } from '@/lib/slugify';
@@ -7,6 +8,8 @@ import styles from './MarkdownRenderer.module.css';
 
 interface Props {
   content: string;
+  /** [[wiki 链接]] 标题 → 文章 ID 映射。命中的 [[标题]] 渲染为站内文章链接，未命中保持原文 */
+  linkMap?: Record<string, string>;
 }
 
 /**
@@ -42,11 +45,27 @@ function normalizeChineseMarkdown(text: string): string {
 }
 
 /**
+ * 将 [[标题]] 替换为站内 markdown 链接（命中 linkMap 时；大小写不敏感匹配）。
+ * 未命中的保持原文 — 与后端 WikiLinkService 的建链规则一致。
+ */
+function applyWikiLinks(text: string, linkMap?: Record<string, string>): string {
+  if (!linkMap || Object.keys(linkMap).length === 0) return text;
+  const lower: Record<string, string> = {};
+  for (const [title, id] of Object.entries(linkMap)) {
+    lower[title.toLowerCase()] = id;
+  }
+  return text.replace(/\[\[([^\[\]]+)\]\]/g, (match, title: string) => {
+    const id = lower[title.trim().toLowerCase()];
+    return id ? `[${title.trim()}](/article/${id})` : match;
+  });
+}
+
+/**
  * Markdown 渲染组件。
  * 支持 GFM 扩展（表格、任务列表、删除线等），
  * 样式与 KOMO Design Tokens 对齐。
  */
-export default function MarkdownRenderer({ content }: Props) {
+export default function MarkdownRenderer({ content, linkMap }: Props) {
   return (
     <div className={styles.root}>
       <ReactMarkdown
@@ -70,8 +89,15 @@ export default function MarkdownRenderer({ content }: Props) {
               </pre>
             );
           },
-          // 链接 — 新窗口打开
+          // 链接 — 站内路径走客户端路由，外部链接新窗口打开
           a({ href, children, ...props }) {
+            if (href && href.startsWith('/')) {
+              return (
+                <Link href={href} className={styles.link}>
+                  {children}
+                </Link>
+              );
+            }
             return (
               <a
                 href={href}
@@ -120,7 +146,7 @@ export default function MarkdownRenderer({ content }: Props) {
           },
         }}
       >
-        {normalizeChineseMarkdown(content)}
+        {applyWikiLinks(normalizeChineseMarkdown(content), linkMap)}
       </ReactMarkdown>
     </div>
   );

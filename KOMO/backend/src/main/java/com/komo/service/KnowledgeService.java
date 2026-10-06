@@ -3,6 +3,7 @@ package com.komo.service;
 import com.komo.dto.BatchDeleteResult;
 import com.komo.dto.request.KnowledgeCreateRequest;
 import com.komo.dto.request.KnowledgeUpdateRequest;
+import com.komo.dto.response.KnowledgeLinkResponse;
 import com.komo.dto.response.KnowledgeResponse;
 import com.komo.dto.response.PageResponse;
 import com.komo.entity.KnowledgeEntry;
@@ -25,7 +26,11 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -42,17 +47,20 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
     private final KnowledgeLinkRepository knowledgeLinkRepository;
     private final KnowledgeIndexService indexService;
     private final KnowledgeBaseService knowledgeBaseService;
+    private final WikiLinkService wikiLinkService;
     private final TransactionTemplate transactionTemplate;
 
     public KnowledgeService(KnowledgeRepository repository,
                             KnowledgeLinkRepository knowledgeLinkRepository,
                             KnowledgeIndexService indexService,
                             KnowledgeBaseService knowledgeBaseService,
+                            WikiLinkService wikiLinkService,
                             TransactionTemplate transactionTemplate) {
         super(repository);
         this.knowledgeLinkRepository = knowledgeLinkRepository;
         this.indexService = indexService;
         this.knowledgeBaseService = knowledgeBaseService;
+        this.wikiLinkService = wikiLinkService;
         this.transactionTemplate = transactionTemplate;
     }
 
@@ -102,6 +110,8 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
                 .build()));
         indexService.indexEntry(entry.getId(), entry.getUserId(), entry.getKnowledgeBaseId(),
             entry.getTitle(), entry.getContentPlain(), entry.getContent());
+        // 同步 [[wiki 链接]]（纯 DB 操作，独立于 ES 索引同步）
+        wikiLinkService.syncLinks(entry.getUserId(), entry.getId());
         return entry;
     }
 
@@ -118,6 +128,7 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
         });
         indexService.updateEntry(entry.getId(), entry.getUserId(), entry.getKnowledgeBaseId(),
             entry.getTitle(), entry.getContentPlain(), entry.getContent());
+        wikiLinkService.syncLinks(entry.getUserId(), entry.getId());
         return entry;
     }
 
@@ -128,6 +139,8 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
             return repository.save(current);
         });
         indexService.deleteEntry(id);
+        // 清理该文章的 wiki 链接（出链 + 入链），系统关联保持原行为
+        wikiLinkService.deleteRelatedLinks(id);
         log.info("[AUDIT] action=DELETE_KNOWLEDGE userId={} entryId={} title={}",
             entry.getUserId(), id, entry.getTitle());
     }
@@ -168,10 +181,29 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
         return knowledgeLinkRepository.save(link);
     }
 
-    /** 获取某条目的所有关联 */
-    public List<KnowledgeLink> getLinks(UUID entryId) {
+    /** 获取某条目的所有关联（含两端标题，前端据 sourceEntryId 判断出链/入链方向） */
+    public List<KnowledgeLinkResponse> getLinks(UUID entryId) {
         findByIdOrThrow(entryId); // 验证归属
-        return knowledgeLinkRepository.findAllByEntryId(entryId);
+        List<KnowledgeLink> links = knowledgeLinkRepository.findAllByEntryId(entryId);
+        if (links.isEmpty()) {
+            return List.of();
+        }
+
+        // 批量拉取两端标题（含软删条目标题，与原有 footer 展示行为一致）
+        Set<UUID> entryIds = new HashSet<>();
+        for (KnowledgeLink link : links) {
+            entryIds.add(link.getSourceEntryId());
+            entryIds.add(link.getTargetEntryId());
+        }
+        Map<UUID, String> titles = new HashMap<>();
+        for (KnowledgeEntry e : repository.findAllByIdsAndUserId(entryIds.stream().toList(), getCurrentUserId())) {
+            titles.put(e.getId(), e.getTitle());
+        }
+
+        return links.stream()
+            .map(l -> KnowledgeLinkResponse.from(l,
+                titles.get(l.getSourceEntryId()), titles.get(l.getTargetEntryId())))
+            .toList();
     }
 
     /** 导出当前用户全部知识 */
@@ -235,6 +267,8 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
             merged.getId(), merged.getUserId(), merged.getKnowledgeBaseId(),
             merged.getTitle(), merged.getContentPlain(), merged.getContent());
         indexService.deleteEntry(fragmentId);
+        // 合并后目标文章内容变化，同步 wiki 链接
+        wikiLinkService.syncLinks(merged.getUserId(), merged.getId());
         return merged;
     }
 

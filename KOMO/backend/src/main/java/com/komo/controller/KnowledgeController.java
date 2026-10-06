@@ -6,6 +6,7 @@ import com.komo.dto.request.BatchIdsRequest;
 import com.komo.dto.request.KnowledgeCreateRequest;
 import com.komo.dto.request.KnowledgeUpdateRequest;
 import com.komo.dto.response.ApiResponse;
+import com.komo.dto.response.KnowledgeLinkResponse;
 import com.komo.dto.response.KnowledgeResponse;
 import com.komo.dto.response.PageResponse;
 import com.komo.entity.KnowledgeEntry;
@@ -92,7 +93,7 @@ public class KnowledgeController {
     }
 
     @GetMapping("/{id}/links")
-    public ResponseEntity<ApiResponse<List<KnowledgeLink>>> getLinks(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<List<KnowledgeLinkResponse>>> getLinks(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(knowledgeService.getLinks(id)));
     }
 

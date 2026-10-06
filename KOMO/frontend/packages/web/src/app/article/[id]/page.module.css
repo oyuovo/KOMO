@@ -225,6 +225,22 @@
   margin-bottom: 6px;
 }
 
+/* footer 出链/入链条目 — 可点击跳转 */
+.footerLink {
+  display: block;
+  font-size: 13px;
+  color: var(--komo-link);
+  text-decoration: none;
+  margin-bottom: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 0.15s;
+}
+.footerLink:hover {
+  text-decoration: underline;
+}
+
 
 .deleteLink {
   font-size: var(--komo-text-sm);
@@ -304,6 +320,66 @@
   .tocFloat {
     display: none;
   }
+  /* AI 问答 tab 在窄屏保持可见：变为固定右侧抽屉 */
+  .tocFloat.tocFloatAgent {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    right: 0;
+    top: var(--komo-topnav-height);
+    bottom: 0;
+    width: min(340px, 92vw);
+    background: var(--komo-bg);
+    border-left: 1px solid var(--komo-border);
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.08);
+    z-index: 50;
+    padding: 16px;
+    overflow: hidden;
+  }
+}
+
+/* 右侧栏 tabs：目录 / AI 问答 */
+.sideTabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+  flex-shrink: 0;
+}
+
+.sideTab {
+  flex: 1;
+  padding: 5px 8px;
+  border: none;
+  border-radius: var(--komo-radius-sm);
+  background: none;
+  color: var(--komo-text-tertiary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.sideTab:hover {
+  color: var(--komo-text);
+  background: var(--komo-surface-hover);
+}
+.sideTabActive {
+  color: var(--komo-accent);
+  background: var(--komo-accent-soft);
+  font-weight: 600;
+}
+
+.sideTabEmpty {
+  font-size: 13px;
+  color: var(--komo-text-tertiary);
+  margin: 0;
+}
+
+/* AI 问答 tab 激活：右侧栏改为弹性布局，面板内部自己滚动 */
+.tocFloatAgent {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 16px;
 }
 
 /* Embed widget inside floating panel */

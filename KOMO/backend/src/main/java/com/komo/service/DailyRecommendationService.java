@@ -193,8 +193,9 @@ public class DailyRecommendationService {
             .collect(Collectors.toList());
 
         // 最近 5 个对话主题（对话标题），供 AI 参考近期讨论方向，避免重复提问。
+        // 只取普通对话，READING 侧边栏问答不属于独立讨论主题。
         List<String> recentTopics = conversationRepository
-            .findAllByUserIdOrderByUpdatedAtDesc(userId, PageRequest.of(0, 5))
+            .findChatsByUserId(userId, Conversation.ConversationType.CHAT, PageRequest.of(0, 5))
             .stream()
             .map(Conversation::getTitle)
             .filter(t -> t != null && !t.isBlank() && !"新对话".equals(t))
