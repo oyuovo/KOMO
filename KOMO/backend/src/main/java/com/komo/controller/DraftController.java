@@ -71,7 +71,8 @@ public class DraftController {
             id,
             body.getTitle(),
             body.getContent(),
-            overrideKbId
+            overrideKbId,
+            body.getParentEntryId()
         );
         return ResponseEntity.ok(ApiResponse.success(entry));
     }

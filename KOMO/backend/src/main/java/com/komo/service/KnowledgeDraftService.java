@@ -53,126 +53,87 @@ public class KnowledgeDraftService {
             userId, KnowledgeDraft.DraftStatus.PENDING);
     }
 
-    /** 确认草稿 — 按提取类型路由到对应知识库，可通过 overrideKbId 覆盖，可通过 parentEntryId 嵌入 */
+    /** 确认草稿，未选择关联文章时独立入库。 */
     public KnowledgeEntry confirm(UUID draftId, UUID overrideKbId) {
         return confirmWithParent(draftId, overrideKbId, null);
     }
 
-    /** 确认草稿并嵌入到指定父文章 */
+    /** 创建补充条目及关联，不修改被关联文章的正文。 */
     public KnowledgeEntry confirmWithParent(UUID draftId, UUID overrideKbId, UUID parentEntryId) {
-        KnowledgeEntry entry = transactionTemplate.execute(
-            status -> doConfirmWithParent(draftId, overrideKbId, parentEntryId));
-        indexService.indexEntry(
-            entry.getId(), entry.getUserId(), entry.getKnowledgeBaseId(),
-            entry.getTitle(), entry.getContentPlain(), entry.getContent());
-        wikiLinkService.syncLinks(entry.getUserId(), entry.getId());
-        return entry;
+        return persistConfirmation(draftId, null, null, overrideKbId, parentEntryId, false);
     }
 
-    private KnowledgeEntry doConfirmWithParent(UUID draftId, UUID overrideKbId, UUID parentEntryId) {
-        KnowledgeDraft draft = findOwnDraft(draftId);
-
-        if (draft.getStatus() != KnowledgeDraft.DraftStatus.PENDING) {
-            throw new BusinessException(ErrorCode.DRAFT_ALREADY_PROCESSED, "该草稿已处理");
-        }
-
-        // 优先用覆盖值，否则按 extractType 决定目标知识库
-        UUID targetKbId;
-        if (overrideKbId != null) {
-            targetKbId = overrideKbId;
-        } else if (parentEntryId != null) {
-            // 嵌入到父文章 → 使用父文章的知识库
-            KnowledgeEntry parent = knowledgeRepository.findByIdAndUserId(parentEntryId, draft.getUserId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "目标文章不存在"));
-            targetKbId = parent.getKnowledgeBaseId();
-        } else {
-            KnowledgeDraft.ExtractType extractType = draft.getExtractType();
-            if (extractType == KnowledgeDraft.ExtractType.FRAGMENT) {
-                targetKbId = knowledgeBaseService.getFragmentsBase(draft.getUserId()).getId();
-            } else {
-                targetKbId = knowledgeBaseService.getDefaultBase(draft.getUserId()).getId();
-            }
-        }
-
-        KnowledgeEntry entry = KnowledgeEntry.builder()
-            .userId(draft.getUserId())
-            .title(draft.getTitle())
-            .content(draft.getContent())
-            .contentPlain(MarkdownUtils.stripMarkdown(draft.getContent()))
-            .source(KnowledgeEntry.KnowledgeSource.AI_EXTRACT)
-            .entryType(KnowledgeEntry.KnowledgeType.FACT)
-            .knowledgeBaseId(targetKbId)
-            .build();
-        entry = knowledgeRepository.save(entry);
-
-        // 如果指定了父文章，创建知识关联
-        if (parentEntryId != null) {
-            KnowledgeLink link = KnowledgeLink.builder()
-                .sourceEntryId(entry.getId())
-                .targetEntryId(parentEntryId)
-                .relation(KnowledgeLink.RelationType.SUPPLEMENTS)
-                .build();
-            knowledgeLinkRepository.save(link);
-        }
-
-        draft.setStatus(KnowledgeDraft.DraftStatus.CONFIRMED);
-        draft.setConfirmedEntryId(entry.getId());
-        draft.setProcessedAt(LocalDateTime.now());
-        draftRepository.save(draft);
-
-        return entry;
-    }
-
-    /** 编辑草稿内容后确认入库。可通过 overrideKbId 覆盖默认去向。 */
     public KnowledgeEntry editAndConfirm(UUID draftId, String title, String content, UUID overrideKbId) {
-        KnowledgeEntry entry = transactionTemplate.execute(
-            status -> doEditAndConfirm(draftId, title, content, overrideKbId));
-        indexService.indexEntry(
-            entry.getId(), entry.getUserId(), entry.getKnowledgeBaseId(),
+        return editAndConfirm(draftId, title, content, overrideKbId, null);
+    }
+
+    /** 编辑后确认与普通确认采用相同的目标路由和归属校验。 */
+    public KnowledgeEntry editAndConfirm(UUID draftId, String title, String content,
+                                         UUID overrideKbId, UUID parentEntryId) {
+        return persistConfirmation(draftId, title, content, overrideKbId, parentEntryId, true);
+    }
+
+    private KnowledgeEntry persistConfirmation(UUID draftId, String title, String content,
+                                                 UUID overrideKbId, UUID parentEntryId, boolean edited) {
+        KnowledgeEntry entry = transactionTemplate.execute(status -> {
+            KnowledgeDraft draft = findOwnDraft(draftId);
+            if (draft.getStatus() != KnowledgeDraft.DraftStatus.PENDING) {
+                throw new BusinessException(ErrorCode.DRAFT_ALREADY_PROCESSED, "该草稿已处理");
+            }
+            UUID targetKbId = resolveTargetKnowledgeBase(draft, overrideKbId, parentEntryId);
+            KnowledgeEntry saved = knowledgeRepository.save(KnowledgeEntry.builder()
+                .userId(draft.getUserId())
+                .title(title != null ? title : draft.getTitle())
+                .content(content != null ? content : draft.getContent())
+                .contentPlain(MarkdownUtils.stripMarkdown(content != null ? content : draft.getContent()))
+                .source(KnowledgeEntry.KnowledgeSource.AI_EXTRACT)
+                .entryType(KnowledgeEntry.KnowledgeType.FACT)
+                .knowledgeBaseId(targetKbId)
+                .build());
+            if (parentEntryId != null) {
+                knowledgeLinkRepository.save(KnowledgeLink.builder()
+                    .sourceEntryId(saved.getId()).targetEntryId(parentEntryId)
+                    .relation(KnowledgeLink.RelationType.SUPPLEMENTS).build());
+            }
+            if (edited) {
+                if (title != null) draft.setTitle(title);
+                if (content != null) draft.setContent(content);
+            }
+            draft.setStatus(edited ? KnowledgeDraft.DraftStatus.EDITED : KnowledgeDraft.DraftStatus.CONFIRMED);
+            draft.setConfirmedEntryId(saved.getId());
+            draft.setProcessedAt(LocalDateTime.now());
+            draftRepository.save(draft);
+            return saved;
+        });
+        indexService.indexEntry(entry.getId(), entry.getUserId(), entry.getKnowledgeBaseId(),
             entry.getTitle(), entry.getContentPlain(), entry.getContent());
         wikiLinkService.syncLinks(entry.getUserId(), entry.getId());
         return entry;
     }
 
-    private KnowledgeEntry doEditAndConfirm(UUID draftId, String title, String content, UUID overrideKbId) {
-        KnowledgeDraft draft = findOwnDraft(draftId);
-
-        if (draft.getStatus() != KnowledgeDraft.DraftStatus.PENDING) {
-            throw new BusinessException(ErrorCode.DRAFT_ALREADY_PROCESSED, "该草稿已处理");
-        }
-
-        // 优先用覆盖值，否则按 extractType 决定目标知识库
+    private UUID resolveTargetKnowledgeBase(KnowledgeDraft draft, UUID overrideKbId, UUID parentEntryId) {
         UUID targetKbId;
-        if (overrideKbId != null) {
-            targetKbId = overrideKbId;
-        } else {
-            KnowledgeDraft.ExtractType extractType = draft.getExtractType();
-            if (extractType == KnowledgeDraft.ExtractType.FRAGMENT) {
-                targetKbId = knowledgeBaseService.getFragmentsBase(draft.getUserId()).getId();
-            } else {
-                targetKbId = knowledgeBaseService.getDefaultBase(draft.getUserId()).getId();
+        if (parentEntryId != null) {
+            // 即使请求同时指定知识库，也必须检查被关联文章的归属和删除状态。
+            KnowledgeEntry parent = knowledgeRepository.findByIdAndUserId(parentEntryId, draft.getUserId())
+                .filter(entry -> entry.getDeletedAt() == null)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "关联文章不存在或已删除"));
+            targetKbId = parent.getKnowledgeBaseId();
+            if (targetKbId == null) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "关联文章没有有效的知识库");
             }
+            if (overrideKbId != null && !overrideKbId.equals(targetKbId)) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "关联文章与目标知识库不一致");
+            }
+        } else if (overrideKbId != null) {
+            targetKbId = overrideKbId;
+        } else if (draft.getExtractType() == KnowledgeDraft.ExtractType.FRAGMENT) {
+            targetKbId = knowledgeBaseService.getFragmentsBase(draft.getUserId()).getId();
+        } else {
+            targetKbId = knowledgeBaseService.getDefaultBase(draft.getUserId()).getId();
         }
-
-        KnowledgeEntry entry = KnowledgeEntry.builder()
-            .userId(draft.getUserId())
-            .title(title != null ? title : draft.getTitle())
-            .content(content != null ? content : draft.getContent())
-            .contentPlain(MarkdownUtils.stripMarkdown(content != null ? content : draft.getContent()))
-            .source(KnowledgeEntry.KnowledgeSource.AI_EXTRACT)
-            .entryType(KnowledgeEntry.KnowledgeType.FACT)
-            .knowledgeBaseId(targetKbId)
-            .build();
-        entry = knowledgeRepository.save(entry);
-
-        if (title != null) draft.setTitle(title);
-        if (content != null) draft.setContent(content);
-        draft.setStatus(KnowledgeDraft.DraftStatus.EDITED);
-        draft.setConfirmedEntryId(entry.getId());
-        draft.setProcessedAt(LocalDateTime.now());
-        draftRepository.save(draft);
-
-        return entry;
+        knowledgeBaseService.findByIdOrThrow(targetKbId);
+        return targetKbId;
     }
 
     /** 驳回草稿 */

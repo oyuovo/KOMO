@@ -105,14 +105,20 @@ async def extract_knowledge(
         # 检测截断
         finish_reason = response.choices[0].finish_reason
         if finish_reason == "length":
-            logger.warning("[extraction] LLM 输出被截断 (finish_reason=length)，需增加 max_tokens")
+            raise ValueError("Extraction response was truncated")
 
         content = response.choices[0].message.content.strip()
 
         # 解析 JSON + Pydantic Schema 校验
-        # json_object mode 保证合法 JSON 语法；Schema 校验保证字段完整性
-        raw_data = parse_llm_json(content, expect_array=True)
+        # JSON mode 的对象外壳与提示词一致，同时兼容历史数组响应。
+        raw_data = parse_llm_json(content, expect_array=False, strict=True)
+        if isinstance(raw_data, dict):
+            raw_data = raw_data.get("knowledge_points")
+        if not isinstance(raw_data, list):
+            raise ValueError("Extraction response must contain a knowledge_points array")
         knowledge_points = _validate_extraction_result(raw_data)
+        if raw_data and not knowledge_points:
+            raise ValueError("Extraction response contains no valid knowledge points")
 
         # 过滤低置信度 + 统计类型分布 + 质量关卡
         filtered = []
@@ -140,6 +146,10 @@ async def extract_knowledge(
             type_counts[extract_type] += 1
             filtered.append(kp)
 
+        logger.info(
+            "[extraction] candidates=%d valid=%d filtered_low_confidence=%d saved_candidates=%d",
+            len(raw_data), len(knowledge_points), len(knowledge_points) - len(filtered), len(filtered),
+        )
         if filtered:
             log_parts = [
                 f"提取了 {len(filtered)} 条",
@@ -190,6 +200,7 @@ def _validate_extraction_result(raw_data: list) -> list[dict]:
     validated = []
     for item in raw_data:
         if not isinstance(item, dict):
+            logger.warning("[extraction] 跳过非对象条目: type=%s", type(item).__name__)
             continue
         try:
             kp = KnowledgePoint.model_validate(item)

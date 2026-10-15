@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { Suspense, useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   getKnowledge,
@@ -40,10 +40,11 @@ function extractToc(content: string): TocItem[] {
   return items;
 }
 
-export default function ArticlePage() {
-  const params = useParams();
+function ArticleContent() {
   const router = useRouter();
-  const id = params.id as string;
+  // 查询参数路由（桌面端静态导出兼容）：id 由 ?id= 提供
+  const searchParams = useSearchParams();
+  const id = searchParams.get('id') ?? '';
 
   const [article, setArticle] = useState<KnowledgeItem | null>(null);
   const [relatedArticles, setRelatedArticles] = useState<KnowledgeItem[]>([]);
@@ -119,7 +120,7 @@ export default function ArticlePage() {
     try {
       await mergeInto(id, targetId);
       // 合并成功 → 跳转到目标文章（碎片已删除）
-      router.push(`/article/${targetId}`);
+      router.push(`/article?id=${targetId}`);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -290,7 +291,7 @@ export default function ArticlePage() {
           {relatedArticles.map((a) => (
             <Link
               key={a.id}
-              href={`/article/${a.id}`}
+              href={`/article?id=${a.id}`}
               className={styles.articleNavItem}
             >
               <span className={styles.icon}>📄</span>
@@ -331,7 +332,7 @@ export default function ArticlePage() {
               {article.source === 'AI_EXTRACT' ? 'AI 提取' : '手动创建'}
             </span>
             <span>·</span>
-            <Link href={`/article/${article.id}/edit`} className={styles.editLink}>
+            <Link href={`/article/edit?id=${article.id}`} className={styles.editLink}>
               编辑
             </Link>
             <span>·</span>
@@ -369,7 +370,7 @@ export default function ArticlePage() {
                   {outgoingLinks.map((link) => (
                     <Link
                       key={link.id}
-                      href={`/article/${link.targetEntryId}`}
+                      href={`/article?id=${link.targetEntryId}`}
                       className={styles.footerLink}
                       title={link.targetTitle || ''}
                     >
@@ -388,7 +389,7 @@ export default function ArticlePage() {
                   {incomingLinks.map((link) => (
                     <Link
                       key={link.id}
-                      href={`/article/${link.sourceEntryId}`}
+                      href={`/article?id=${link.sourceEntryId}`}
                       className={styles.footerLink}
                       title={link.sourceTitle || ''}
                     >
@@ -501,5 +502,13 @@ export default function ArticlePage() {
           )}
       </aside>
     </div>
+  );
+}
+
+export default function ArticlePage() {
+  return (
+    <Suspense fallback={<div />}>
+      <ArticleContent />
+    </Suspense>
   );
 }

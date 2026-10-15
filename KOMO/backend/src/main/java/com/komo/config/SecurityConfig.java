@@ -40,7 +40,12 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final RateLimitFilter rateLimitFilter;
 
-    /** CORS 白名单（逗号分隔），由 CORS_ORIGINS 环境变量驱动 */
+    /**
+     * CORS 白名单（逗号分隔，支持多 origin），由 CORS_ORIGINS 环境变量驱动。
+     * 因 allowCredentials=true，origin 不能用 *，必须精确列举；
+     * 桌面客户端（Tauri）的 origin（http://tauri.localhost、tauri://localhost）
+     * 无需硬编码到默认值，部署时通过 CORS_ORIGINS 追加即可。
+     */
     @Value("${komo.security.cors-origins:http://localhost:3000,http://localhost:3001}")
     private String corsOrigins;
 
@@ -76,6 +81,8 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
+        // 逗号分隔解析为多 origin 精确列表（allowCredentials=true 下不允许 *），
+        // 桌面客户端 origin 同样通过此列表按 env 追加生效。
         config.setAllowedOrigins(Arrays.stream(corsOrigins.split(","))
             .map(String::trim)
             .filter(s -> !s.isEmpty())

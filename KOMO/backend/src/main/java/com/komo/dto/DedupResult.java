@@ -14,10 +14,10 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class DedupResult {
 
-    /** 是否判定为重复 */
-    private boolean duplicate;
+    /** 是否为较强的相似候选，可提示关联；不代表已确认重复。 */
+    private boolean strongMatch;
 
-    /** 综合得分（0-1，越高越重复） */
+    /** 启发式综合分数（0-1），不是重复概率。 */
     private double score;
 
     /** 匹配来源 */
@@ -37,7 +37,7 @@ public class DedupResult {
 
     public static DedupResult noMatch() {
         return DedupResult.builder()
-            .duplicate(false)
+            .strongMatch(false)
             .score(0.0)
             .matchSource("none")
             .build();
@@ -45,7 +45,7 @@ public class DedupResult {
 
     public static DedupResult knowledgeMatch(String entryId, double score, double mlt, double lcs) {
         return DedupResult.builder()
-            .duplicate(score > 0.6)
+            .strongMatch(score > 0.6)
             .score(score)
             .matchSource("knowledge_base")
             .matchedEntryId(entryId)
@@ -56,7 +56,7 @@ public class DedupResult {
 
     public static DedupResult draftMatch(String draftId, double score) {
         return DedupResult.builder()
-            .duplicate(score > 0.6)
+            .strongMatch(score > 0.6)
             .score(score)
             .matchSource("pending_draft")
             .matchedDraftId(draftId)

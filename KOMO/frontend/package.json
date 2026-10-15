@@ -3,6 +3,7 @@
   "private": true,
   "workspaces": [
     "packages/shared",
-    "packages/web"
+    "packages/web",
+    "packages/desktop"
   ]
 }

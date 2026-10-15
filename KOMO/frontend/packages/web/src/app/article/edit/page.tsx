@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   getMe,
   getKnowledge,
@@ -23,10 +23,11 @@ const ENTRY_TYPES = [
   { value: 'QUESTION', label: '问题' },
 ];
 
-export default function EditKnowledgePage() {
-  const params = useParams<{ id: string }>();
+function EditKnowledgeContent() {
   const router = useRouter();
-  const id = params.id;
+  // 查询参数路由（桌面端静态导出兼容）：id 由 ?id= 提供
+  const searchParams = useSearchParams();
+  const id = searchParams.get('id') ?? '';
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -41,6 +42,7 @@ export default function EditKnowledgePage() {
   const [categoryId, setCategoryId] = useState<string>('');
 
   useEffect(() => {
+    if (!id) return;
     getMe().then((u) => {
       if (!u) { router.push('/login'); return; }
       // Load KBs first
@@ -81,7 +83,7 @@ export default function EditKnowledgePage() {
         entryType,
         categoryId: categoryId || undefined,
       });
-      router.push(`/article/${id}`);
+      router.push(`/article?id=${id}`);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -175,5 +177,13 @@ export default function EditKnowledgePage() {
         </>
       )}
     </div>
+  );
+}
+
+export default function EditKnowledgePage() {
+  return (
+    <Suspense fallback={<div />}>
+      <EditKnowledgeContent />
+    </Suspense>
   );
 }

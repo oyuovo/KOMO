@@ -12,6 +12,9 @@ public class DraftEditRequest {
 
     private UUID knowledgeBaseId;
 
+    /** 关联目标文章（可选）；服务端校验归属与有效状态。 */
+    private UUID parentEntryId;
+
     @NotBlank(message = "标题不能为空")
     @Size(max = 500, message = "标题最长500字符")
     private String title;

@@ -32,6 +32,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -243,7 +244,7 @@ public class ConversationService {
             conversationId, userId, aiResponse, content, initialExchange);
 
         // 5. 异步入队提取任务（RabbitMQ），用户手动模式则跳过
-        enqueueExtractionIfAuto(userId, conversationId, assistantMsg.getId(), aiMessages);
+        enqueueExtractionIfAuto(userId, conversationId, assistantMsg, aiMessages);
 
         return assistantMsg;
     }
@@ -454,14 +455,15 @@ public class ConversationService {
                             eventBuf.reset();
 
                             if (event.isEmpty()) continue;
-                            StringBuilder dataContent = new StringBuilder();
-                            for (String line : event.split("\n")) {
-                                if (line.startsWith("data: ")) {
-                                    if (dataContent.length() > 0) dataContent.append("\n");
-                                    dataContent.append(line.substring(6));
+                            List<String> dataLines = new ArrayList<>();
+                            for (String line : event.split("\n", -1)) {
+                                if (line.startsWith("data:")) {
+                                    String value = line.substring(5);
+                                    // SSE 只去掉冒号后可选的一个空格；空 data 行也是正文换行。
+                                    dataLines.add(value.startsWith(" ") ? value.substring(1) : value);
                                 }
                             }
-                            String data = dataContent.toString();
+                            String data = String.join("\n", dataLines);
 
                             if ("[DONE]".equals(data)) { n = -1; break; }
                             if (data.startsWith("[ERROR]")) {
@@ -470,6 +472,7 @@ public class ConversationService {
                                     response.flushBuffer();
                                 } catch (IOException ignored) {
                                     out = OutputStream.nullOutputStream();
+                                    log.debug("[SSE] error事件写入失败 conversationId={}", conversationId, ignored);
                                 }
                                 n = -1; break;
                             }
@@ -481,7 +484,7 @@ public class ConversationService {
                                 } catch (IOException e) {
                                     // 客户端已断开 — 继续读取 AI 响应，但不再尝试写入
                                     out = OutputStream.nullOutputStream();
-                                    log.debug("[SSE] 客户端断开，继续读取AI响应 conversationId={}", conversationId);
+                                    log.debug("[SSE] 客户端断开，继续读取AI响应 conversationId={}", conversationId, e);
                                 }
                             }
                         }
@@ -492,6 +495,7 @@ public class ConversationService {
                     response.flushBuffer();
                 } catch (IOException ignored) {
                     out = OutputStream.nullOutputStream();
+                    log.debug("[SSE] 刷新响应失败 conversationId={}", conversationId, ignored);
                 }
             }
             bis.close();
@@ -513,7 +517,7 @@ public class ConversationService {
                     conversationId, userId, fullResponse.toString(), content, initialExchange);
 
                 // 异步入队提取任务
-                enqueueExtractionIfAuto(userId, conversationId, assistantMsg.getId(), aiMessages);
+                enqueueExtractionIfAuto(userId, conversationId, assistantMsg, aiMessages);
 
                 // 尝试发送 done 事件（客户端可能已断开）
                 try {
@@ -522,6 +526,7 @@ public class ConversationService {
                     response.flushBuffer();
                 } catch (IOException ignored) {
                     // 客户端已断开，done 事件无法送达，消息已保存
+                    log.debug("[SSE] done事件写入失败 conversationId={}", conversationId, ignored);
                 }
             }
         }
@@ -529,7 +534,7 @@ public class ConversationService {
 
     /** 用户开启自动提取时入队，手动模式则跳过。 */
     private void enqueueExtractionIfAuto(UUID userId, UUID conversationId,
-                                          UUID messageId, List<Map<String, String>> aiMessages) {
+                                          Message assistantMessage, List<Map<String, String>> aiMessages) {
         try {
             Conversation convo = conversationRepository.findByIdAndUserId(conversationId, userId).orElse(null);
             if (convo == null) return;
@@ -551,7 +556,11 @@ public class ConversationService {
                 log.debug("[extraction] 用户手动模式，跳过自动提取 userId={}", userId);
                 return;
             }
-            enqueueExtraction(userId, conversationId, messageId, aiMessages);
+            // aiMessages 是生成本轮回复前的上下文，提取快照必须补上已保存的本轮回复。
+            // 单独复制列表，保留历史顺序，同时不修改原始 AI 请求上下文。
+            List<Map<String, String>> extractionMessages = new ArrayList<>(aiMessages);
+            extractionMessages.add(Map.of("role", "assistant", "content", assistantMessage.getContent()));
+            enqueueExtraction(userId, conversationId, assistantMessage.getId(), extractionMessages);
         } catch (Exception e) {
             log.warn("[extraction] 入队提取任务失败（RabbitMQ 可能未启动）", e);
         }
@@ -685,15 +694,15 @@ public class ConversationService {
                     .build();
 
                 // 根据提取类型 + 去重结果决定处理方式
-                if (dedupService.shouldAutoReject(result)) {
-                    log.info("[extraction] 高分重复(score={})，静默丢弃: {}",
-                        String.format("%.2f", result.getScore()), title);
+                if (dedupService.isSuspectedDuplicate(result)) {
+                    markSuspectedDuplicate(draft, "similarity", result.getMatchedEntryId(), result.getMatchedDraftId());
+                    drafts.add(draft);
                     continue;
                 }
 
                 if (extractType == KnowledgeDraft.ExtractType.SUPPLEMENT) {
                     // SUPPLEMENT：尝试匹配父文章
-                    if (result.isDuplicate() && result.getMatchedEntryId() != null) {
+                    if (result.isStrongMatch() && result.getMatchedEntryId() != null) {
                         draft.setRelationType(KnowledgeDraft.RelationType.SUPPLEMENTS);
                         draft.setRelationDetail("{\"parentEntryId\":\"" + result.getMatchedEntryId() + "\"}");
                     }
@@ -703,40 +712,34 @@ public class ConversationService {
                     if (dedupService.needsLlmReview(result)) {
                         Map<String, Object> verdict = resolveByLlmDedup(userId, title, content);
                         String llmVerdict = (String) verdict.getOrDefault("verdict", "NEW");
-                        double llmConfidence = verdict.get("confidence") instanceof Number
-                            ? ((Number) verdict.get("confidence")).doubleValue() : 0.5;
+                        String matchedEntryId = (String) verdict.get("matchedEntryId");
 
                         if ("DUPLICATE".equals(llmVerdict)) {
-                            log.info("[extraction] LLM判定重复 confidence={}，丢弃: {}", llmConfidence, title);
-                            continue;
+                            markSuspectedDuplicate(draft, "model", matchedEntryId, null);
                         } else if ("SUPPLEMENTS".equals(llmVerdict)) {
                             draft.setStatus(KnowledgeDraft.DraftStatus.PENDING);
                             draft.setRelationType(KnowledgeDraft.RelationType.SUPPLEMENTS);
-                            if (result.getMatchedEntryId() != null) {
+                            if (matchedEntryId != null) {
                                 draft.setRelationDetail("{\"parentEntryId\":\""
-                                    + result.getMatchedEntryId() + "\"}");
+                                    + matchedEntryId + "\"}");
                             }
                         } else {
-                            // NEW 或 CONTRADICTS → 按新知处理
                             draft.setStatus(KnowledgeDraft.DraftStatus.PENDING);
-                            draft.setRelationType(KnowledgeDraft.RelationType.NEW);
+                            draft.setRelationType("CONTRADICTS".equals(llmVerdict)
+                                ? KnowledgeDraft.RelationType.CONTRADICTS : KnowledgeDraft.RelationType.NEW);
                         }
-                    } else if (dedupService.shouldAutoReject(result)) {
-                        continue; // 高分重复，静默丢弃
                     } else {
                         draft.setStatus(KnowledgeDraft.DraftStatus.PENDING);
                         draft.setRelationType(KnowledgeDraft.RelationType.NEW);
                     }
                 } else {
                     // FRAGMENT：碎片知识。如果有强匹配文章 → 默认嵌入；否则 → 碎片库兜底。
-                    // 阈值 0.55：实测无关文档对归一化后可达 0.26~0.29，完全相同内容≈ 0.59，
-                    // 旧值 0.4 会把无关文章误判为嵌入目标（见 docs/pain-points.md P13）。
-                    double matchScore = result.getScore();
-                    if (result.isDuplicate() && result.getMatchedEntryId() != null && matchScore > 0.55) {
+                    // 强匹配阈值实际为 > 0.6；高于 0.65 的候选已进入疑似重复审阅。
+                    if (result.isStrongMatch() && result.getMatchedEntryId() != null) {
                         // 强匹配已有文章 → 默认嵌入
                         draft.setRelationType(KnowledgeDraft.RelationType.SUPPLEMENTS);
                         draft.setRelationDetail("{\"parentEntryId\":\"" + result.getMatchedEntryId()
-                            + "\",\"score\":" + String.format("%.2f", matchScore) + "}");
+                            + "\"}");
                     } else {
                         draft.setRelationType(KnowledgeDraft.RelationType.NEW);
                     }
@@ -750,8 +753,7 @@ public class ConversationService {
                 knowledgeDraftService.saveExtractedDrafts(userId, conversationId, messageId, drafts);
                 log.info("[extraction] 保存草稿 {} 条 conversationId={}", drafts.size(), conversationId);
             } else {
-                log.warn("[extraction] 知识点 {} 个但无草稿产出（全部被去重丢弃）conversationId={}",
-                    points.size(), conversationId);
+                log.info("[extraction] AI 未返回可保存的知识点 conversationId={}", conversationId);
             }
         } catch (Exception e) {
             log.error("[extraction] 草稿提取失败，将由消息队列重试", e);
@@ -759,9 +761,20 @@ public class ConversationService {
         }
     }
 
+    private void markSuspectedDuplicate(KnowledgeDraft draft, String source,
+                                         String matchedEntryId, String matchedDraftId) throws IOException {
+        Map<String, String> detail = new HashMap<>();
+        detail.put("source", source);
+        if (matchedEntryId != null) detail.put("matchedEntryId", matchedEntryId);
+        if (matchedDraftId != null) detail.put("matchedDraftId", matchedDraftId);
+        draft.setRelationType(KnowledgeDraft.RelationType.DUPLICATE);
+        draft.setRelationDetail(objectMapper.writeValueAsString(detail));
+        draft.setStatus(KnowledgeDraft.DraftStatus.PENDING);
+    }
+
     /**
      * Layer 3: 调用 Python DeepSeek LLM 进行语义去重判定。
-     * 仅在 MLT/LCS 得分处于模糊区间（0.2~0.6）时调用。
+     * ARTICLE 在 MLT/LCS 得分处于模糊区间（0.2~0.65）时调用，结果仅作草稿建议。
      *
      * @return verdict map: {verdict: DUPLICATE|SUPPLEMENTS|CONTRADICTS|NEW, confidence, matched_index}
      */
@@ -800,7 +813,16 @@ public class ConversationService {
             if (response != null) {
                 log.debug("[dedup] LLM判定: verdict={} confidence={}",
                     response.get("verdict"), response.get("confidence"));
-                return response;
+                Map<String, Object> verdict = new HashMap<>(response);
+                // 链接只能来自本用户本次检索候选，不信任模型直接返回的 ID。
+                verdict.remove("matchedEntryId");
+                if (response.get("matched_index") instanceof Number match) {
+                    int index = match.intValue();
+                    if (match.doubleValue() == index && index >= 0 && index < similar.size()) {
+                        verdict.put("matchedEntryId", similar.get(index).get("_id"));
+                    }
+                }
+                return verdict;
             }
         } catch (Exception e) {
             log.warn("[dedup] LLM去重调用失败，按新知处理: {}", title, e);

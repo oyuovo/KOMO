@@ -58,7 +58,9 @@ services:
       - komo-net
 
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
+    build:
+      context: ./elasticsearch
+    image: komo-elasticsearch:8.12.0-smartcn
     container_name: komo-es
     restart: unless-stopped
     environment:

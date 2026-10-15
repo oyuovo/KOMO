@@ -47,8 +47,8 @@ public class AuthController {
     ) {
         AuthResponse auth = userService.register(request);
         authCookieWriter.write(response, auth.getAccessToken(), auth.getRefreshToken());
-        // 原生 App（无 Cookie 环境）需要在 body 中拿到 token；Web 端置 null，token 只存 httpOnly Cookie
-        if (!isMobileClient(httpRequest)) {
+        // 原生客户端（无 Cookie 环境，含 mobile / desktop）需要在 body 中拿到 token；Web 端置 null，token 只存 httpOnly Cookie
+        if (!isNativeClient(httpRequest)) {
             auth.setAccessToken(null);
             auth.setRefreshToken(null);
         }
@@ -64,7 +64,7 @@ public class AuthController {
     ) {
         AuthResponse auth = userService.login(request);
         authCookieWriter.write(response, auth.getAccessToken(), auth.getRefreshToken());
-        if (!isMobileClient(httpRequest)) {
+        if (!isNativeClient(httpRequest)) {
             auth.setAccessToken(null);
             auth.setRefreshToken(null);
         }
@@ -77,7 +77,7 @@ public class AuthController {
         HttpServletRequest request,
         HttpServletResponse response
     ) {
-        // 优先 Cookie（Web 端），其次 body（原生 App）
+        // 优先 Cookie（Web 端），其次 body（原生客户端 mobile / desktop）
         String refreshToken = extractCookie(request, AuthCookieWriter.REFRESH_TOKEN_COOKIE);
         if ((refreshToken == null || refreshToken.isBlank()) && body != null) {
             refreshToken = body.getRefreshToken();
@@ -89,7 +89,7 @@ public class AuthController {
         try {
             AuthResponse auth = userService.refreshToken(refreshToken);
             authCookieWriter.write(response, auth.getAccessToken(), auth.getRefreshToken());
-            if (!isMobileClient(request)) {
+            if (!isNativeClient(request)) {
                 auth.setAccessToken(null);
                 auth.setRefreshToken(null);
             }
@@ -158,9 +158,14 @@ public class AuthController {
 
     // ── request helpers ──
 
-    /** 原生 App 客户端标识：携带此头的请求在 auth 响应 body 中返回 token */
-    private static boolean isMobileClient(HttpServletRequest request) {
-        return "mobile".equals(request.getHeader("X-Komo-Client"));
+    /**
+     * 原生客户端标识：携带此头的请求在 auth 响应 body 中返回 token。
+     * mobile = 原生 App；desktop = Tauri 桌面客户端。
+     * 二者均无浏览器的 httpOnly Cookie 环境，需通过 body 拿到 token 并自行以 Bearer 方式回传。
+     */
+    private static boolean isNativeClient(HttpServletRequest request) {
+        String client = request.getHeader("X-Komo-Client");
+        return "mobile".equals(client) || "desktop".equals(client);
     }
 
     private String extractCookie(HttpServletRequest request, String name) {

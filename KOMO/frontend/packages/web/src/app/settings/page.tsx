@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getMe, logout, listDrafts, listKnowledge, reindexKnowledge, exportKnowledge, updatePreferences, type UserInfo } from '@komo/shared/api-client';
+import { getMe, logout, listDrafts, listKnowledge, reindexKnowledge, exportKnowledge, updatePreferences, isTauriRuntime, type UserInfo } from '@komo/shared/api-client';
+import { getAutostartEnabled, setAutostartEnabled } from '@/lib/desktop/autostart';
 import styles from './page.module.css';
 
 export default function SettingsPage() {
@@ -15,6 +16,19 @@ export default function SettingsPage() {
   const [exporting, setExporting] = useState(false);
   const [autoExtract, setAutoExtract] = useState(true);
   const [dailyRecommendationEnabled, setDailyRecommendationEnabled] = useState(true);
+  // 桌面端专属（Tauri 容器内才渲染）：开机自启开关。
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [autostart, setAutostart] = useState(false);
+
+  useEffect(() => {
+    // 仅桌面环境读取自启状态；浏览器下 isTauriRuntime() 为 false，UI 不渲染，零副作用。
+    if (isTauriRuntime()) {
+      setIsDesktop(true);
+      getAutostartEnabled().then((enabled) => {
+        if (enabled !== null) setAutostart(enabled);
+      });
+    }
+  }, []);
 
   useEffect(() => {
     getMe().then((u) => {
@@ -50,6 +64,13 @@ export default function SettingsPage() {
     } catch {
       setDailyRecommendationEnabled(!next); // rollback
     }
+  };
+
+  const handleToggleAutostart = async () => {
+    const next = !autostart;
+    setAutostart(next); // optimistic update
+    const ok = await setAutostartEnabled(next);
+    if (!ok) setAutostart(!next); // rollback on failure
   };
 
   const handleLogout = () => {
@@ -213,6 +234,30 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {isDesktop && (
+        <div className={styles.section}>
+          <h2 className={styles.sectionTitle}>桌面端</h2>
+          <div className={styles.card}>
+            <div className={styles.row}>
+              <div>
+                <span className={styles.label}>开机自启</span>
+                <span className={styles.hint}>
+                  登录系统后自动启动 KOMO 桌面客户端
+                </span>
+              </div>
+              <label className={styles.toggle}>
+                <input
+                  type="checkbox"
+                  checked={autostart}
+                  onChange={handleToggleAutostart}
+                />
+                <span className={styles.slider} />
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className={styles.section}>
         <h2 className={styles.sectionTitle}>关于</h2>

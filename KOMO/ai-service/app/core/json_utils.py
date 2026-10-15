@@ -11,18 +11,21 @@ from typing import Union
 logger = logging.getLogger(__name__)
 
 
-def parse_llm_json(text: str, expect_array: bool = True) -> Union[list, dict]:
+def parse_llm_json(text: str, expect_array: bool = True, *, strict: bool = False) -> Union[list, dict]:
     """解析 LLM 响应中的 JSON，带多层回退策略。
 
     Args:
         text: LLM 原始响应文本
         expect_array: True → 期望返回 list；False → 期望返回 dict
+        strict: 解析失败时抛出 ValueError，避免调用方把格式错误当成空结果
 
     Returns:
         解析后的 list 或 dict；解析失败时返回 []（expect_array=True）或 {}（expect_array=False）
     """
     if not text:
         logger.warning("[json_utils] LLM 返回空文本")
+        if strict:
+            raise ValueError("Empty model JSON response")
         return [] if expect_array else {}
 
     # 策略 1：直接解析（json_object mode 下的预期路径）
@@ -58,4 +61,6 @@ def parse_llm_json(text: str, expect_array: bool = True) -> Union[list, dict]:
         "[json_utils] 所有解析策略均失败 (expect_array=%s): %.300s",
         expect_array, text
     )
+    if strict:
+        raise ValueError("Invalid model JSON response")
     return [] if expect_array else {}

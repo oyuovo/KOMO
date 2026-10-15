@@ -53,3 +53,8 @@ AGENTS.md
 .env.local
 *.log
 komo-frontend.tar.gz
+
+# Local diagnostics, data backups and editor-generated notes
+.local/
+qa-shots/
+.qoder/

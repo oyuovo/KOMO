@@ -34,7 +34,7 @@ function ConversationsContent() {
       autoCreated.current = true;
       createConversation(undefined, kbId || null)
         .then((conv: ConversationData) => {
-          router.replace(`/conversations/${conv.id}?question=${encodeURIComponent(question)}`);
+          router.replace(`/conversations/view?id=${conv.id}&question=${encodeURIComponent(question)}`);
         })
         .catch(() => {});
     }

@@ -59,7 +59,7 @@ export default function ConversationSidebar({ activeConversationId, onConversati
     try {
       const conv = await createConversation(undefined, kbId ?? null);
       setConversations(prev => [conv, ...prev]);
-      router.push(`/conversations/${conv.id}`);
+      router.push(`/conversations/view?id=${conv.id}`);
     } catch {
       // ignore
     }
@@ -155,7 +155,7 @@ export default function ConversationSidebar({ activeConversationId, onConversati
               {!isCollapsed && convs.map(conv => (
                 <div key={conv.id} className={styles.convRow}>
                   <Link
-                    href={`/conversations/${conv.id}`}
+                    href={`/conversations/view?id=${conv.id}`}
                     className={`${styles.convItem} ${
                       activeConversationId === conv.id ? styles.convActive : ''
                     }`}
@@ -196,7 +196,7 @@ export default function ConversationSidebar({ activeConversationId, onConversati
           {!collapsedKbs.has('__nokb__') && (kbGroups.get(null) || []).map(conv => (
             <div key={conv.id} className={styles.convRow}>
               <Link
-                href={`/conversations/${conv.id}`}
+                href={`/conversations/view?id=${conv.id}`}
                 className={`${styles.convItem} ${
                   activeConversationId === conv.id ? styles.convActive : ''
                 }`}

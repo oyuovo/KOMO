@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import MarkdownRenderer from '@/components/MarkdownRenderer/MarkdownRenderer';
 import ConversationSidebar from '@/components/ConversationSidebar/ConversationSidebar';
 import {
@@ -23,10 +23,11 @@ import {
 } from '@/lib/conversationStream';
 import styles from './page.module.css';
 
-export default function ConversationDetailPage() {
-  const params = useParams<{ id: string }>();
+function ConversationDetailContent() {
   const router = useRouter();
-  const conversationId = params.id;
+  // 查询参数路由（桌面端静态导出兼容）：id 由 ?id= 提供
+  const searchParams = useSearchParams();
+  const conversationId = searchParams.get('id') ?? '';
 
   const [messages, setMessages] = useState<MessageData[]>([]);
   const [conversations, setConversations] = useState<ConversationData[]>([]);
@@ -61,6 +62,7 @@ export default function ConversationDetailPage() {
 
   // 验证登录，加载数据
   useEffect(() => {
+    if (!conversationId) return;
     getMe().then((u) => {
       if (!u) {
         router.push('/login');
@@ -406,5 +408,13 @@ export default function ConversationDetailPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function ConversationDetailPage() {
+  return (
+    <Suspense fallback={<div />}>
+      <ConversationDetailContent />
+    </Suspense>
   );
 }

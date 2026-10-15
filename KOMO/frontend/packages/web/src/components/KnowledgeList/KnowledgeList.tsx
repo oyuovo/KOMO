@@ -455,7 +455,7 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
                 </label>
               )}
               <Link
-                href={`/article/${article.id}`}
+                href={`/article?id=${article.id}`}
                 className={`${styles.articleLink} ${selectMode ? styles.articleLinkSelect : ''}`}
               >
                 <span

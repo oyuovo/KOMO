@@ -138,13 +138,13 @@ public class KnowledgeController {
         return ResponseEntity.ok(ApiResponse.success(KnowledgeResponse.from(merged)));
     }
 
-    /** 手动重建 ES 索引（从 DB 全量回填） */
+    /** 手动重建当前用户的 ES 文档，不删除共享索引。 */
     @PostMapping("/reindex")
     public ResponseEntity<ApiResponse<Map<String, Object>>> reindexAll() {
         int count = knowledgeService.reindexAll();
         return ResponseEntity.ok(ApiResponse.success(Map.of(
             "indexed", count,
-            "message", "ES 索引已从数据库全量重建"
+            "message", "当前用户的知识索引已从数据库重建"
         )));
     }
 }

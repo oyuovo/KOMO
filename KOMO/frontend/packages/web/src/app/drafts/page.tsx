@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import MarkdownRenderer from '@/components/MarkdownRenderer/MarkdownRenderer';
 import {
   getMe,
@@ -9,14 +10,13 @@ import {
   confirmDraft,
   editAndConfirmDraft,
   rejectDraft,
-  batchConfirmDrafts,
-  batchRejectDrafts,
   listKnowledgeBases,
   listKnowledge,
   type DraftData,
   type KnowledgeBaseData,
   type KnowledgeItem,
 } from '@komo/shared/api-client';
+import { draftDestination, readDraftRelation, resolveDraftParent, processDraftSelection, type DraftParent } from '@/lib/draftRouting';
 import styles from './page.module.css';
 
 // ===== 日期工具 =====
@@ -78,6 +78,7 @@ export default function DraftsPage() {
   const router = useRouter();
   const [drafts, setDrafts] = useState<DraftData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -86,10 +87,10 @@ export default function DraftsPage() {
   const [kbs, setKbs] = useState<KnowledgeBaseData[]>([]);
   // 每个草稿的选中目标 KB（key=draftId, value=knowledgeBaseId）
   const [targetKb, setTargetKb] = useState<Record<string, string>>({});
-  // 手动选择嵌入文章
+  // undefined 采用关联建议，null 为用户取消关联
   const [searchParent, setSearchParent] = useState<Record<string, string>>({});
   const [searchResults, setSearchResults] = useState<Record<string, KnowledgeItem[]>>({});
-  const [selectedParent, setSelectedParent] = useState<Record<string, { id: string; title: string } | null>>({});
+  const [selectedParent, setSelectedParent] = useState<Record<string, DraftParent | null>>({});
 
   useEffect(() => {
     getMe().then((u) => {
@@ -98,7 +99,9 @@ export default function DraftsPage() {
         return;
       }
       fetchDrafts();
-      listKnowledgeBases().then(setKbs).catch(() => {});
+      listKnowledgeBases().then(setKbs).catch((err) => {
+        console.warn('加载草稿目标知识库失败', err);
+      });
     });
   }, []);
 
@@ -124,7 +127,7 @@ export default function DraftsPage() {
     return def?.id ?? kbs[0]?.id ?? null;
   };
 
-  // 搜索文章（防抖）
+  // 搜索可关联的文章
   const handleArticleSearch = async (draftId: string, query: string) => {
     setSearchParent((prev) => ({ ...prev, [draftId]: query }));
     if (query.length < 2) {
@@ -139,56 +142,73 @@ export default function DraftsPage() {
     }
   };
 
-  const handleConfirm = async (id: string, draftExtractType: string | null) => {
+  const destinationFor = (draft: DraftData) => draftDestination(
+    draft, selectedParent[draft.id], targetKb[draft.id] ?? getDefaultKbId(draft.extractType) ?? undefined,
+  );
+
+  const removeCompleted = (ids: Set<string>) => {
+    setDrafts((prev) => prev.filter((draft) => !ids.has(draft.id)));
+    setSelectedIds((prev) => new Set([...prev].filter((id) => !ids.has(id))));
+  };
+
+  const handleConfirm = async (draft: DraftData) => {
+    setProcessing(true);
+    setError(null);
     try {
-      const kbId = targetKb[id] ?? getDefaultKbId(draftExtractType);
-      const parent = selectedParent[id];
-      await confirmDraft(id, parent ? undefined : (kbId ?? undefined), parent?.id);
-      setDrafts((prev) => prev.filter((d) => d.id !== id));
+      const target = destinationFor(draft);
+      await confirmDraft(draft.id, target.knowledgeBaseId, target.parentEntryId);
+      removeCompleted(new Set([draft.id]));
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setProcessing(false);
     }
   };
 
   const handleReject = async (id: string) => {
+    setProcessing(true);
+    setError(null);
     try {
       await rejectDraft(id);
-      setDrafts((prev) => prev.filter((d) => d.id !== id));
+      removeCompleted(new Set([id]));
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setProcessing(false);
     }
   };
 
-  const handleEditConfirm = async (id: string, draftExtractType: string | null) => {
+  const handleEditConfirm = async (draft: DraftData) => {
+    setProcessing(true);
+    setError(null);
     try {
-      const kbId = targetKb[id] ?? getDefaultKbId(draftExtractType);
-      await editAndConfirmDraft(id, editTitle, editContent, kbId ?? undefined);
-      setDrafts((prev) => prev.filter((d) => d.id !== id));
+      const target = destinationFor(draft);
+      await editAndConfirmDraft(draft.id, editTitle, editContent, target.knowledgeBaseId, target.parentEntryId);
+      removeCompleted(new Set([draft.id]));
       setEditingId(null);
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setProcessing(false);
     }
   };
 
-  const handleBatchConfirm = async () => {
+  const handleBatch = async (action: 'confirm' | 'reject') => {
+    setProcessing(true);
+    setError(null);
     try {
-      const ids = Array.from(selectedIds);
-      await batchConfirmDrafts(ids);
-      setDrafts((prev) => prev.filter((d) => !selectedIds.has(d.id)));
-      setSelectedIds(new Set());
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  };
-
-  const handleBatchReject = async () => {
-    try {
-      const ids = Array.from(selectedIds);
-      await batchRejectDrafts(ids);
-      setDrafts((prev) => prev.filter((d) => !selectedIds.has(d.id)));
-      setSelectedIds(new Set());
-    } catch (err) {
-      setError((err as Error).message);
+      const selected = drafts.filter((draft) => selectedIds.has(draft.id));
+      const result = await processDraftSelection(selected, (draft) => {
+        if (action === 'reject') return rejectDraft(draft.id);
+        const target = destinationFor(draft);
+        return confirmDraft(draft.id, target.knowledgeBaseId, target.parentEntryId);
+      });
+      removeCompleted(result.succeeded);
+      if (result.failed.length) {
+        setError(`${result.succeeded.size} 条已处理，${result.failed.length} 条失败；失败草稿已保留，请检查目标或稍后重试。`);
+      }
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -217,6 +237,7 @@ export default function DraftsPage() {
       case 'NEW': return { text: '新知', cls: styles.badgeNew };
       case 'SUPPLEMENTS': return { text: '关联', cls: styles.badgeSupplement };
       case 'CONTRADICTS': return { text: '存疑', cls: styles.badgeContradict };
+      case 'DUPLICATE': return { text: '疑似重复', cls: styles.badgeDuplicate };
       default: return null;
     }
   };
@@ -224,7 +245,7 @@ export default function DraftsPage() {
   const dateGroups = useMemo(() => groupDraftsByDate(drafts), [drafts]);
 
   return (
-    <div className={styles.page}>
+    <fieldset className={styles.page} disabled={processing} aria-busy={processing}>
       {/* Header */}
       <div className={styles.header}>
         <div>
@@ -235,10 +256,10 @@ export default function DraftsPage() {
         </div>
         {selectedIds.size > 0 && (
           <div className={styles.batchActions}>
-            <button className={styles.btnConfirm} onClick={handleBatchConfirm}>
+            <button className={styles.btnConfirm} onClick={() => handleBatch('confirm')} disabled={editingId !== null}>
               确认选中 ({selectedIds.size})
             </button>
-            <button className={styles.btnReject} onClick={handleBatchReject}>
+            <button className={styles.btnReject} onClick={() => handleBatch('reject')} disabled={editingId !== null}>
               驳回选中
             </button>
           </div>
@@ -278,17 +299,13 @@ export default function DraftsPage() {
               const extType = extractTypeLabel(draft.extractType);
               const rel = relationLabel(draft.relationType);
               const { time } = formatDate(draft.createdAt);
-              // 解析 relationDetail 中的父文章 ID
-              let parentEntryId: string | null = null;
-              try {
-                if (draft.relationDetail) {
-                  const detail = JSON.parse(draft.relationDetail);
-                  parentEntryId = detail.parentEntryId || null;
-                }
-              } catch { /* ignore */ }
+              const { matchedEntryId, matchedDraftId } = readDraftRelation(draft);
+              const parent = resolveDraftParent(draft, selectedParent[draft.id]);
+              const matchedDraft = drafts.find((item) => item.id === matchedDraftId);
               return (
                 <div
                   key={draft.id}
+                  id={`draft-${draft.id}`}
                   className={`${styles.card} ${editingId === draft.id ? styles.cardEditing : ''}`}
                 >
                   {/* Checkbox */}
@@ -315,10 +332,14 @@ export default function DraftsPage() {
                         rows={6}
                         placeholder="Markdown 内容"
                       />
+                      <p className={styles.targetNote}>
+                        {parent ? <>保存后关联到 <Link href={`/article?id=${encodeURIComponent(parent.id)}`}>{parent.title}</Link>，原文章正文保持不变。</>
+                          : `保存到「${kbs.find((kb) => kb.id === destinationFor(draft).knowledgeBaseId)?.name ?? '默认知识库'}」，作为独立条目。`}
+                      </p>
                       <div className={styles.editActions}>
                         <button
                           className={styles.btnConfirm}
-                          onClick={() => handleEditConfirm(draft.id, draft.extractType)}
+                          onClick={() => handleEditConfirm(draft)}
                         >
                           保存并确认
                         </button>
@@ -339,7 +360,7 @@ export default function DraftsPage() {
                           {extType && <span className={extType.cls}>{extType.text}</span>}
                           {rel && <span className={rel.cls}>{rel.text}</span>}
                           <span className={styles.badgeConfidence}>
-                            置信度 {(draft.confidence * 100).toFixed(0)}%
+                            提取置信度 {(draft.confidence * 100).toFixed(0)}%
                           </span>
                         </div>
                       </div>
@@ -347,26 +368,37 @@ export default function DraftsPage() {
                         {draft.content.slice(0, 200)}
                         {draft.content.length > 200 ? '...' : ''}
                       </p>
+                      {draft.relationType === 'DUPLICATE' && (
+                        <div className={styles.reviewNotice}>
+                          <p>这条内容可能与已有内容重复，草稿已保留。请比较后决定是否入库。</p>
+                          {matchedEntryId ? (
+                            <Link href={`/article?id=${encodeURIComponent(matchedEntryId)}`}>
+                              查看相似知识条目
+                            </Link>
+                          ) : matchedDraft ? (
+                            <a href={`#draft-${matchedDraft.id}`}>查看相似草稿：{matchedDraft.title}</a>
+                          ) : (
+                            <p>暂时没有可查看的匹配内容，你仍可以编辑或保留这条草稿。</p>
+                          )}
+                        </div>
+                      )}
+                      <details className={styles.fullContent}>
+                        <summary>查看完整内容</summary>
+                        <MarkdownRenderer content={draft.content} />
+                      </details>
                       {/* 目标去向 */}
-                      {selectedParent[draft.id] ? (
+                      {parent ? (
                         <div className={styles.kbRow}>
-                          <span className={styles.kbLabel}>📎 嵌入到</span>
+                          <span className={styles.kbLabel}>📎 关联到</span>
                           <span className={styles.parentHint}>
-                            {selectedParent[draft.id]!.title}
+                            <Link href={`/article?id=${encodeURIComponent(parent.id)}`}>{parent.title}</Link>
                             <button
                               className={styles.parentClear}
+                              aria-label="取消关联，独立入库"
                               onClick={() => setSelectedParent((prev) => ({ ...prev, [draft.id]: null }))}
                             >
                               ×
                             </button>
-                          </span>
-                        </div>
-                      ) : parentEntryId ? (
-                        <div className={styles.kbRow}>
-                          <span className={styles.kbLabel}>📎 嵌入到</span>
-                          <span className={styles.parentHint}>
-                            已有文章
-                            <span className={styles.parentId}>{parentEntryId.slice(0, 8)}...</span>
                           </span>
                         </div>
                       ) : (
@@ -387,13 +419,14 @@ export default function DraftsPage() {
                           </select>
                         </div>
                       )}
-                      {/* 手动搜索文章嵌入 */}
-                      {!selectedParent[draft.id] && (
+                      {parent && <p className={styles.targetNote}>将保存为同一知识库中的独立补充条目，不会改写原文章正文。</p>}
+                      {/* 手动选择关联文章 */}
+                      {!parent && (
                         <div className={styles.embedRow}>
                           <input
                             className={styles.embedSearch}
                             type="text"
-                            placeholder="或搜索文章嵌入..."
+                            placeholder="或搜索要关联的文章..."
                             value={searchParent[draft.id] || ''}
                             onChange={(e) => handleArticleSearch(draft.id, e.target.value)}
                           />
@@ -422,7 +455,7 @@ export default function DraftsPage() {
                       <div className={styles.cardActions}>
                         <button
                           className={styles.btnConfirm}
-                          onClick={() => handleConfirm(draft.id, draft.extractType)}
+                          onClick={() => handleConfirm(draft)}
                         >
                           确认入库
                         </button>
@@ -451,6 +484,6 @@ export default function DraftsPage() {
           </div>
         ))}
       </div>
-    </div>
+    </fieldset>
   );
 }

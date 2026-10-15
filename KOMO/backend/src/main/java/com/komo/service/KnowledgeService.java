@@ -390,6 +390,6 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
     public int reindexAll() {
         UUID userId = SecurityContext.getCurrentUserId();
         List<KnowledgeEntry> allActive = repository.findAllByUserIdAndDeletedAtIsNull(userId);
-        return indexService.reindexAll(allActive);
+        return indexService.reindexUser(userId, allActive);
     }
 }

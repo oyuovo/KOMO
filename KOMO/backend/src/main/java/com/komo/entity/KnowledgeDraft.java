@@ -99,7 +99,7 @@ public class KnowledgeDraft extends BaseEntity {
         SUPPLEMENTS,
         /** 存疑 — 与已有知识存在矛盾 */
         CONTRADICTS,
-        /** 重复 — 与已有知识基本相同 */
+        /** 疑似重复 — 自动判断仅供参考，保留草稿供用户审阅。 */
         DUPLICATE
     }
 

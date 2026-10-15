@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import TopNav from '@/components/TopNav/TopNav';
+import DesktopBridge from '@/components/DesktopBridge/DesktopBridge';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -15,6 +16,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body>
+        <DesktopBridge />
         <TopNav />
         {children}
       </body>

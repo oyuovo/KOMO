@@ -7,9 +7,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * 知识去重服务。
@@ -25,20 +23,14 @@ public class DedupService {
     private final KnowledgeDraftService draftService;
 
     /**
-     * 去重阈值。
-     *
-     * MLT_NORMAL_SCALE 校准依据（2026-08-31 实测，见 docs/pain-points.md P13）：
-     * SmartCN 下中文文档共享大量常见词，无关文档对 MLT 原始分可达 15~18，
-     * 同主题文档 10~11，完全相同内容 35+。
-     * 旧值 20 导致无关文档归一化后达 0.77~0.92，超过 DUPLICATE_THRESHOLD 被静默丢弃，
-     * 新知识点永远无法入草稿箱。改为 60 后：无关≈ 0.26，同主题≈ 0.19，重复≈ 0.59。
+     * 历史分数缩放，仅用于候选提示，不是重复概率。
+     * 分词器、语料及查询条件变化后需要重新评测，不能据此丢弃内容。
      */
     private static final double MLT_NORMAL_SCALE = 60.0;  // ES MLT 得分归一化系数
     /**
-     * 高分重复阈值。取 0.65：实测完全相同内容归一化≈ 0.59，同主题≈ 0.19，无关≈ 0.26；
-     * 仅标题 LCS 完全相同（1.0）或接近相同时才自动丢弃，内容层重复交给 Layer 3 LLM 判定。
+     * 高分候选直接标记为疑似重复，保留在草稿箱交给用户审阅。
      */
-    private static final double DUPLICATE_THRESHOLD = 0.65;
+    private static final double SUSPECTED_DUPLICATE_THRESHOLD = 0.65;
     private static final double NEW_THRESHOLD = 0.2;
 
     /**
@@ -64,7 +56,7 @@ public class DedupService {
             double combined = Math.max(mltNorm, lcsScore);
 
             if (combined > best.getScore()) {
-                best = DedupResult.knowledgeMatch(entryId, combined, mltNorm, lcsScore);
+                best = DedupResult.knowledgeMatch(entryId, combined, mltScore, lcsScore);
             }
         }
 
@@ -88,8 +80,8 @@ public class DedupService {
         if (t1 == null || t2 == null) return 0;
         String a = normalize(t1);
         String b = normalize(t2);
-        if (a.equals(b)) return 1.0;
         if (a.isEmpty() || b.isEmpty()) return 0;
+        if (a.equals(b)) return 1.0;
         if (a.contains(b) || b.contains(a)) return 0.85;
         int lcs = longestCommonSubstring(a, b);
         return (double) lcs / Math.min(a.length(), b.length());
@@ -116,13 +108,13 @@ public class DedupService {
         return max;
     }
 
-    /** 判定：是否为高分重复（应静默丢弃） */
-    public boolean shouldAutoReject(DedupResult result) {
-        return result.isDuplicate() && result.getScore() > DUPLICATE_THRESHOLD;
+    /** 高相似度仅是审阅提示，不代表内容重复已被确认。 */
+    public boolean isSuspectedDuplicate(DedupResult result) {
+        return result.getScore() > SUSPECTED_DUPLICATE_THRESHOLD;
     }
 
     /** 判定：是否需要 LLM 进一步判断 */
     public boolean needsLlmReview(DedupResult result) {
-        return result.getScore() >= NEW_THRESHOLD && result.getScore() <= DUPLICATE_THRESHOLD;
+        return result.getScore() >= NEW_THRESHOLD && result.getScore() <= SUSPECTED_DUPLICATE_THRESHOLD;
     }
 }

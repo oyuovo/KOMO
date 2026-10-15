@@ -115,7 +115,7 @@ export default function ImportPage() {
         knowledgeBaseId: selectedKbId || undefined,
         tags: tags.trim() || undefined,
       });
-      router.push(`/article/${result.id}`);
+      router.push(`/article?id=${result.id}`);
     } catch (err) {
       setError((err as Error).message || '导入失败');
       setImporting(false);

@@ -1,0 +1,17 @@
+{
+  "name": "desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "KOMO desktop client (Tauri v2 shell)",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "build:web": "cross-env NEXT_PUBLIC_API_URL=https://9any.cn/api npm run build:desktop --workspace=web --prefix=../..",
+    "build:web:dev": "cross-env NEXT_PUBLIC_API_URL=http://localhost:8081/api npm run build:desktop --workspace=web --prefix=../.."
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.1",
+    "cross-env": "^10.1.0"
+  }
+}

@@ -101,10 +101,11 @@ DEEPSEEK_API_KEY=sk-your-key-here
    ```bash
    ssh -L 15672:127.0.0.1:15672 user@server
    ```
-3. **AI 服务去掉热重载与源码挂载** —— 跑的必须是镜像里构建进去的代码：
+3. **AI 服务去掉热重载，保留只读源码挂载** —— 当前镜像只安装依赖，没有打包 `app/`。Python 更新需上传源码并重启容器：
    ```yaml
    command: uvicorn app.main:app --host 0.0.0.0 --port 8001   # 无 --reload
-   volumes: !override []                                       # 无源码挂载
+   volumes: !override
+     - ../KOMO/ai-service:/app:ro
    ```
 
 > `ports` / `volumes` 上的 `!override` 标签不能省。Compose 对这两个多值字段的合并语义是
@@ -117,6 +118,8 @@ cd /opt/komo/docker
 docker compose -f docker-compose.yml -f docker-compose.prod.yml config | grep -E 'host_ip|published'
 # 预期：所有 host_ip 均为 127.0.0.1，且看不到 15672
 ```
+
+日常更新的完整顺序见 [部署更新说明](deploy/README.md)。`deploy.ps1 all` 仅更新 Web 与 Java，不包含 Python AI 服务或 systemd 配置。
 
 ### Spring Boot 生产环境变量
 

@@ -56,7 +56,7 @@ function applyWikiLinks(text: string, linkMap?: Record<string, string>): string 
   }
   return text.replace(/\[\[([^\[\]]+)\]\]/g, (match, title: string) => {
     const id = lower[title.trim().toLowerCase()];
-    return id ? `[${title.trim()}](/article/${id})` : match;
+    return id ? `[${title.trim()}](/article?id=${id})` : match;
   });
 }
 

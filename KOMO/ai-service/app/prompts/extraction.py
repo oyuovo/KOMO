@@ -53,20 +53,20 @@ EXTRACTION_SYSTEM_PROMPT = """你是一个知识提取助手。你的任务是�
 6. 对于篇幅较长、结构清晰的知识 → ARTICLE；零碎但有用的小知识 → FRAGMENT；明确是对已有话题深入展开的 → SUPPLEMENT
 
 ## 输出格式
-以 JSON 数组返回，每个元素包含：
+以 JSON 对象返回，顶层必须是 {"knowledge_points": [...]}。knowledge_points 数组中的每个元素包含：
 - type: "ARTICLE" | "FRAGMENT" | "SUPPLEMENT"
 - title: 知识标题
 - content: 知识正文（Markdown 格式，清晰完整；ARTICLE 必须 ≥500 字且有 ## 章节结构）
 - confidence: 置信度（0-1 之间，0.6 以下会被自动丢弃）
 
-如果没有值得提取的知识点，返回空数组。
+如果没有值得提取的知识点，返回 {"knowledge_points": []}。
 
 ## 示例
 
 以下示例展示了三种类型的标准格式，请严格参照：
 
 ```json
-[
+{"knowledge_points": [
   {
     "type": "ARTICLE",
     "title": "Spring Boot 启动流程详解",
@@ -85,7 +85,7 @@ EXTRACTION_SYSTEM_PROMPT = """你是一个知识提取助手。你的任务是�
     "content": "CMS 使用三色标记算法进行并发标记：\\n\\n1. **初始标记**（STW）：标记 GC Roots 直接可达的对象为黑色\\n2. **并发标记**：从黑色对象出发遍历对象图，遇到的对象标记为灰色，处理完的标记为黑色\\n3. **重新标记**（STW）：修正并发标记期间的变动\\n4. **并发清除**：清除未标记的白色对象\\n\\n三色标记的核心问题是解决漏标——在并发标记期间新增的对象引用关系。",
     "confidence": 0.86
   }
-]
+]}
 ```
 
-请直接返回 JSON 数组，不要包含其他文字。"""
+请直接返回 JSON 对象，不要包含其他文字。"""
