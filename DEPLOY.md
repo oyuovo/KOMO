@@ -425,34 +425,7 @@ chmod +x /opt/komo/deploy/backup.sh
 (crontab -l 2>/dev/null; echo "0 2 * * * /opt/komo/deploy/backup.sh >> /var/log/komo-backup.log 2>&1") | crontab -
 ```
 
-脚本内容（`deploy/backup.sh`）：
-
-```bash
-#!/bin/bash
-BACKUP_DIR=/opt/komo/backups
-RETENTION_DAYS=14
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-
-mkdir -p $BACKUP_DIR
-
-# 读取密码
-source /opt/komo/docker/.env
-
-# 导出
-docker exec komo-postgres pg_dump -U komo komo | gzip > "$BACKUP_DIR/komo_$TIMESTAMP.sql.gz"
-
-# 删除旧备份
-find $BACKUP_DIR -name "*.sql.gz" -mtime +$RETENTION_DAYS -delete
-
-echo "Backup completed: komo_$TIMESTAMP.sql.gz"
-```
-
-添加 crontab（每天凌晨 2:00）：
-
-```bash
-chmod +x /opt/komo/deploy/backup.sh
-(crontab -l 2>/dev/null; echo "0 2 * * * /opt/komo/deploy/backup.sh >> /var/log/komo-backup.log 2>&1") | crontab -
-```
+脚本直接在 `komo-postgres` 容器内读取 `POSTGRES_USER` 和 `POSTGRES_DB`，不再 `source docker/.env`。宿主机 `.env` 的 CRLF 换行或特殊字符不会影响备份。导出先写入临时文件，通过 gzip 和大小校验后才生成正式备份；失败会清理临时文件并返回非零状态，保留已有备份。以仓库中的 `deploy/backup.sh` 为准，不再维护一份容易过期的内嵌脚本。
 
 ### 恢复
 

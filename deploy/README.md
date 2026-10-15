@@ -21,10 +21,12 @@ ssh ubuntu@43.142.82.207
 
 进入服务器后，先备份数据库及当前源码配置。备份可能含环境密钥，保存在服务器上，不要提交到 GitHub。以下操作保留 Docker 数据卷；不用 `down -v`，也不删除 ES 索引。
 
+在交互式 SSH 中逐步执行并检查返回结果，不要先设置 `set -e`，否则一个失败命令就可能结束 SSH 会话。若旧备份脚本在 `source .env` 时报 `$'\r': command not found`，先单独上传新版 `deploy/backup.sh`；新版直接读取容器配置，不需要修改服务器密钥文件。
+
 ```bash
-set -e
 cd /opt/komo
 sudo bash deploy/backup.sh
+# 若上一步失败，停在这里排查，不要继续覆盖服务器代码。
 sudo sh -c 'umask 077; tar -czf /opt/komo/backups/code-config-$(date +%Y%m%d-%H%M%S).tar.gz -C /opt/komo KOMO/ai-service/app docker deploy'
 tar -xzf /tmp/komo-update.tar.gz -C /opt/komo
 
