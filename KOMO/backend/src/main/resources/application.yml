@@ -53,6 +53,9 @@ spring:
 
 # JWT 配置
 komo:
+  auth:
+    # 自用部署默认禁止自主注册；仅在明确需要的开发环境显式开启。
+    registration-enabled: ${REGISTRATION_ENABLED:false}
   jwt:
     secret: ${JWT_SECRET}
     access-token-expiration: 3600000     # 1 hour (ms)

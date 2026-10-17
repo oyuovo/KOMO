@@ -13,6 +13,7 @@ import com.komo.exception.ErrorCode;
 import com.komo.repository.UserRepository;
 import com.komo.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -38,8 +39,18 @@ public class UserService {
     private final JwtConfig jwtConfig;
     private final AuthenticationManager authenticationManager;
 
+    @Value("${komo.auth.registration-enabled:false}")
+    private boolean registrationEnabled;
+
+    public boolean isRegistrationEnabled() {
+        return registrationEnabled;
+    }
+
     @Transactional
     public AuthResponse register(RegisterRequest request) {
+        if (!registrationEnabled) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "本站暂不开放注册");
+        }
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new BusinessException(ErrorCode.USER_ALREADY_EXISTS);
         }

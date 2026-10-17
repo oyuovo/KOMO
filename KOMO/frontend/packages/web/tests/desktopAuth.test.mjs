@@ -18,6 +18,43 @@ const tokens = { user, accessToken: 'new-access', refreshToken: 'new-refresh' };
 const credentials = { email: user.email, password: 'test-only-password' };
 const reply = (status, data = null) => Response.json({ code: status === 200 ? 0 : status, message: 'test response', data }, { status });
 const tick = () => new Promise(resolve => setImmediate(resolve));
+
+test('registration config is public, uncached and independent of token initialization', async () => {
+  const store = memoryStore();
+  store.ready = new Promise(() => {});
+  const { api } = harness(async (url, options) => {
+    assert.ok(url.endsWith('/auth/config'));
+    assert.equal(options.credentials, 'omit');
+    assert.equal(options.cache, 'no-store');
+    assert.equal(options.headers, undefined);
+    return reply(200, { registrationEnabled: true });
+  }, { store });
+  assert.equal(await api.isRegistrationEnabled(), true);
+});
+
+for (const data of [{ registrationEnabled: false }, {}, null, { registrationEnabled: 'true' }]) {
+  test(`registration stays hidden unless server explicitly enables it: ${JSON.stringify(data)}`, async () => {
+    const { api } = harness(async () => reply(200, data));
+    assert.equal(await api.isRegistrationEnabled(), false);
+  });
+}
+
+for (const status of [401, 403, 404, 500]) {
+  test(`registration config failure ${status} stays closed without refresh or redirect`, async () => {
+    let calls = 0;
+    const { api, window, store } = harness(async () => { calls++; return reply(status); });
+    assert.equal(await api.isRegistrationEnabled(), false);
+    assert.equal(calls, 1);
+    assert.equal(window.location.href, '/');
+    assert.equal(store.clears, 0);
+  });
+}
+
+test('offline registration check stays closed and preserves credentials', async () => {
+  const { api, store } = harness(async () => { throw new TypeError('offline'); });
+  assert.equal(await api.isRegistrationEnabled(), false);
+  assert.equal(store.clears, 0);
+});
 function deferred() {
   let resolve, reject;
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });

@@ -41,6 +41,15 @@ public class AuthController {
     private final UserService userService;
     private final AuthCookieWriter authCookieWriter;
 
+    public record AuthConfig(boolean registrationEnabled) {}
+
+    @GetMapping("/config")
+    public ResponseEntity<ApiResponse<AuthConfig>> config() {
+        return ResponseEntity.ok()
+            .cacheControl(org.springframework.http.CacheControl.noStore())
+            .body(ApiResponse.success(new AuthConfig(userService.isRegistrationEnabled())));
+    }
+
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<AuthResponse>> register(
         @Valid @RequestBody RegisterRequest request,

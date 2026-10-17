@@ -383,6 +383,19 @@ export class ApiError extends Error {
 
 // ===== Auth =====
 
+/** 公开的运行时开关，不依赖登录，也不进入离线缓存或自动续期流程。 */
+export async function isRegistrationEnabled(): Promise<boolean> {
+  try {
+    const config = await readResponse<{ registrationEnabled: boolean }>(await sendFetch('/auth/config', {
+      method: 'GET', credentials: 'omit', cache: 'no-store',
+    }));
+    return config?.registrationEnabled === true;
+  } catch (error) {
+    console.error('[komo] 无法读取注册开关，保持关闭', error);
+    return false;
+  }
+}
+
 export interface LoginRequest {
   email: string;
   password: string;

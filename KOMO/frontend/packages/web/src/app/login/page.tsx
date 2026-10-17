@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { login, register, getMe } from '@komo/shared/api-client';
+import { login, register, getMe, isRegistrationEnabled, ApiError } from '@komo/shared/api-client';
 import { registrationError } from '@/lib/registration';
 import IcpFooter from '@/components/IcpFooter/IcpFooter';
 import styles from './page.module.css';
@@ -12,11 +12,20 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [registering, setRegistering] = useState(false);
+  const [registrationEnabled, setRegistrationEnabled] = useState(false);
   const [confirmation, setConfirmation] = useState('');
   const [nickname, setNickname] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [loginError, setLoginError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    isRegistrationEnabled().then((enabled) => {
+      if (!cancelled) setRegistrationEnabled(enabled);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   // 已登录用户直接进入知识库
   useEffect(() => {
@@ -31,6 +40,7 @@ export default function LoginPage() {
   const handleLogin = async () => {
     if (checkingSession || loggingIn || !email.trim() || !password) return;
     if (registering) {
+      if (!registrationEnabled) { setLoginError('本站暂不开放注册'); return; }
       const error = registrationError(password, confirmation);
       if (error) { setLoginError(error); return; }
     }
@@ -44,6 +54,12 @@ export default function LoginPage() {
       }
       router.replace('/');
     } catch (err) {
+      if (registering && err instanceof ApiError && err.code === 403) {
+        setRegistrationEnabled(false);
+        setRegistering(false);
+        setPassword('');
+        setConfirmation('');
+      }
       setLoginError((err as Error).message || '登录失败');
       setLoggingIn(false);
     }
@@ -97,10 +113,10 @@ export default function LoginPage() {
             {checkingSession ? '检查登录状态...' : loggingIn ? '正在提交…' : registering ? '注册并进入' : '登录'}
           </button>
           {loginError && <p className={styles.error} role="alert">{loginError}</p>}
-          <button type="button" className={styles.switchMode} disabled={loggingIn || checkingSession}
+          {registrationEnabled && <button type="button" className={styles.switchMode} disabled={loggingIn || checkingSession}
             onClick={() => { setRegistering(!registering); setPassword(''); setConfirmation(''); setLoginError(null); }}>
             {registering ? '已有账号？返回登录' : '没有账号？注册'}
-          </button>
+          </button>}
         </form>
       </div>
       <div className={styles.footer}>
