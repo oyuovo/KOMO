@@ -16,9 +16,10 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body>
-        <DesktopBridge />
-        <TopNav />
-        {children}
+        <DesktopBridge>
+          <TopNav />
+          {children}
+        </DesktopBridge>
       </body>
     </html>
   );

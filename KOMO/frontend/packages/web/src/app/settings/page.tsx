@@ -11,6 +11,8 @@ export default function SettingsPage() {
   const [draftCount, setDraftCount] = useState(0);
   const [articleCount, setArticleCount] = useState(0);
   const [user, setUser] = useState<UserInfo | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [reindexState, setReindexState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [reindexCount, setReindexCount] = useState(0);
   const [exporting, setExporting] = useState(false);
@@ -43,7 +45,7 @@ export default function SettingsPage() {
         listDrafts().then((d) => setDraftCount(d.length)).catch(() => {}),
         listKnowledge().then((r) => setArticleCount(r.totalElements)).catch(() => {}),
       ]);
-    });
+    }).catch((err) => setAuthError(err.message));
   }, []);
 
   const handleToggleAutoExtract = async () => {
@@ -73,9 +75,18 @@ export default function SettingsPage() {
     if (!ok) setAutostart(!next); // rollback on failure
   };
 
-  const handleLogout = () => {
-    logout();
-    router.push('/');
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    setAuthError(null);
+    try {
+      await logout();
+      router.replace('/login');
+    } catch (err) {
+      setAuthError((err as Error).message);
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
   const handleExport = async () => {
@@ -115,6 +126,7 @@ export default function SettingsPage() {
   return (
     <div className={styles.page}>
       <h1 className={styles.title}>设置</h1>
+      {authError && <p role="alert">{authError}</p>}
 
       <div className={styles.section}>
         <h2 className={styles.sectionTitle}>账户</h2>
@@ -128,8 +140,8 @@ export default function SettingsPage() {
             <span className={styles.value}>{user?.nickname || '-'}</span>
           </div>
           <div className={styles.divider} />
-          <button className={styles.logoutBtn} onClick={handleLogout}>
-            退出登录
+          <button className={styles.logoutBtn} onClick={handleLogout} disabled={loggingOut}>
+            {loggingOut ? '正在退出…' : '退出登录'}
           </button>
         </div>
       </div>

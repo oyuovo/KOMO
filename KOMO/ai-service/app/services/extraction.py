@@ -3,7 +3,7 @@
 import re
 import logging
 from pydantic import ValidationError
-from ..core.clients import deepseek
+from ..core.clients import adeepseek
 from ..core.config import DEEPSEEK_MODEL
 from ..core.json_utils import parse_llm_json
 from ..schemas.extraction import KnowledgePoint
@@ -30,6 +30,10 @@ def _truncate_messages(messages: list[dict[str, str]]) -> list[dict[str, str]]:
         acc = 0
         for m in reversed(truncated):
             size = len(m.get("content", ""))
+            if not kept and size > MAX_INPUT_CHARS:
+                kept.append({**m, "content": m.get("content", "")[-MAX_INPUT_CHARS:]})
+                acc = MAX_INPUT_CHARS
+                break
             if acc + size > MAX_INPUT_CHARS and kept:
                 break
             kept.append(m)
@@ -92,7 +96,7 @@ async def extract_knowledge(
     ]
 
     try:
-        response = deepseek.chat.completions.create(
+        response = await adeepseek.chat.completions.create(
             model=DEEPSEEK_MODEL,
             messages=extraction_messages,
             stream=False,

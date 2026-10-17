@@ -70,7 +70,7 @@ export default function ImportPage() {
           if (defaultKb) setSelectedKbId(defaultKb.id);
         })
         .catch(() => {});
-    });
+    }).catch((err) => { setError(err.message); });
   }, []);
 
   const handleFile = useCallback((f: File) => {
@@ -150,6 +150,7 @@ export default function ImportPage() {
     <div className={styles.page}>
       <Link href="/" className={styles.backLink}>← 返回知识库</Link>
       <h1 className={styles.heading}>导入 Markdown 文档</h1>
+      {!file && error && <p className={styles.error} role="alert">{error}</p>}
 
       {/* Drop zone (only when no file selected) */}
       {!file && (

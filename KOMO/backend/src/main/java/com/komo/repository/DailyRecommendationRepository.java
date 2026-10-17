@@ -10,13 +10,9 @@ import java.util.UUID;
 
 public interface DailyRecommendationRepository extends JpaRepository<DailyRecommendation, UUID> {
 
-    /**
-     * 查询用户今天最新的活跃推荐。
-     * 用 findTop1 而非单结果查询：历史并发可能产生同日多条 ACTIVE，
-     * 单结果查询遇到重复会抛 NonUniqueResultException 导致 500。
-     */
-    Optional<DailyRecommendation> findTopByUserIdAndStatusAndCreatedAtAfterOrderByCreatedAtDesc(
-        UUID userId, String status, LocalDateTime since
+    /** 当天最新记录，包含已忽略和已讨论状态，避免同一天重复自动生成。 */
+    Optional<DailyRecommendation> findTopByUserIdAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
+        UUID userId, LocalDateTime start, LocalDateTime end
     );
 
     /** 查询用户最近的活跃推荐 */

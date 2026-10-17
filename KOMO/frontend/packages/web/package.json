@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "test:auth": "node --test tests/desktopAuth.test.mjs",
     "test:drafts": "node --experimental-strip-types --test tests/draftRouting.test.mjs",
     "dev": "next dev",
     "build": "next build",

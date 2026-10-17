@@ -53,6 +53,12 @@ KOMO/frontend/packages/desktop/src-tauri/target/release/bundle/nsis/KOMO_0.1.0_x
 
 应用启动后需要联网访问https://9any.cn后端才能登录与使用AI功能。
 
+启动时会先读取本地保存的凭证，再向服务器确认登录状态。如果 access token 已过期，会使用 refresh token 自动续期；只有服务器确认会话失效才需要重新登录。断网、服务暂时不可用或本地凭证读取失败时，界面会显示原因和“重新连接”按钮。
+
+登录成功会等待凭证写入完成后进入知识库，退出登录也会等待本地凭证清除完成。现阶段仍使用应用数据目录中的 `komo-auth.json` 明文文件，没有迁移到系统凭证库。已有部分阅读缓存，但离线冷启动仍未完成，不能把它当作完整的离线客户端。
+
+认证回归测试可在 `packages/web` 目录运行 `npm run test:auth`，覆盖延迟读取、过期续期、并发请求、断网重试、持久化和退出登录竞态。测试使用模拟接口，不会访问生产账号或调用 AI 服务。
+
 ## 六、修改服务器地址
 
 当前构建已把后端地址固化为https://9any.cn/api。桌面端WebView的origin是http://tauri.localhost，没有nginx同源反代，因此必须使用绝对URL，不能使用相对路径/api（相对路径会被解析到不存在的http://tauri.localhost/api）。
@@ -72,6 +78,8 @@ cross-env NEXT_PUBLIC_API_URL=https://your-domain.example.com/api npm run build:
 ## 七、重新构建
 
 前置条件：已安装Rust工具链（x86_64-pc-windows-msvc）与Node.js，且cargo位于`%USERPROFILE%\.cargo\bin`。
+
+构建前请从托盘菜单彻底退出正在运行的本目录客户端。仅关闭窗口可能仍会常驻托盘，占用`target/release/komo-desktop.exe`，使Rust构建报“拒绝访问”。
 
 在packages/desktop目录下执行：
 

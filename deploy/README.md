@@ -82,3 +82,38 @@ sudo docker logs --tail 80 komo-ai
 ```
 
 再用线上账号发起一轮对话，检查标题和列表换行，并等待待审草稿生成。本地测试账号、已有对话和草稿不会随 Git 推送或这套部署操作传到服务器。桌面安装包也不由这些脚本发布，需要另行构建。
+
+## 后端就绪检查与 exit code 7（2026-10-15）
+
+`systemctl` 显示 `active` 代表 Java 进程在运行，不代表 Spring Boot 已经监听 HTTP 端口。旧脚本只等待 3 秒就请求一次健康接口；如果此时尚未监听，会打印 `backend http 000`，curl 以 7 退出，SSH 再把这个远程退出码传回 PowerShell。服务随后也可能启动成功，不能仅凭这条异常判定 JAR 上传失败或 SSH 连接失败；启动崩溃与端口错误仍需日志确认。
+
+后端部署现在使用本地 `deploy/backend-health.sh`，将其内容嵌入现有 SSH 命令，无需在服务器另行安装脚本。重启后默认最多等待 120 秒，约每 2 秒重试；每个请求有连接/总时限，直接检查 `127.0.0.1:8081` 并绕过代理，只有服务 active 且健康接口 HTTP 200 才通过。持续连接失败、HTTP 3xx/4xx/5xx、服务退出均不会被当作成功；最终失败会显示服务状态与最近 80 行日志，不会自动回滚 JAR。
+
+原命令可继续使用，较慢服务器可显式调整超时（5–900 秒）：
+
+```powershell
+.\deploy\deploy.ps1 backend -HealthTimeoutSeconds 180
+```
+
+若旧脚本已经上传并重启，但只在检查时失败，先只读确认现状，避免重复构建和重启：
+
+```powershell
+curl.exe -fsS https://9any.cn/api/health
+ssh ubuntu@43.142.82.207
+```
+
+进入服务器后：
+
+```bash
+systemctl show komo-backend -p ActiveState -p SubState -p Result -p ExecMainStatus -p NRestarts
+curl --noproxy '*' -fsS --max-time 5 http://127.0.0.1:8081/api/health
+sudo journalctl -u komo-backend -n 80 --no-pager
+```
+
+本次只读公开健康检查返回 HTTP 200、`data.status=UP`，支持“当时检查过早”的判断，但未读取服务器启动日志，不能据此确定准确启动耗时或所有依赖/业务功能正常。本地已通过 PowerShell 5.1/7 语法检查、10 项真实 helper 的隔离回归，以及实际部署脚本在 mock mvn/scp/ssh 下的命令拼接与失败传播检查。没有执行线上重启或重新部署，没有修改数据库、环境密钥或无关工作区文件。
+
+可重复的本地回归（Git Bash/Linux；命令均为测试替身，不连接服务器）：
+
+```bash
+bash deploy/tests/backend-health-test.sh
+```

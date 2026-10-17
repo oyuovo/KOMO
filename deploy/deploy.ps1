@@ -18,7 +18,11 @@
 param(
   [Parameter(Position = 0)]
   [ValidateSet('frontend', 'backend', 'all')]
-  [string]$Target = 'all'
+  [string]$Target = 'all',
+
+  # Maximum time to wait for Spring Boot to listen and answer HTTP 200.
+  [ValidateRange(5, 900)]
+  [int]$HealthTimeoutSeconds = 120
 )
 
 $ErrorActionPreference = 'Stop'
@@ -114,6 +118,7 @@ curl -s -o /dev/null -w 'front http %{http_code}\n' http://localhost:3000
 }
 
 function Deploy-Backend {
+  $healthScript = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'backend-health.sh') -Raw
   Write-Step 'Build backend fat JAR (local mvn package)'
   Push-Location $BackendDir
   try {
@@ -131,16 +136,11 @@ function Deploy-Backend {
   Assert-Ok 'scp backend JAR'
 
   Write-Step 'Restart komo-backend (ssh - prompts SSH password, maybe sudo password)'
-  $remote = @"
-set -e
-sudo systemctl restart komo-backend
-sleep 3
-systemctl is-active komo-backend
-curl -s -o /dev/null -w 'backend http %{http_code}\n' http://localhost:8081/api/health
-"@
+  # Embed the helper in the SSH command; no additional server file installation is needed.
+  $remote = "set -e`n" + $healthScript + "`nsudo systemctl restart komo-backend`nwait_for_backend $HealthTimeoutSeconds`n"
   $remote = $remote -replace "\r", ''   # strip CR: Windows CRLF would leak \r into remote bash
   ssh -t $SshTarget $remote
-  Assert-Ok 'ssh backend deploy'
+  Assert-Ok 'backend restart/readiness check (see remote diagnostics above)'
 }
 
 # ---------------------------- main ----------------------------

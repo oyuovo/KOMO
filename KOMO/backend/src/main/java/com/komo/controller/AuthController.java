@@ -7,6 +7,8 @@ import com.komo.dto.request.RegisterRequest;
 import com.komo.dto.response.ApiResponse;
 import com.komo.dto.response.AuthResponse;
 import com.komo.entity.User;
+import com.komo.exception.BusinessException;
+import com.komo.exception.ErrorCode;
 import com.komo.security.AuthCookieWriter;
 import com.komo.security.SecurityContext;
 import com.komo.service.UserService;
@@ -94,7 +96,9 @@ public class AuthController {
                 auth.setRefreshToken(null);
             }
             return ResponseEntity.ok(ApiResponse.success(auth));
-        } catch (Exception e) {
+        } catch (BusinessException e) {
+            // 只有明确的凭证失效才返回 401；数据库等故障交由全局处理器返回 5xx。
+            if (e.getErrorCode() != ErrorCode.UNAUTHORIZED) throw e;
             log.warn("refreshToken 刷新失败", e);
             return ResponseEntity.status(401)
                 .body(ApiResponse.error(401, "refreshToken 无效或已过期"));
@@ -111,8 +115,14 @@ public class AuthController {
             return ResponseEntity.status(401)
                 .body(ApiResponse.error(401, "未登录"));
         }
-        User user = userService.findById(userId);
-        return ResponseEntity.ok(ApiResponse.success(AuthResponse.UserInfo.from(user)));
+        try {
+            User user = userService.findById(userId);
+            return ResponseEntity.ok(ApiResponse.success(AuthResponse.UserInfo.from(user)));
+        } catch (BusinessException e) {
+            if (e.getErrorCode() != ErrorCode.NOT_FOUND) throw e;
+            log.info("会话对应的用户已不存在 userId={}", userId);
+            return ResponseEntity.status(401).body(ApiResponse.error(401, "登录已失效，请重新登录"));
+        }
     }
 
     @PutMapping("/preferences")

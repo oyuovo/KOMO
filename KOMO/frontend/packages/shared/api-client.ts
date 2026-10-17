@@ -1,5 +1,5 @@
 // KOMO API Client — HTTP 通信层
-// Token 通过 httpOnly Cookie 自动携带，前端不再手动管理。
+// Web 使用 httpOnly Cookie；桌面使用持久化的 Bearer 凭证。
 // CSRF 通过 Double Submit Cookie (XSRF-TOKEN → X-XSRF-TOKEN) 防护。
 
 // 离线阅读缓存的 IndexedDB 存储层（仅桌面 / bearer 模式经守卫后启用）。
@@ -38,7 +38,7 @@ export interface UserInfo {
   onboardingCompleted: boolean;
 }
 
-// ===== Token 管理（httpOnly Cookie — 前端无需手动操作） =====
+// ===== 会话管理 =====
 
 /** 从 Cookie 读取 CSRF token（非 httpOnly，Spring Security 自动写入） */
 export function getCsrfToken(): string | null {
@@ -47,59 +47,60 @@ export function getCsrfToken(): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-/** 调用 /api/auth/me 获取当前登录用户 */
+let meRequest: { version: number; promise: Promise<UserInfo | null> } | null = null;
+
+/** 仅确认未登录时返回 null；网络或服务异常交给界面展示，不能伪装成未登录。 */
 export async function getMe(): Promise<UserInfo | null> {
-  try {
-    const res = await fetch(`${API_BASE}/auth/me`, {
-      headers: { 'Content-Type': 'application/json', ...authTransport.buildHeaders() },
-      credentials: authTransport.credentials,
-    });
-    if (!res.ok) return null;
-    const json: ApiResponse<UserInfo> = await res.json();
-    return json.code === 0 ? json.data : null;
-  } catch {
-    return null;
-  }
+  await waitForAuthReady();
+  const version = sessionVersion;
+  if (meRequest?.version === version) return meRequest.promise;
+  const promise = (async () => {
+    try {
+      const user = await readResponse<UserInfo>(await authenticatedFetch('/auth/me', {}, false));
+      assertSession(version);
+      return user;
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 401) return null;
+      throw error;
+    }
+  })().finally(() => {
+    if (meRequest?.promise === promise) meRequest = null;
+  });
+  meRequest = { version, promise };
+  return promise;
 }
 
 /** 登出 — 清除服务端认证态（Cookie / 本地 token） */
 export async function logout(): Promise<void> {
+  await waitForAuthReady();
+  const headers = { 'Content-Type': 'application/json', ...authTransport.buildHeaders() };
+  sessionVersion++;
+  if (AUTH_MODE === 'bearer') await tokenStore.clearTokens();
   try {
-    await fetch(`${API_BASE}/auth/logout`, {
+    const response = await sendFetch('/auth/logout', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authTransport.buildHeaders() },
+      headers,
       credentials: authTransport.credentials,
     });
-  } catch {
-    // 静默失败 — 即使服务不可用也要清除本地状态
+    await readResponse<void>(response);
+  } catch (error) {
+    // Web 的 httpOnly Cookie 只能由服务端清除，失败时不能显示退出成功。
+    if (AUTH_MODE === 'cookie') throw error;
   }
-  // bearer 模式清除本地 token；cookie 模式无 token 存储，为安全 no-op
-  tokenStore.clearTokens();
 }
 
 // ===== 基础请求（含自动刷新） =====
 
-/** 清除登录态并跳转到首页 */
-function redirectToLogin() {
-  logout().catch(() => {});
-  if (typeof window !== 'undefined') {
-    window.location.href = '/';
-  }
-}
-
 // ===== Token 存储抽象（bearer 模式使用；cookie 模式无需 token） =====
 
-/**
- * Token 存储接口。桌面端（Tauri）后续任务会提供基于 tauri-plugin-store 的实现，
- * 通过 setTokenStore() 注入替换；此处默认使用 localStorage 占位实现。
- * 注意：getAccessToken/getRefreshToken 为同步方法，因为 buildHeaders() 需同步返回头。
- * 未来实现应在内存中维护同步缓存（参考 app 端 tokenStore 的 cachedAccess 思路）。
- */
+/** 桌面通过 setTokenStore 注入异步持久化存储；请求头从初始化后的缓存同步读取。 */
 export interface TokenStore {
+  /** 异步存储完成初始化后，才允许构造认证请求。 */
+  readonly ready?: Promise<void>;
   getAccessToken(): string | null;
   getRefreshToken(): string | null;
-  saveTokens(accessToken: string, refreshToken: string): void;
-  clearTokens(): void;
+  saveTokens(accessToken: string, refreshToken: string): void | Promise<void>;
+  clearTokens(): void | Promise<void>;
 }
 
 const ACCESS_TOKEN_KEY = 'komo.accessToken';
@@ -132,7 +133,7 @@ export class LocalStorageTokenStore implements TokenStore {
       window.localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
       window.localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
     } catch {
-      // 存储不可用（隐私模式等）— 静默失败，会话仅在内存中维持
+      throw new Error('无法保存登录状态，请允许应用使用本地存储后重试');
     }
   }
   clearTokens(): void {
@@ -141,16 +142,22 @@ export class LocalStorageTokenStore implements TokenStore {
       window.localStorage.removeItem(ACCESS_TOKEN_KEY);
       window.localStorage.removeItem(REFRESH_TOKEN_KEY);
     } catch {
-      // 静默失败
+      throw new Error('无法清除登录状态，请允许应用使用本地存储后重试');
     }
   }
 }
 
 /** 当前 token 存储，可通过 setTokenStore 注入替换（桌面端 tauri-plugin-store 实现）。 */
 let tokenStore: TokenStore = new LocalStorageTokenStore();
+let sessionVersion = 0;
+
+export async function waitForAuthReady(): Promise<void> {
+  if (AUTH_MODE === 'bearer') await tokenStore.ready;
+}
 
 /** 注入自定义 TokenStore（供桌面端在应用启动时替换为 tauri-plugin-store 实现）。 */
 export function setTokenStore(store: TokenStore): void {
+  sessionVersion++;
   tokenStore = store;
 }
 
@@ -181,18 +188,12 @@ export interface AuthTransport {
   credentials: RequestCredentials;
   /** 刷新凭证；成功返回 true。bearer 实现需并发去重共享同一次刷新。 */
   refresh(): Promise<boolean>;
-  /** 刷新失败 / 登录态失效时的登出处理。 */
-  onLogout(): void;
 }
 
-/**
- * Cookie 传输（Web 默认）— 严格等价重构前行为：
- * credentials:'include'；XSRF 双提交（XSRF-TOKEN → X-XSRF-TOKEN）；
- * refresh 走 POST /auth/refresh（refresh token 由 httpOnly Cookie 自动携带）；
- * onLogout 清除服务端 Cookie 并跳转首页。
- */
+/** Web 使用 httpOnly Cookie，并在写请求携带 CSRF 头。 */
 class CookieTransport implements AuthTransport {
   credentials: RequestCredentials = 'include';
+  private refreshPromise: Promise<boolean> | null = null;
 
   buildHeaders(): Record<string, string> {
     const headers: Record<string, string> = {};
@@ -201,21 +202,18 @@ class CookieTransport implements AuthTransport {
     return headers;
   }
 
-  async refresh(): Promise<boolean> {
-    try {
-      const res = await fetch(`${API_BASE}/auth/refresh`, {
+  refresh(): Promise<boolean> {
+    this.refreshPromise ??= (async () => {
+      const res = await sendFetch('/auth/refresh', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
       });
-      return res.ok;
-    } catch {
-      return false;
-    }
-  }
-
-  onLogout(): void {
-    redirectToLogin();
+      if (res.status === 400 || res.status === 401) return false;
+      await readResponse<AuthData>(res);
+      return true;
+    })().finally(() => { this.refreshPromise = null; });
+    return this.refreshPromise;
   }
 }
 
@@ -229,6 +227,7 @@ class BearerTransport implements AuthTransport {
 
   /** 并发 401 时共享同一次刷新，避免 refresh token 被轮换竞争。 */
   private refreshPromise: Promise<boolean> | null = null;
+  private refreshVersion = -1;
 
   buildHeaders(): Record<string, string> {
     const headers: Record<string, string> = { 'X-Komo-Client': 'desktop' };
@@ -238,37 +237,37 @@ class BearerTransport implements AuthTransport {
   }
 
   refresh(): Promise<boolean> {
-    this.refreshPromise ??= this.doRefresh().finally(() => {
-      this.refreshPromise = null;
-    });
+    if (!this.refreshPromise || this.refreshVersion !== sessionVersion) {
+      this.refreshVersion = sessionVersion;
+      const promise = this.doRefresh().finally(() => {
+        if (this.refreshPromise === promise) this.refreshPromise = null;
+      });
+      this.refreshPromise = promise;
+    }
     return this.refreshPromise;
   }
 
   private async doRefresh(): Promise<boolean> {
+    await waitForAuthReady();
+    const version = sessionVersion;
     const refreshToken = tokenStore.getRefreshToken();
     if (!refreshToken) return false;
-    try {
-      const res = await fetch(`${API_BASE}/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Komo-Client': 'desktop' },
-        body: JSON.stringify({ refreshToken }),
-        credentials: 'omit',
-      });
-      if (!res.ok) return false;
-      const json: ApiResponse<AuthData> = await res.json();
-      const accessToken = json.data?.accessToken;
-      const newRefreshToken = json.data?.refreshToken;
-      if (!accessToken || !newRefreshToken) return false;
-      tokenStore.saveTokens(accessToken, newRefreshToken);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  onLogout(): void {
-    tokenStore.clearTokens();
-    redirectToLogin();
+    const res = await sendFetch('/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Komo-Client': 'desktop' },
+      body: JSON.stringify({ refreshToken }),
+      credentials: 'omit',
+    });
+    assertSession(version);
+    if (res.status === 401) return false;
+    const data = await readResponse<AuthData>(res);
+    assertSession(version);
+    const accessToken = data?.accessToken;
+    const newRefreshToken = data?.refreshToken;
+    if (!accessToken || !newRefreshToken) throw new ApiError(0, '服务器未返回登录凭证，请稍后重试');
+    await tokenStore.saveTokens(accessToken, newRefreshToken);
+    assertSession(version);
+    return true;
   }
 }
 
@@ -277,71 +276,100 @@ export const authTransport: AuthTransport =
   AUTH_MODE === 'bearer' ? new BearerTransport() : new CookieTransport();
 
 /** 持久化登录/注册响应中的 token（仅 bearer 模式返回；cookie 模式为 null，安全 no-op）。 */
-function persistAuthTokens(data: AuthData): void {
-  if (data?.accessToken && data?.refreshToken) {
-    tokenStore.saveTokens(data.accessToken, data.refreshToken);
+async function persistAuthTokens(data: AuthData): Promise<void> {
+  if (AUTH_MODE !== 'bearer') return;
+  if (!data?.accessToken || !data?.refreshToken) {
+    throw new ApiError(0, '服务器未返回登录凭证，请检查桌面端认证配置');
+  }
+  await tokenStore.saveTokens(data.accessToken, data.refreshToken);
+}
+
+/** 认证接口等待响应头最多 15 秒；AI 与数据请求保持原有等待行为。 */
+async function sendFetch(path: string, options: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = path.startsWith('/auth/') ? setTimeout(() => controller.abort(), 15000) : null;
+  try {
+    return await fetch(`${API_BASE}${path}`, {
+      ...options,
+      signal: options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal,
+    });
+  } catch {
+    throw new ApiError(0, '无法连接服务器，请检查网络后重试');
+  } finally {
+    if (timeout !== null) clearTimeout(timeout);
   }
 }
 
-async function request<T>(
-  path: string,
-  options: RequestInit = {}
-): Promise<T> {
-  // 认证头与 credentials 由当前 transport 提供（cookie / bearer），不再硬编码。
-  // transport 头放在最后展开，确保认证头优先于调用方传入的 options.headers。
-  const buildHeaders = (): Record<string, string> => ({
-    'Content-Type': 'application/json',
-    ...((options.headers as Record<string, string>) || {}),
-    ...authTransport.buildHeaders(),
-  });
+function assertSession(version: number): void {
+  if (version !== sessionVersion) throw new ApiError(409, '登录状态已变化，请重试');
+}
 
-  let res: Response;
-  try {
-    res = await fetch(`${API_BASE}${path}`, {
-      ...options,
-      headers: buildHeaders(),
-      credentials: authTransport.credentials,
-    });
-  } catch {
-    throw new ApiError(0, '无法连接服务器，请检查后端是否启动');
-  }
+async function expiredSession(version: number, redirect: boolean): Promise<never> {
+  assertSession(version);
+  const expiredVersion = ++sessionVersion;
+  if (AUTH_MODE === 'bearer') await tokenStore.clearTokens();
+  assertSession(expiredVersion);
+  if (redirect && typeof window !== 'undefined') window.location.href = '/login';
+  throw new ApiError(401, '登录已过期，请重新登录');
+}
 
-  // 401/403 → 尝试刷新凭证后重试一次
-  if (res.status === 401 || res.status === 403) {
-    const refreshed = await authTransport.refresh();
-    if (refreshed) {
-      try {
-        // 重新构造头以携带刷新后的凭证（新 CSRF / 新 access token）
-        res = await fetch(`${API_BASE}${path}`, {
-          ...options,
-          headers: buildHeaders(),
-          credentials: authTransport.credentials,
-        });
-      } catch {
-        throw new ApiError(0, '无法连接服务器，请检查后端是否启动');
-      }
-    } else {
-      authTransport.onLogout();
-      throw new ApiError(401, '登录已过期，请重新登录');
-    }
-  }
+/** 普通 API 与 SSE 共用认证入口；只有收到未认证响应才重试一次。 */
+export async function authenticatedFetch(
+  path: string, options: RequestInit = {}, redirectOnExpiry = true,
+): Promise<Response> {
+  await waitForAuthReady();
+  const version = sessionVersion;
+  const sentToken = tokenStore.getAccessToken();
+  const send = (target = path, init = options) => {
+    const headers = new Headers(init.headers);
+    if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+    Object.entries(authTransport.buildHeaders()).forEach(([key, value]) => headers.set(key, value));
+    return sendFetch(target, { ...init, headers, credentials: authTransport.credentials });
+  };
+  // Spring Security 对无认证的受保护路由可能返回 403；先确认会话，避免把权限不足当作过期。
+  const isUnauthorized = async (response: Response) => {
+    if (response.status === 401) return true;
+    if (response.status !== 403) return false;
+    const me = await send('/auth/me', {});
+    if (me.status === 401) return true;
+    await readResponse<UserInfo>(me);
+    return false;
+  };
+  let res = await send();
+  const unauthorized = await isUnauthorized(res);
+  assertSession(version);
+  if (!unauthorized) return res;
+  // 迟到的旧请求可能在另一个请求完成刷新后才返回 401。
+  const alreadyRefreshed = AUTH_MODE === 'bearer' && sentToken !== tokenStore.getAccessToken();
+  const refreshed = alreadyRefreshed || await authTransport.refresh();
+  assertSession(version);
+  if (!refreshed) return expiredSession(version, redirectOnExpiry);
+  res = await send();
+  const stillUnauthorized = await isUnauthorized(res);
+  assertSession(version);
+  if (stillUnauthorized) return expiredSession(version, redirectOnExpiry);
+  return res;
+}
 
-  // 安全解析 JSON
+async function readResponse<T>(res: Response): Promise<T> {
   let json: ApiResponse<T>;
   try {
     json = await res.json();
   } catch {
-    throw new ApiError(0, '服务响应异常，请稍后重试');
+    throw new ApiError(res.status, '服务响应异常，请稍后重试');
   }
-
-  if (json.code !== 0) {
-    if (json.code === 401) {
-      authTransport.onLogout();
-    }
-    throw new ApiError(json.code, json.message);
+  if (!res.ok || json.code !== 0) {
+    throw new ApiError(res.ok ? json.code : res.status, json.message || '服务响应异常，请稍后重试');
   }
-
   return json.data;
+}
+
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  await waitForAuthReady();
+  const version = sessionVersion;
+  const data = await readResponse<T>(await authenticatedFetch(path, options));
+  assertSession(version);
+  return data;
 }
 
 export class ApiError extends Error {
@@ -373,63 +401,29 @@ export interface AuthData {
   refreshToken?: string | null;
 }
 
-export async function login(req: LoginRequest): Promise<AuthData> {
-  // 使用原生 fetch（不经过 request()，避免循环依赖）；认证头/credentials 由 transport 提供
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...authTransport.buildHeaders(),
-  };
-
-  const res = await fetch(`${API_BASE}/auth/login`, {
+/** 登录/注册不能触发自动刷新，否则错误密码可能被当成旧会话过期。 */
+async function signIn(path: string, req: LoginRequest | RegisterRequest): Promise<AuthData> {
+  await waitForAuthReady();
+  const version = ++sessionVersion;
+  const res = await sendFetch(path, {
     method: 'POST',
-    headers,
+    headers: { 'Content-Type': 'application/json', ...authTransport.buildHeaders() },
     body: JSON.stringify(req),
     credentials: authTransport.credentials,
   });
-
-  if (!res.ok) {
-    let message = '登录失败';
-    try {
-      const json = await res.json();
-      message = json.message || message;
-    } catch {}
-    throw new ApiError(res.status, message);
-  }
-
-  const json: ApiResponse<AuthData> = await res.json();
-  if (json.code !== 0) throw new ApiError(json.code, json.message);
-  // bearer 模式：后端在 body 返回 token，持久化供后续请求使用；cookie 模式为 no-op
-  persistAuthTokens(json.data);
-  return json.data;
+  const data = await readResponse<AuthData>(res);
+  assertSession(version);
+  await persistAuthTokens(data);
+  assertSession(version);
+  return data;
 }
 
-export async function register(req: RegisterRequest): Promise<AuthData> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...authTransport.buildHeaders(),
-  };
+export function login(req: LoginRequest): Promise<AuthData> {
+  return signIn('/auth/login', req);
+}
 
-  const res = await fetch(`${API_BASE}/auth/register`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(req),
-    credentials: authTransport.credentials,
-  });
-
-  if (!res.ok) {
-    let message = '注册失败';
-    try {
-      const json = await res.json();
-      message = json.message || message;
-    } catch {}
-    throw new ApiError(res.status, message);
-  }
-
-  const json: ApiResponse<AuthData> = await res.json();
-  if (json.code !== 0) throw new ApiError(json.code, json.message);
-  // bearer 模式：后端在 body 返回 token，持久化供后续请求使用；cookie 模式为 no-op
-  persistAuthTokens(json.data);
-  return json.data;
+export function register(req: RegisterRequest): Promise<AuthData> {
+  return signIn('/auth/register', req);
 }
 
 // ===== Knowledge =====
@@ -646,6 +640,8 @@ async function cachedGet<T>(
   fetcher: () => Promise<T>
 ): Promise<T> {
   if (!offlineCacheEnabled()) return fetcher();
+  await waitForAuthReady();
+  const version = sessionVersion;
   const userId = currentUserId();
   if (!userId) return fetcher();
   const key = cacheKey(userId, resource, id);
@@ -654,7 +650,12 @@ async function cachedGet<T>(
     void writeCache(key, data);
     return data;
   } catch (err) {
+    // 退出或切换账号后，不允许旧请求通过缓存回退重新展示原账号内容。
+    assertSession(version);
+    // 仅连接失败或服务暂时不可用允许降级；权限、删除、限流及格式错误必须交给界面。
+    if (!(err instanceof ApiError) || !(err.code === 0 || err.code >= 500 && err.code < 600)) throw err;
     const cached = await readCache<T>(key);
+    assertSession(version);
     if (cached !== undefined) return cached;
     throw err;
   }

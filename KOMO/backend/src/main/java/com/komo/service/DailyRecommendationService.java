@@ -12,7 +12,6 @@ import com.komo.exception.ErrorCode;
 import com.komo.repository.ConversationRepository;
 import com.komo.repository.DailyRecommendationRepository;
 import com.komo.repository.KnowledgeRepository;
-import com.komo.security.SecurityContext;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,7 +27,6 @@ import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -71,21 +69,23 @@ public class DailyRecommendationService {
             return null;
         }
 
-        // 查找今天已有的活跃推荐（容错同日重复，取最新一条）
+        // 先取今天最新记录；忽略或讨论后不再显示更旧的活跃记录
         LocalDateTime todayStart = LocalDate.now().atStartOfDay();
         return recommendationRepository
-            .findTopByUserIdAndStatusAndCreatedAtAfterOrderByCreatedAtDesc(userId, "ACTIVE", todayStart)
+            .findTopByUserIdAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
+                userId, todayStart, todayStart.plusDays(1))
+            .filter(rec -> "ACTIVE".equals(rec.getStatus()))
             .orElse(null);
     }
 
     /**
      * 触发生成推荐问题（调用 AI 服务 + 入库）。
      *
-     * @param force false=幂等：今日已有 ACTIVE 推荐则直接返回；
-     *              true=强制重新生成（先把旧推荐标记为 DISMISSED）。
+     * @param force false=幂等：今日已有记录则不重复生成；
+     *              true=强制重新生成，成功后替换旧推荐。
      *
      * 事务拆分（硬性约束：外部 API 调用不能在 @Transactional 内）：
-     * TX1 处理旧推荐 → 外部调用 AI → TX2 保存新推荐。
+     * 读取概况 → 外部调用 AI → 同一短事务处理旧推荐并保存新推荐。
      */
     public DailyRecommendation generateTodayRecommendation(UUID userId, boolean force) {
         // 用户级互斥：前端可能并发发起两次生成（如 StrictMode 双挂载），
@@ -104,21 +104,12 @@ public class DailyRecommendationService {
         // 幂等检查：非强制模式下，今日已有推荐则直接返回，不重复调 AI。
         LocalDateTime todayStart = LocalDate.now().atStartOfDay();
         DailyRecommendation existing = recommendationRepository
-            .findTopByUserIdAndStatusAndCreatedAtAfterOrderByCreatedAtDesc(userId, "ACTIVE", todayStart)
+            .findTopByUserIdAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
+                userId, todayStart, todayStart.plusDays(1))
             .orElse(null);
         if (existing != null && !force) {
-            return existing;
+            return "ACTIVE".equals(existing.getStatus()) ? existing : null;
         }
-
-        // TX1: 将旧的活跃推荐标记为已处理（短事务）
-        transactionTemplate.executeWithoutResult(status -> {
-            List<DailyRecommendation> oldActive = recommendationRepository
-                .findByUserIdAndStatus(userId, "ACTIVE");
-            for (DailyRecommendation old : oldActive) {
-                old.setStatus("DISMISSED");
-                recommendationRepository.save(old);
-            }
-        });
 
         // 构建知识概况（含近期话题与已忽略话题）
         Map<String, Object> summary = buildKnowledgeSummary(userId);
@@ -143,7 +134,14 @@ public class DailyRecommendationService {
             .status("ACTIVE")
             .build();
 
-        DailyRecommendation saved = transactionTemplate.execute(status -> recommendationRepository.save(rec));
+        DailyRecommendation saved = transactionTemplate.execute(status -> {
+            // 生成成功后才替换；AI 超时或零产出不应丢掉用户仍可使用的旧推荐。
+            for (DailyRecommendation old : recommendationRepository.findByUserIdAndStatus(userId, "ACTIVE")) {
+                old.setStatus("DISMISSED");
+                recommendationRepository.save(old);
+            }
+            return recommendationRepository.save(rec);
+        });
         log.info("[daily-rec] user={} 新推荐已入库 id={} dimension={}", userId,
             saved != null ? saved.getId() : null, rec.getDimension());
         return saved;
@@ -244,7 +242,7 @@ public class DailyRecommendationService {
             return questions != null ? questions : List.of();
         } catch (Exception e) {
             log.error("[daily-rec] AI 服务调用失败", e);
-            return List.of();
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "推荐服务暂时不可用，请稍后重试");
         }
     }
 
@@ -257,6 +255,7 @@ public class DailyRecommendationService {
         try {
             return obj != null ? objectMapper.writeValueAsString(obj) : null;
         } catch (Exception e) {
+            log.warn("[daily-rec] 推荐附加信息序列化失败", e);
             return null;
         }
     }
@@ -266,6 +265,7 @@ public class DailyRecommendationService {
         try {
             return UUID.fromString(s);
         } catch (IllegalArgumentException e) {
+            log.warn("[daily-rec] AI 返回了无效知识库 ID", e);
             return null;
         }
     }

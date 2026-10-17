@@ -1,31 +1,24 @@
-import sys
+import os
 import json
 import types
 import unittest
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, patch
 
-
-create_completion = Mock(side_effect=RuntimeError("provider unavailable"))
-clients_stub = types.ModuleType("app.core.clients")
-clients_stub.deepseek = types.SimpleNamespace(
-    chat=types.SimpleNamespace(
-        completions=types.SimpleNamespace(create=create_completion)
-    )
-)
-sys.modules["app.core.clients"] = clients_stub
-
-from app.services.extraction import extract_knowledge  # noqa: E402
+os.environ.setdefault("DEEPSEEK_API_KEY", "test-placeholder-not-a-real-key")
+from app.services.extraction import extract_knowledge, _truncate_messages, MAX_INPUT_CHARS
 
 
 class ExtractionFailureTest(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
-        create_completion.reset_mock()
-        create_completion.side_effect = RuntimeError("provider unavailable")
+        patcher = patch("app.services.extraction.adeepseek.chat.completions.create", new_callable=AsyncMock)
+        self.create_completion = patcher.start()
+        self.addCleanup(patcher.stop)
+        self.create_completion.side_effect = RuntimeError("provider unavailable")
 
     def completion(self, payload, finish_reason="stop"):
-        create_completion.side_effect = None
-        create_completion.return_value = types.SimpleNamespace(choices=[types.SimpleNamespace(
+        self.create_completion.side_effect = None
+        self.create_completion.return_value = types.SimpleNamespace(choices=[types.SimpleNamespace(
             finish_reason=finish_reason,
             message=types.SimpleNamespace(content=json.dumps(payload, ensure_ascii=False)),
         )])
@@ -53,7 +46,7 @@ class ExtractionFailureTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_invalid_json_is_not_reported_as_no_knowledge(self):
         self.completion([])
-        create_completion.return_value.choices[0].message.content = '{"knowledge_points": ['
+        self.create_completion.return_value.choices[0].message.content = '{"knowledge_points": ['
         with self.assertRaises(ValueError):
             await extract_knowledge([])
 
@@ -77,6 +70,22 @@ class ExtractionFailureTest(unittest.IsolatedAsyncioTestCase):
                 {"role": "user", "content": "question"},
                 {"role": "assistant", "content": "answer"},
             ])
+
+
+class ExtractionInputLimitTest(unittest.TestCase):
+    def test_one_oversized_message_is_bounded_without_mutating_input(self):
+        original = {"role": "assistant", "content": "x" * (MAX_INPUT_CHARS + 10) + "tail"}
+        result = _truncate_messages([original])
+        self.assertEqual(MAX_INPUT_CHARS, len(result[0]["content"]))
+        self.assertTrue(result[0]["content"].endswith("tail"))
+        self.assertEqual(MAX_INPUT_CHARS + 14, len(original["content"]))
+
+    def test_recent_messages_stay_in_order_within_both_limits(self):
+        messages = [{"role": "assistant", "content": str(i) * 1000} for i in range(250)]
+        result = _truncate_messages(messages)
+        self.assertLessEqual(len(result), 200)
+        self.assertLessEqual(sum(len(m["content"]) for m in result), MAX_INPUT_CHARS)
+        self.assertEqual(messages[-1], result[-1])
 
 
 if __name__ == "__main__":

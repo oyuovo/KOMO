@@ -188,7 +188,7 @@ function ArticleContent() {
         if (!error) setError(err.message);
       })
       .finally(() => setLoading(false));
-    });
+    }).catch((err) => { setError(err.message); setLoading(false); });
   }, [id, needsAuth]);
 
   // IntersectionObserver: track visible headings

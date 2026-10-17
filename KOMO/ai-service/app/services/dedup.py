@@ -2,7 +2,7 @@
 
 import logging
 from pydantic import ValidationError
-from ..core.clients import deepseek
+from ..core.clients import adeepseek
 from ..core.config import DEEPSEEK_MODEL
 from ..core.json_utils import parse_llm_json
 from ..schemas.dedup import DedupVerdict
@@ -46,7 +46,7 @@ async def check_semantic_duplicate(
 请判断候选知识点与已有知识的关系。"""
 
     try:
-        response = deepseek.chat.completions.create(
+        response = await adeepseek.chat.completions.create(
             model=DEEPSEEK_MODEL,
             messages=[
                 {"role": "system", "content": DEDUP_SYSTEM_PROMPT},

@@ -10,47 +10,40 @@ import {
   type UserInfo,
 } from '@komo/shared/api-client';
 import styles from './OnboardingGuide.module.css';
+import { resolveOnboardingStep, type GuideStep } from '@/lib/onboarding';
 
 interface Props {
   user: UserInfo | null;
 }
-
-type GuideStep = 1 | 2 | 3;
 
 export default function OnboardingGuide({ user }: Props) {
   const [step, setStep] = useState<GuideStep | null>(null);
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
+    setStep(null);
+    setDismissed(false);
     if (!user || user.onboardingCompleted) {
       return;
     }
-    checkStep();
-  }, [user]);
-
-  const checkStep = async () => {
-    try {
-      const [convs, drafts, knowledge] = await Promise.all([
-        listConversations().catch(() => []),
-        listDrafts().catch(() => []),
-        listKnowledge().catch(() => ({ totalElements: 0 })),
-      ]);
-
-      if (!convs || convs.length === 0) {
-        setStep(1);
-      } else if (!drafts || drafts.length === 0) {
-        setStep(2);
-      } else if (!knowledge || knowledge.totalElements === 0) {
-        setStep(3);
-      } else {
-        // All done — mark onboarding complete
-        setStep(null);
-        completeOnboarding().catch(() => {});
+    let cancelled = false;
+    (async () => {
+      try {
+        const [convs, drafts, knowledge] = await Promise.all([
+          listConversations(), listDrafts(), listKnowledge(),
+        ]);
+        if (cancelled) return;
+        const next = resolveOnboardingStep(convs.length, drafts.length, knowledge.totalElements);
+        setStep(next);
+        if (next === null) await completeOnboarding();
+      } catch (error) {
+        // 请求失败不能伪装成“没有知识”，也不推进服务端的新手状态。
+        if (!cancelled) setStep(null);
+        console.warn('检查新手进度失败', error);
       }
-    } catch {
-      setStep(null);
-    }
-  };
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id, user?.onboardingCompleted]);
 
   if (dismissed || step === null) {
     return null;

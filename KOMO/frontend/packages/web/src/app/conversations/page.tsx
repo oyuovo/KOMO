@@ -15,6 +15,7 @@ function ConversationsContent() {
   const searchParams = useSearchParams();
   const [authed, setAuthed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
   const autoCreated = useRef(false);
 
   useEffect(() => {
@@ -22,7 +23,7 @@ function ConversationsContent() {
       if (!u) { router.push('/login'); return; }
       setAuthed(true);
       setLoading(false);
-    });
+    }).catch((err) => { setAuthError(err.message); setLoading(false); });
   }, []);
 
   // Auto-create conversation from daily recommendation question
@@ -44,6 +45,9 @@ function ConversationsContent() {
     return <div className={styles.page}><div className={styles.placeholder}>加载中...</div></div>;
   }
 
+  if (authError) {
+    return <div className={styles.page}><div className={styles.placeholder} role="alert">{authError}</div></div>;
+  }
   if (!authed) return null;
 
   return (

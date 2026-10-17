@@ -62,7 +62,7 @@ function EditKnowledgeContent() {
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-    });
+    }).catch((err) => { setError(err.message); setLoading(false); });
   }, [id]);
 
   useEffect(() => {

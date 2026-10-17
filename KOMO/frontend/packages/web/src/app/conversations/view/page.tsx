@@ -71,7 +71,7 @@ function ConversationDetailContent() {
       setAutoExtract(u.autoExtract);
       fetchData();
       listKnowledgeBases().then(setKnowledgeBases).catch(() => {});
-    });
+    }).catch((err) => { setError(err.message); setLoading(false); });
   }, [conversationId]);
 
   // 加载消息和侧边栏对话列表

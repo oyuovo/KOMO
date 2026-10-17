@@ -47,7 +47,7 @@ export default function CategoriesPage() {
           if (defaultKb) setSelectedKbId(defaultKb.id);
         })
         .catch(() => {});
-    });
+    }).catch((err) => { setError(err.message); });
   }, []);
 
   // Load categories when KB changes

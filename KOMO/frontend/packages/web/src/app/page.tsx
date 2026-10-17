@@ -17,6 +17,7 @@ import styles from './page.module.css';
 export default function HomePage() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedKb, setSelectedKb] = useState<KnowledgeBaseData | null>(null);
@@ -24,11 +25,11 @@ export default function HomePage() {
 
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
 
-  // On mount, check httpOnly Cookie session via /api/auth/me
+  // 检查会话；连接失败不等于未登录。
   useEffect(() => {
     getMe()
       .then((u) => { if (u) setUser(u); })
-      .catch(() => {})
+      .catch((err) => setAuthError(err.message))
       .finally(() => setAuthChecked(true));
   }, []);
 
@@ -41,6 +42,17 @@ export default function HomePage() {
         <p style={{ textAlign: 'center', padding: 80, color: 'var(--komo-text-tertiary)' }}>
           验证登录状态...
         </p>
+      </div>
+    );
+  }
+
+  if (authError) {
+    return (
+      <div className={styles.landing}>
+        <div className={styles.landingHero}>
+          <p className={styles.landingDesc} role="alert">{authError}</p>
+          <button className={styles.landingCta} onClick={() => window.location.reload()}>重新连接</button>
+        </div>
       </div>
     );
   }

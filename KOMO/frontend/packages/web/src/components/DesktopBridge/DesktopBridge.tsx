@@ -1,34 +1,37 @@
 'use client';
 
-/**
- * 桌面端桥接组件（Phase 2.3 + Phase 3）。
- *
- * 职责：
- * 1. 在模块加载时（早于任何页面 useEffect 的 getMe 调用）注入基于 tauri-plugin-store
- *    的 Token 存储 —— 见下方 initDesktopAuth() 顶层调用。
- * 2. 监听 Rust 端全局快捷键（Ctrl+Alt+K）emit 的 `komo://quick-note` 事件，
- *    跳转到「新建对话」入口页 /conversations，便于快速记录/提问。
- *
- * 零副作用保证：组件本身渲染 null，不产生任何 DOM；所有 Tauri 交互均在
- * `isTauriRuntime()`（即 `'__TAURI_INTERNALS__' in window`）守卫内，且相关 import
- * 全部为动态 import。纯浏览器（Web cookie 模式）下本组件不执行任何 Tauri 代码、
- * 不加载任何 plugin chunk，对现有 Web 行为零影响。
- */
-import { useEffect } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { isTauriRuntime } from '@komo/shared/api-client';
+import { AUTH_MODE, getMe, isTauriRuntime } from '@komo/shared/api-client';
 import { initDesktopAuth } from '@/lib/desktop/tokenStore';
+import styles from './DesktopBridge.module.css';
 
-// 模块求值即注入 token 存储：此时尚未进入 React 渲染/副作用阶段，
-// 可确保后续页面 useEffect 中的 getMe() 能读到（异步 hydrate 回填的）token 缓存。
-// 非 Tauri 环境下 initDesktopAuth() 为安全 no-op。
-initDesktopAuth();
-
-export default function DesktopBridge() {
+/** 桌面首屏等待凭证恢复与服务器验证；Web 保持原有页面加载方式。 */
+export default function DesktopBridge({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const [ready, setReady] = useState(AUTH_MODE !== 'bearer');
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    if (!isTauriRuntime()) return;
+    if (AUTH_MODE !== 'bearer') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await initDesktopAuth();
+        const user = await getMe();
+        if (cancelled) return;
+        if (!user) router.replace('/login');
+        setReady(true);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : '暂时无法启动，请重试');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [attempt, router]);
+
+  useEffect(() => {
+    if (!ready || !isTauriRuntime()) return;
     let unlisten: (() => void) | undefined;
     let cancelled = false;
 
@@ -53,7 +56,20 @@ export default function DesktopBridge() {
       cancelled = true;
       unlisten?.();
     };
-  }, [router]);
+  }, [ready, router]);
 
-  return null;
+  if (ready) return children;
+  return (
+    <main className={styles.page}>
+      <section className={styles.card} aria-live="polite" aria-busy={!error}>
+        <h1>KOMO</h1>
+        {error ? (
+          <>
+            <p role="alert">{error}</p>
+            <button onClick={() => { setError(null); setAttempt((value) => value + 1); }}>重新连接</button>
+          </>
+        ) : <p role="status">正在恢复登录状态并连接服务器…</p>}
+      </section>
+    </main>
+  );
 }

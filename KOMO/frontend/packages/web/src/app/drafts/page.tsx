@@ -102,7 +102,7 @@ export default function DraftsPage() {
       listKnowledgeBases().then(setKbs).catch((err) => {
         console.warn('加载草稿目标知识库失败', err);
       });
-    });
+    }).catch((err) => { setError(err.message); setLoading(false); });
   }, []);
 
   const fetchDrafts = async () => {

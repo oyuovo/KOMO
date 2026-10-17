@@ -46,7 +46,7 @@ export default function CreateKnowledgePage() {
           if (defaultKb) setSelectedKbId(defaultKb.id);
         })
         .catch(() => {});
-    });
+    }).catch((err) => { setError(err.message); });
   }, []);
 
   useEffect(() => {

@@ -1,0 +1,440 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import vm from 'node:vm';
+import ts from 'typescript';
+
+// 每个测试加载真实 TS 源码到独立上下文，隔离构建期认证模式和模块内刷新状态。
+const require = createRequire(import.meta.url);
+const compiled = new Map(['api-client', 'offline-cache', 'persistent-token-store'].map(name => [name,
+  ts.transpileModule(readFileSync(new URL(`../../shared/${name}.ts`, import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText,
+]));
+
+const user = { id: 'user-test', email: 'test@example.invalid', nickname: 'Test' };
+const tokens = { user, accessToken: 'new-access', refreshToken: 'new-refresh' };
+const credentials = { email: user.email, password: 'test-only-password' };
+const reply = (status, data = null) => Response.json({ code: status === 200 ? 0 : status, message: 'test response', data }, { status });
+const tick = () => new Promise(resolve => setImmediate(resolve));
+function deferred() {
+  let resolve, reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+function memoryStore(access = 'old-access', refresh = 'old-refresh') {
+  return {
+    clears: 0,
+    getAccessToken: () => access,
+    getRefreshToken: () => refresh,
+    saveTokens(a, r) { access = a; refresh = r; },
+    clearTokens() { access = refresh = null; this.clears++; },
+  };
+}
+function harness(fetch, { mode = 'bearer', store = memoryStore(), timers = {}, cache } = {}) {
+  const window = { location: { href: '/' } };
+  const context = vm.createContext({
+    fetch, Headers, AbortController, AbortSignal, URLSearchParams, atob,
+    setTimeout, clearTimeout, ...timers, console: { error() {} }, window,
+    document: { cookie: 'XSRF-TOKEN=test-csrf' },
+    process: { env: { NEXT_PUBLIC_AUTH_MODE: mode, NEXT_PUBLIC_API_URL: 'https://api.example.invalid/api' } },
+  });
+  const modules = new Map();
+  function load(name) {
+    if (name === 'offline-cache' && cache) return cache;
+    if (modules.has(name)) return modules.get(name).exports;
+    const module = { exports: {} };
+    modules.set(name, module);
+    const localRequire = id => id.startsWith('./') ? load(id.slice(2)) : require(id);
+    vm.runInContext(`(function(require, module, exports) { ${compiled.get(name)}\n})`, context)(localRequire, module, module.exports);
+    return module.exports;
+  }
+  const api = load('api-client');
+  api.setTokenStore(store);
+  return { api, store, window, ...load('persistent-token-store') };
+}
+
+test('cold start waits for persisted tokens before sending /me', async () => {
+  const hydration = deferred();
+  const store = memoryStore(null, null);
+  store.ready = hydration.promise;
+  let calls = 0;
+  const { api } = harness(async (_, options) => {
+    calls++;
+    assert.equal(options.headers.get('Authorization'), 'Bearer disk-access');
+    assert.equal(options.headers.get('X-Komo-Client'), 'desktop');
+    assert.equal(options.credentials, 'omit');
+    return reply(200, user);
+  }, { store });
+  const pending = api.getMe();
+  await tick();
+  assert.equal(calls, 0);
+  store.saveTokens('disk-access', 'disk-refresh');
+  hydration.resolve();
+  assert.deepEqual(await pending, user);
+  assert.equal(calls, 1);
+});
+
+test('expired access token refreshes and concurrent /me checks share the result', async () => {
+  let refreshes = 0, requests = 0;
+  const { api, store } = harness(async (url, options) => {
+    if (url.endsWith('/auth/refresh')) {
+      refreshes++;
+      assert.equal(JSON.parse(options.body).refreshToken, 'old-refresh');
+      return reply(200, tokens);
+    }
+    requests++;
+    return options.headers.get('Authorization') === 'Bearer new-access' ? reply(200, user) : reply(401);
+  });
+  const results = await Promise.all([api.getMe(), api.getMe(), api.getMe()]);
+  assert.deepEqual(results, [user, user, user]);
+  assert.equal(refreshes, 1);
+  assert.equal(requests, 2);
+  assert.equal(store.getRefreshToken(), 'new-refresh');
+});
+
+test('concurrent API failures share one refresh, including a late old 401', async () => {
+  const delayed = deferred(), refresh = deferred();
+  let refreshes = 0;
+  const { api } = harness(async (url, options) => {
+    if (url.endsWith('/auth/refresh')) { refreshes++; return refresh.promise; }
+    if (options.headers.get('Authorization') === 'Bearer new-access') return reply(200, user);
+    if (url.endsWith('/slow')) return delayed.promise;
+    return reply(401);
+  });
+  const first = api.authenticatedFetch('/first');
+  const second = api.authenticatedFetch('/second');
+  const slow = api.authenticatedFetch('/slow');
+  await tick();
+  refresh.resolve(reply(200, tokens));
+  await Promise.all([first, second]);
+  delayed.resolve(reply(401));
+  assert.equal((await slow).status, 200);
+  assert.equal(refreshes, 1);
+});
+
+test('invalid refresh clears stored credentials and /me returns null without redirecting', async () => {
+  const { api, store, window } = harness(async () => reply(401));
+  assert.equal(await api.getMe(), null);
+  assert.equal(store.getAccessToken(), null);
+  assert.equal(store.getRefreshToken(), null);
+  assert.equal(store.clears, 1);
+  assert.equal(window.location.href, '/');
+});
+
+for (const failure of ['offline', 'server', 'rate-limit', 'malformed', 'missing-tokens']) {
+  test(`refresh ${failure} preserves credentials and exposes a retryable error`, async () => {
+    const { api, store, window } = harness(async url => {
+      if (!url.endsWith('/auth/refresh')) return reply(401);
+      if (failure === 'offline') throw new TypeError('network unavailable');
+      if (failure === 'server') return reply(503);
+      if (failure === 'rate-limit') return reply(429);
+      if (failure === 'malformed') return new Response('<html>gateway</html>');
+      return reply(200, { user });
+    });
+    await assert.rejects(api.getMe(), error => error.code !== 401);
+    assert.equal(store.getRefreshToken(), 'old-refresh');
+    assert.equal(store.clears, 0);
+    assert.equal(window.location.href, '/');
+  });
+}
+
+test('first /me network failure is not a signed-out session', async () => {
+  const { api, store } = harness(async () => { throw new TypeError('offline'); });
+  await assert.rejects(api.getMe(), error => error.code === 0);
+  assert.equal(store.clears, 0);
+});
+
+test('anonymous cold start does not call refresh without a stored refresh token', async () => {
+  const paths = [];
+  const { api } = harness(async url => { paths.push(url); return reply(401); }, { store: memoryStore(null, null) });
+  assert.equal(await api.getMe(), null);
+  assert.equal(paths.length, 1);
+  assert.ok(paths[0].endsWith('/auth/me'));
+});
+
+test('permission 403 with a valid session does not refresh or clear credentials', async () => {
+  const { api, store } = harness(async url => url.endsWith('/auth/me') ? reply(200, user) : reply(403));
+  assert.equal((await api.authenticatedFetch('/restricted')).status, 403);
+  assert.equal(store.clears, 0);
+});
+
+test('Spring unauthenticated 403 refreshes before retrying a protected request', async () => {
+  let attempts = 0;
+  const { api } = harness(async (url, options) => {
+    if (url.endsWith('/auth/me')) return reply(401);
+    if (url.endsWith('/auth/refresh')) return reply(200, tokens);
+    attempts++;
+    return options.headers.get('Authorization') === 'Bearer new-access' ? reply(200, []) : reply(403);
+  });
+  assert.equal((await api.authenticatedFetch('/protected')).status, 200);
+  assert.equal(attempts, 2);
+});
+
+test('a second 401 stops retrying and clears the session', async () => {
+  let refreshes = 0;
+  const { api, store, window } = harness(async url => {
+    if (url.endsWith('/auth/refresh')) { refreshes++; return reply(200, tokens); }
+    return reply(401);
+  });
+  await assert.rejects(api.authenticatedFetch('/protected'), error => error.code === 401);
+  assert.equal(refreshes, 1);
+  assert.equal(store.getAccessToken(), null);
+  assert.equal(window.location.href, '/login');
+});
+
+test('login waits for tokens to reach persistent storage', async () => {
+  const saved = deferred();
+  const store = memoryStore(null, null);
+  store.saveTokens = () => saved.promise;
+  const { api } = harness(async () => reply(200, tokens), { store });
+  let completed = false;
+  const login = api.login(credentials).then(() => { completed = true; });
+  await tick();
+  assert.equal(completed, false);
+  saved.resolve();
+  await login;
+  assert.equal(completed, true);
+});
+
+test('repeated unauthenticated 403 also stops after one refresh', async () => {
+  let refreshes = 0;
+  const { api, store } = harness(async url => {
+    if (url.endsWith('/auth/refresh')) { refreshes++; return reply(200, tokens); }
+    return reply(url.endsWith('/auth/me') ? 401 : 403);
+  });
+  await assert.rejects(api.authenticatedFetch('/protected'), error => error.code === 401);
+  assert.equal(refreshes, 1);
+  assert.equal(store.getAccessToken(), null);
+});
+
+test('late /me body cannot show the previous account after logout', async () => {
+  const body = deferred();
+  const { api } = harness(async url => url.endsWith('/auth/logout') ? reply(200) : {
+    status: 200, ok: true, json: () => body.promise,
+  });
+  const rejected = assert.rejects(api.getMe(), error => error.code === 409);
+  await tick();
+  await api.logout();
+  body.resolve({ code: 0, data: user });
+  await rejected;
+});
+
+test('wrong password does not invoke refresh and missing bearer tokens do not count as login success', async () => {
+  let calls = 0;
+  const { api } = harness(async () => { calls++; return reply(401); });
+  await assert.rejects(api.login(credentials), error => error.code === 401);
+  assert.equal(calls, 1);
+  const missing = harness(async () => reply(200, { user }));
+  await assert.rejects(missing.api.login(credentials), /服务器未返回登录凭证/);
+});
+
+test('late refresh cannot resurrect a logged-out session', async () => {
+  const refresh = deferred();
+  const { api, store } = harness(async url => {
+    if (url.endsWith('/auth/refresh')) return refresh.promise;
+    if (url.endsWith('/auth/logout')) return reply(200);
+    return reply(401);
+  });
+  const pending = api.getMe();
+  const rejected = assert.rejects(pending, error => error.code === 409);
+  await tick();
+  await api.logout();
+  refresh.resolve(reply(200, tokens));
+  await rejected;
+  assert.equal(store.getAccessToken(), null);
+  assert.equal(store.getRefreshToken(), null);
+});
+
+test('late refresh cannot overwrite a newly logged-in account', async () => {
+  const refresh = deferred();
+  const { api, store } = harness(async url => {
+    if (url.endsWith('/auth/refresh')) return refresh.promise;
+    if (url.endsWith('/auth/login')) return reply(200, { user, accessToken: 'account-b', refreshToken: 'refresh-b' });
+    return reply(401);
+  });
+  const rejected = assert.rejects(api.getMe(), error => error.code === 409);
+  await tick();
+  await api.login(credentials);
+  refresh.resolve(reply(200, tokens));
+  await rejected;
+  assert.equal(store.getAccessToken(), 'account-b');
+  assert.equal(store.getRefreshToken(), 'refresh-b');
+});
+
+test('old account cache cannot bypass the session-change guard after logout', async () => {
+  const response = deferred();
+  const jwt = `header.${Buffer.from(JSON.stringify({ sub: 'account-a' })).toString('base64url')}.signature`;
+  let cacheReads = 0;
+  const { api } = harness(async url => url.endsWith('/auth/logout') ? reply(200) : response.promise, {
+    store: memoryStore(jwt, 'refresh-a'),
+    cache: {
+      async readCache() { cacheReads++; return { id: 'private-article' }; },
+      async writeCache() {}, async deleteCache() {},
+    },
+  });
+  const rejected = assert.rejects(api.getKnowledge('private-article'), error => error.code === 409);
+  await tick();
+  await api.logout();
+  response.resolve(reply(503));
+  await rejected;
+  assert.equal(cacheReads, 0);
+});
+
+test('connection timeout rejects without clearing credentials', async () => {
+  let expire;
+  const { api, store } = harness((_, options) => new Promise((_, reject) => {
+    options.signal.addEventListener('abort', () => reject(new Error('aborted')));
+  }), { timers: { setTimeout: callback => { expire = callback; }, clearTimeout() {} } });
+  const rejection = assert.rejects(api.getMe(), error => error.code === 0);
+  await tick();
+  expire();
+  await rejection;
+  assert.equal(store.clears, 0);
+});
+
+test('authenticated SSE uses refreshed headers and keeps the response body readable', async () => {
+  let signal;
+  const { api } = harness(async (url, options) => {
+    if (url.endsWith('/auth/refresh')) return reply(200, tokens);
+    if (options.headers.get('Authorization') !== 'Bearer new-access') return reply(401);
+    assert.equal(options.method, 'POST');
+    assert.equal(options.body, '{"content":"hello"}');
+    signal = options.signal;
+    return new Response('data: hello\n\n', { headers: { 'Content-Type': 'text/event-stream' } });
+  });
+  const response = await api.authenticatedFetch('/messages/stream', { method: 'POST', body: '{"content":"hello"}' });
+  assert.equal(await response.text(), 'data: hello\n\n');
+  assert.equal(signal.aborted, false);
+});
+
+test('authentication timeout does not impose a new deadline on slow AI requests', async () => {
+  let timers = 0;
+  const { api } = harness(async () => new Response('data: hello\n\n'), {
+    timers: { setTimeout() { timers++; return 1; }, clearTimeout() {} },
+  });
+  await api.authenticatedFetch('/messages/stream', { method: 'POST', body: '{}' });
+  assert.equal(timers, 0);
+});
+
+test('cookie logout is independent of browser localStorage availability', async () => {
+  const store = memoryStore();
+  store.clearTokens = () => assert.fail('cookie logout must not access localStorage');
+  const { api } = harness(async () => reply(200), { mode: 'cookie', store });
+  await api.logout();
+});
+
+test('cookie mode still uses credentials and CSRF, refreshes /me without storing bearer tokens', async () => {
+  let refreshed = false;
+  const store = memoryStore(null, null);
+  store.saveTokens = () => assert.fail('cookie mode must not store tokens');
+  const { api } = harness(async (url, options) => {
+    assert.equal(options.credentials, 'include');
+    const headers = new Headers(options.headers);
+    assert.equal(headers.has('Authorization'), false);
+    if (url.endsWith('/auth/refresh')) { refreshed = true; return reply(200, { user }); }
+    assert.equal(headers.get('X-XSRF-TOKEN'), 'test-csrf');
+    if (url.endsWith('/auth/login')) return reply(200, { user });
+    return refreshed ? reply(200, user) : reply(401);
+  }, { mode: 'cookie', store });
+  assert.deepEqual(await api.getMe(), user);
+  assert.deepEqual((await api.login(credentials)).user, user);
+});
+
+function tokenFile(initial = {}) {
+  const data = new Map(Object.entries(initial));
+  return {
+    data, snapshots: [],
+    async get(key) { return data.get(key); },
+    async set(key, value) { data.set(key, value); },
+    async delete(key) { return data.delete(key); },
+    async save() { this.snapshots.push(Object.fromEntries(data)); },
+  };
+}
+
+for (const status of [403, 404, 409, 429]) {
+  test(`HTTP ${status} is not hidden by a cached article`, async () => {
+    let cacheReads = 0;
+    const jwt = `header.${Buffer.from(JSON.stringify({ sub: 'account-a' })).toString('base64url')}.signature`;
+    const { api } = harness(async url => url.endsWith('/auth/me') ? reply(200, user) : reply(status), {
+      store: memoryStore(jwt, 'refresh-a'),
+      cache: { async readCache() { cacheReads++; return { id: 'stale' }; } },
+    });
+    await assert.rejects(api.getKnowledge('stale'), error => error.code === status);
+    assert.equal(cacheReads, 0);
+  });
+}
+
+test('temporary network failure can still read the current account cache', async () => {
+  const jwt = `header.${Buffer.from(JSON.stringify({ sub: 'account-a' })).toString('base64url')}.signature`;
+  const { api } = harness(async () => { throw new TypeError('offline'); }, {
+    store: memoryStore(jwt, 'refresh-a'),
+    cache: { async readCache(key) { assert.ok(key.startsWith('account-a:')); return { id: 'cached' }; } },
+  });
+  assert.equal((await api.getKnowledge('cached')).id, 'cached');
+});
+
+for (const mode of ['cookie', 'bearer']) {
+  test(`${mode} registration accepts HTTP 201 and preserves its credential contract`, async () => {
+    const { api, store } = harness(async (url, options) => {
+      assert.ok(url.endsWith('/auth/register'));
+      assert.equal(options.credentials, mode === 'cookie' ? 'include' : 'omit');
+      return Response.json({ code: 0, data: mode === 'cookie' ? { user } : tokens }, { status: 201 });
+    }, { mode, store: memoryStore(null, null) });
+    assert.deepEqual((await api.register(credentials)).user, user);
+    assert.equal(store.getAccessToken(), mode === 'cookie' ? null : 'new-access');
+  });
+}
+
+test('cookie logout reports failure when server cookies cannot be cleared', async () => {
+  const { api } = harness(async () => { throw new TypeError('offline'); }, { mode: 'cookie' });
+  await assert.rejects(api.logout(), error => error.code === 0);
+});
+
+test('bearer logout can still clear local credentials while offline', async () => {
+  const { api, store } = harness(async () => { throw new TypeError('offline'); });
+  await api.logout();
+  assert.equal(store.getAccessToken(), null);
+});
+
+test('persistent store serializes save and clear after slow hydration; restart reads the final state', async () => {
+  const load = deferred();
+  const file = tokenFile({ accessToken: 'disk-old', refreshToken: 'disk-refresh' });
+  const { PersistentTokenStore } = harness(async () => reply(200));
+  const store = new PersistentTokenStore(() => load.promise);
+  const save = store.saveTokens('login-new', 'login-refresh');
+  const clear = store.clearTokens();
+  load.resolve(file);
+  await Promise.all([save, clear]);
+  assert.deepEqual(file.snapshots, [{ accessToken: 'login-new', refreshToken: 'login-refresh' }, {}]);
+  assert.equal(store.getAccessToken(), null);
+  const restarted = new PersistentTokenStore(async () => file);
+  await restarted.ready;
+  assert.equal(restarted.getRefreshToken(), null);
+});
+
+test('successful login remains available after recreating the persistent store', async () => {
+  const file = tokenFile();
+  const { api, PersistentTokenStore } = harness(async () => reply(200, tokens));
+  const store = new PersistentTokenStore(async () => file);
+  api.setTokenStore(store);
+  await api.login(credentials);
+  const restarted = new PersistentTokenStore(async () => file);
+  await restarted.ready;
+  assert.equal(restarted.getAccessToken(), tokens.accessToken);
+  assert.equal(restarted.getRefreshToken(), tokens.refreshToken);
+});
+
+test('unreadable storage blocks requests; failed persistence does not report a successful login', async () => {
+  const { api, PersistentTokenStore } = harness(async () => reply(200, tokens));
+  const broken = new PersistentTokenStore(async () => { throw new Error('read denied'); });
+  api.setTokenStore(broken);
+  await assert.rejects(api.getMe(), /无法读取本地登录凭证/);
+  const file = tokenFile();
+  file.save = async () => { throw new Error('disk full'); };
+  const store = new PersistentTokenStore(async () => file);
+  api.setTokenStore(store);
+  await assert.rejects(api.login(credentials), /无法保存本地登录状态/);
+  assert.equal(store.getAccessToken(), null);
+});

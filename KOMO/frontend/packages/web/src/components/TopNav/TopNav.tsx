@@ -24,14 +24,14 @@ export default function TopNav() {
     getMe()
       .then((u) => {
         setUser(u);
+        setAuthChecked(true);
         if (u) {
           listDrafts()
             .then((drafts) => setDraftCount(drafts.length))
             .catch(() => {});
         }
       })
-      .catch(() => {})
-      .finally(() => setAuthChecked(true));
+      .catch(() => { /* 保留现有用户状态，页面负责展示连接错误。 */ });
   }, [pathname]);
 
   const handleHelpReset = async () => {

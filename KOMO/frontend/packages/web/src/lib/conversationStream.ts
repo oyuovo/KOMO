@@ -8,7 +8,7 @@
  * 后端（ConversationService.streamMessage）在客户端断连时仍会完整落库，
  * 流结束后页面重新拉取消息即可拿到完整回复。
  */
-import { getApiBase, authTransport } from '@komo/shared/api-client';
+import { authenticatedFetch } from '@komo/shared/api-client';
 
 export interface ConversationStreamState {
   conversationId: string;
@@ -77,19 +77,11 @@ class ConversationStreamStore {
     let streamError: string | null = null;
 
     try {
-      // 认证头与 credentials 由当前 transport 提供（cookie / bearer），不再硬编码
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        ...authTransport.buildHeaders(),
-      };
-
-      const response = await fetch(
-        `${getApiBase()}/conversations/${conversationId}/messages/stream`,
+      const response = await authenticatedFetch(
+        `/conversations/${conversationId}/messages/stream`,
         {
           method: 'POST',
-          headers,
           body: JSON.stringify({ content }),
-          credentials: authTransport.credentials,
         }
       );
 

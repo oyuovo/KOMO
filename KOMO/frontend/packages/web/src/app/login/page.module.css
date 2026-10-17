@@ -78,6 +78,10 @@
   font-size: var(--komo-text-sm);
 }
 
+.passwordHint { color: var(--komo-text-secondary); font-size: var(--komo-text-sm); }
+.switchMode { border: none; background: transparent; color: var(--komo-accent); padding: 8px; }
+.switchMode:disabled { opacity: 0.5; cursor: not-allowed; }
+
 .footer {
   margin-top: auto;
 }

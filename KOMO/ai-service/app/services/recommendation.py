@@ -4,7 +4,7 @@ import json
 import logging
 
 from pydantic import ValidationError
-from ..core.clients import deepseek
+from ..core.clients import adeepseek
 from ..core.config import DEEPSEEK_MODEL
 from ..core.json_utils import parse_llm_json
 from ..schemas.recommendation import RecommendationQuestion
@@ -48,7 +48,7 @@ async def generate_daily_questions(
     ]
 
     try:
-        response = deepseek.chat.completions.create(
+        response = await adeepseek.chat.completions.create(
             model=DEEPSEEK_MODEL,
             messages=messages,
             stream=False,
