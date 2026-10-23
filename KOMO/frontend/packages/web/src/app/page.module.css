@@ -103,28 +103,6 @@
 .searchBar input::placeholder { color: var(--komo-text-tertiary); }
 .searchIcon { color: var(--komo-text-tertiary); font-size: 16px; }
 
-/* Draft Hint */
-.draftHint {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 20px;
-  background: var(--komo-accent-soft);
-  border: 1px solid rgba(184, 92, 56, 0.1);
-  border-radius: var(--komo-radius-md);
-  margin-bottom: 40px;
-  font-size: var(--komo-text-sm);
-}
-.draftHintMsg { color: var(--komo-accent); font-weight: 500; }
-.draftHintActions { display: flex; gap: 12px; }
-.draftHintLink {
-  color: var(--komo-accent);
-  font-weight: 600;
-  text-decoration: none;
-  font-size: var(--komo-text-sm);
-}
-.draftHintLink:hover { text-decoration: underline; }
-
 /* Start Conversation */
 .startConvo {
   background: var(--komo-surface);

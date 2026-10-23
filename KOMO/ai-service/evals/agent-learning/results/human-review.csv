@@ -1,0 +1,11 @@
+﻿id,question,correctness,citation_support,uncertainty,learning_value,critical_error,retrieval_relevance,notes
+a05,Code Agent可以生成可执行代码，是不是因此就能放心直接执行？,,,,,,,
+a13,为什么等我点批准后，批准之前的数据库写入又发生了一次？怎么避免重复副作用？,,,,,,,
+a20,ToolStrategy输出校验失败时，handle_errors=False与指定ValueError有什么区别？,,,,,,,
+n01,这些资料给出的RAG端到端P99延迟保证是多少毫秒？,,,,,,,
+n02,这个课程给出的DeepSeek训练完整模型的精确GPU数量和账单是多少？,,,,,,,
+n03,使用pi以后，我这个项目的开发效率必然提高百分之多少？,,,,,,,
+u01,完整的RAG应该包括哪些部分,,,,,,,
+u02,怎么保证agent结构化输出,,,,,,,
+u03,什么是模型后训练,,,,,,,
+u04,agent开发是否推荐从例如pi这样的开源架构起步,,,,,,,

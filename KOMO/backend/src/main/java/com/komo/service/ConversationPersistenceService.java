@@ -37,11 +37,23 @@ public class ConversationPersistenceService {
     @Transactional
     public Message saveAssistantMessage(UUID conversationId, UUID userId, String content,
                                         String titleSource, boolean initialExchange) {
+        return saveAssistant(conversationId, userId, content, titleSource, initialExchange, null);
+    }
+
+    @Transactional
+    public Message saveReadingAssistantMessage(UUID conversationId, UUID userId, String content,
+                                               String titleSource, boolean initialExchange, String readingContext) {
+        return saveAssistant(conversationId, userId, content, titleSource, initialExchange, readingContext);
+    }
+
+    private Message saveAssistant(UUID conversationId, UUID userId, String content,
+                                  String titleSource, boolean initialExchange, String readingContext) {
         Conversation conversation = findConversation(conversationId, userId);
         Message assistantMessage = messageRepository.save(Message.builder()
             .conversationId(conversationId)
             .role(Message.MessageRole.ASSISTANT)
             .content(content)
+            .readingContext(readingContext)
             .build());
 
         if (initialExchange && (conversation.getTitle() == null || "新对话".equals(conversation.getTitle()))) {

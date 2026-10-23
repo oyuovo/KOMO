@@ -3,7 +3,7 @@
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 #
 # 作用：把只该被同机进程访问的数据端口收口到回环地址，并去掉开发期便利配置。
-# 基础文件把端口发布到 0.0.0.0，在公网服务器上等于把 PostgreSQL、Elasticsearch、
+# 基础文件把端口发布到 0.0.0.0，在公网服务器上等于把 PostgreSQL、Qdrant、
 # RabbitMQ（含 15672 管理台）直接摆到全网扫描器面前。后端与 nginx 都跑在宿主机，
 # 走 127.0.0.1 完全够用；确实要从本机之外访问时，用 SSH 端口转发，不要改这里：
 #
@@ -29,6 +29,7 @@ services:
     # （真正的「源码打进镜像」需重构构建上下文 + Dockerfile COPY，挂账 Beta 后。）
     volumes: !override
       - ../KOMO/ai-service:/app:ro
+      - embedding_cache:/models
     # 去掉 --reload：文件监视器在生产是白占内存，还会在文件变动时自行重启
     command: uvicorn app.main:app --host 0.0.0.0 --port 8001
 
@@ -37,12 +38,6 @@ services:
       - "127.0.0.1:5672:5672"   # AMQP，仅本机后端连接
     # 15672 管理台不发布到任何地址，需要时用上面的 SSH 转发临时看
 
-  elasticsearch:
-    # docker.elastic.co 在国内不可达，而 registry-mirrors 只加速 docker.io，
-    # 对它无效。生产从 Hub 拉取基础镜像，但仍构建带 SmartCN 的项目镜像。
-    # 不能把构建产物标记为官方 elasticsearch:8.12.0，否则会混淆有无插件的镜像。
-    build:
-      args:
-        BASE_IMAGE: elasticsearch:8.12.0
+  qdrant:
     ports: !override
-      - "127.0.0.1:9201:9200"
+      - "127.0.0.1:6333:6333"

@@ -1,0 +1,492 @@
+{
+  "groups": {
+    "0": {
+      "runs": 5,
+      "completed": 3,
+      "requests": 5,
+      "tool_calls": 0,
+      "mean_elapsed_ms": 8922,
+      "recorded_input_tokens": 20019,
+      "recorded_output_tokens": 7453,
+      "usage_records": 5
+    },
+    "1": {
+      "runs": 5,
+      "completed": 3,
+      "requests": 10,
+      "tool_calls": 10,
+      "mean_elapsed_ms": 8450,
+      "recorded_input_tokens": 43572,
+      "recorded_output_tokens": 6675,
+      "usage_records": 10
+    },
+    "2": {
+      "runs": 5,
+      "completed": 4,
+      "requests": 15,
+      "tool_calls": 10,
+      "mean_elapsed_ms": 10272,
+      "recorded_input_tokens": 77171,
+      "recorded_output_tokens": 8449,
+      "usage_records": 15
+    }
+  },
+  "rows": [
+    {
+      "variant": "u01-r0",
+      "id": "u01",
+      "max_rounds": 0,
+      "state": "failed",
+      "elapsed_ms": 11906,
+      "requests": 1,
+      "usage_records": 1,
+      "input_tokens_recorded": 4047,
+      "output_tokens_recorded": 2048,
+      "stop_reason": "disabled",
+      "actual_rounds": 0,
+      "tool_calls": 0,
+      "initial_evidence": {
+        "required": 0,
+        "covered": null
+      },
+      "final_evidence": {
+        "required": 0,
+        "covered": null
+      },
+      "citations": null,
+      "human_grade": null
+    },
+    {
+      "variant": "u01-r1",
+      "id": "u01",
+      "max_rounds": 1,
+      "state": "failed",
+      "elapsed_ms": 12844,
+      "requests": 2,
+      "usage_records": 2,
+      "input_tokens_recorded": 8865,
+      "output_tokens_recorded": 2119,
+      "stop_reason": "round_limit",
+      "actual_rounds": 1,
+      "tool_calls": 2,
+      "initial_evidence": {
+        "required": 0,
+        "covered": null
+      },
+      "final_evidence": {
+        "required": 0,
+        "covered": null
+      },
+      "citations": null,
+      "human_grade": null
+    },
+    {
+      "variant": "u01-r2",
+      "id": "u01",
+      "max_rounds": 2,
+      "state": "completed",
+      "elapsed_ms": 12484,
+      "requests": 3,
+      "usage_records": 3,
+      "input_tokens_recorded": 14302,
+      "output_tokens_recorded": 2128,
+      "stop_reason": "model_stopped",
+      "actual_rounds": 2,
+      "tool_calls": 2,
+      "initial_evidence": {
+        "required": 0,
+        "covered": null
+      },
+      "final_evidence": {
+        "required": 0,
+        "covered": null
+      },
+      "citations": {
+        "cited_ids": [
+          "S2",
+          "S5",
+          "S4",
+          "S1",
+          "S7",
+          "S3",
+          "S6",
+          "S8",
+          "S9",
+          "S10"
+        ],
+        "invalid_ids": [],
+        "status": "present"
+      },
+      "human_grade": null
+    },
+    {
+      "variant": "u02-r1",
+      "id": "u02",
+      "max_rounds": 1,
+      "state": "failed",
+      "elapsed_ms": 13156,
+      "requests": 2,
+      "usage_records": 2,
+      "input_tokens_recorded": 8579,
+      "output_tokens_recorded": 2119,
+      "stop_reason": "round_limit",
+      "actual_rounds": 1,
+      "tool_calls": 2,
+      "initial_evidence": {
+        "required": 0,
+        "covered": null
+      },
+      "final_evidence": {
+        "required": 0,
+        "covered": null
+      },
+      "citations": null,
+      "human_grade": null
+    },
+    {
+      "variant": "u02-r2",
+      "id": "u02",
+      "max_rounds": 2,
+      "state": "failed",
+      "elapsed_ms": 15156,
+      "requests": 3,
+      "usage_records": 3,
+      "input_tokens_recorded": 16148,
+      "output_tokens_recorded": 2797,
+      "stop_reason": "model_stopped",
+      "actual_rounds": 2,
+      "tool_calls": 2,
+      "initial_evidence": {
+        "required": 0,
+        "covered": null
+      },
+      "final_evidence": {
+        "required": 0,
+        "covered": null
+      },
+      "citations": null,
+      "human_grade": null
+    },
+    {
+      "variant": "u02-r0",
+      "id": "u02",
+      "max_rounds": 0,
+      "state": "failed",
+      "elapsed_ms": 11937,
+      "requests": 1,
+      "usage_records": 1,
+      "input_tokens_recorded": 3937,
+      "output_tokens_recorded": 2048,
+      "stop_reason": "disabled",
+      "actual_rounds": 0,
+      "tool_calls": 0,
+      "initial_evidence": {
+        "required": 0,
+        "covered": null
+      },
+      "final_evidence": {
+        "required": 0,
+        "covered": null
+      },
+      "citations": null,
+      "human_grade": null
+    },
+    {
+      "variant": "a02-r2",
+      "id": "a02",
+      "max_rounds": 2,
+      "state": "completed",
+      "elapsed_ms": 9531,
+      "requests": 3,
+      "usage_records": 3,
+      "input_tokens_recorded": 14758,
+      "output_tokens_recorded": 1466,
+      "stop_reason": "model_stopped",
+      "actual_rounds": 2,
+      "tool_calls": 2,
+      "initial_evidence": {
+        "required": 2,
+        "covered": 0
+      },
+      "final_evidence": {
+        "required": 2,
+        "covered": 2
+      },
+      "citations": {
+        "cited_ids": [
+          "S4",
+          "S5"
+        ],
+        "invalid_ids": [],
+        "status": "present"
+      },
+      "human_grade": null
+    },
+    {
+      "variant": "a02-r0",
+      "id": "a02",
+      "max_rounds": 0,
+      "state": "completed",
+      "elapsed_ms": 7500,
+      "requests": 1,
+      "usage_records": 1,
+      "input_tokens_recorded": 3888,
+      "output_tokens_recorded": 1112,
+      "stop_reason": "disabled",
+      "actual_rounds": 0,
+      "tool_calls": 0,
+      "initial_evidence": {
+        "required": 2,
+        "covered": 0
+      },
+      "final_evidence": {
+        "required": 2,
+        "covered": 0
+      },
+      "citations": {
+        "cited_ids": [
+          "S2",
+          "S3",
+          "S8",
+          "S9",
+          "S4",
+          "S5",
+          "S11"
+        ],
+        "invalid_ids": [],
+        "status": "present"
+      },
+      "human_grade": null
+    },
+    {
+      "variant": "a02-r1",
+      "id": "a02",
+      "max_rounds": 1,
+      "state": "completed",
+      "elapsed_ms": 6313,
+      "requests": 2,
+      "usage_records": 2,
+      "input_tokens_recorded": 8436,
+      "output_tokens_recorded": 956,
+      "stop_reason": "round_limit",
+      "actual_rounds": 1,
+      "tool_calls": 2,
+      "initial_evidence": {
+        "required": 2,
+        "covered": 0
+      },
+      "final_evidence": {
+        "required": 2,
+        "covered": 2
+      },
+      "citations": {
+        "cited_ids": [
+          "S4",
+          "S9",
+          "S10",
+          "S11"
+        ],
+        "invalid_ids": [],
+        "status": "present"
+      },
+      "human_grade": null
+    },
+    {
+      "variant": "a15-r0",
+      "id": "a15",
+      "max_rounds": 0,
+      "state": "completed",
+      "elapsed_ms": 9782,
+      "requests": 1,
+      "usage_records": 1,
+      "input_tokens_recorded": 4139,
+      "output_tokens_recorded": 1710,
+      "stop_reason": "disabled",
+      "actual_rounds": 0,
+      "tool_calls": 0,
+      "initial_evidence": {
+        "required": 1,
+        "covered": 0
+      },
+      "final_evidence": {
+        "required": 1,
+        "covered": 0
+      },
+      "citations": {
+        "cited_ids": [
+          "S1",
+          "S7",
+          "S4",
+          "S5",
+          "S2"
+        ],
+        "invalid_ids": [],
+        "status": "present"
+      },
+      "human_grade": null
+    },
+    {
+      "variant": "a15-r1",
+      "id": "a15",
+      "max_rounds": 1,
+      "state": "completed",
+      "elapsed_ms": 6594,
+      "requests": 2,
+      "usage_records": 2,
+      "input_tokens_recorded": 9191,
+      "output_tokens_recorded": 1034,
+      "stop_reason": "round_limit",
+      "actual_rounds": 1,
+      "tool_calls": 2,
+      "initial_evidence": {
+        "required": 1,
+        "covered": 0
+      },
+      "final_evidence": {
+        "required": 1,
+        "covered": 1
+      },
+      "citations": {
+        "cited_ids": [
+          "S8",
+          "S1",
+          "S9",
+          "S10",
+          "S3",
+          "S4",
+          "S6"
+        ],
+        "invalid_ids": [],
+        "status": "present"
+      },
+      "human_grade": null
+    },
+    {
+      "variant": "a15-r2",
+      "id": "a15",
+      "max_rounds": 2,
+      "state": "completed",
+      "elapsed_ms": 8406,
+      "requests": 3,
+      "usage_records": 3,
+      "input_tokens_recorded": 16272,
+      "output_tokens_recorded": 1342,
+      "stop_reason": "model_stopped",
+      "actual_rounds": 2,
+      "tool_calls": 2,
+      "initial_evidence": {
+        "required": 1,
+        "covered": 0
+      },
+      "final_evidence": {
+        "required": 1,
+        "covered": 1
+      },
+      "citations": {
+        "cited_ids": [
+          "S8",
+          "S1",
+          "S9",
+          "S6"
+        ],
+        "invalid_ids": [],
+        "status": "present"
+      },
+      "human_grade": null
+    },
+    {
+      "variant": "n01-r1",
+      "id": "n01",
+      "max_rounds": 1,
+      "state": "completed",
+      "elapsed_ms": 3344,
+      "requests": 2,
+      "usage_records": 2,
+      "input_tokens_recorded": 8501,
+      "output_tokens_recorded": 447,
+      "stop_reason": "round_limit",
+      "actual_rounds": 1,
+      "tool_calls": 2,
+      "initial_evidence": {
+        "required": 0,
+        "covered": null
+      },
+      "final_evidence": {
+        "required": 0,
+        "covered": null
+      },
+      "citations": {
+        "cited_ids": [
+          "S4"
+        ],
+        "invalid_ids": [],
+        "status": "present"
+      },
+      "human_grade": null
+    },
+    {
+      "variant": "n01-r2",
+      "id": "n01",
+      "max_rounds": 2,
+      "state": "completed",
+      "elapsed_ms": 5781,
+      "requests": 3,
+      "usage_records": 3,
+      "input_tokens_recorded": 15691,
+      "output_tokens_recorded": 716,
+      "stop_reason": "model_stopped",
+      "actual_rounds": 2,
+      "tool_calls": 2,
+      "initial_evidence": {
+        "required": 0,
+        "covered": null
+      },
+      "final_evidence": {
+        "required": 0,
+        "covered": null
+      },
+      "citations": {
+        "cited_ids": [
+          "S4",
+          "S6"
+        ],
+        "invalid_ids": [],
+        "status": "present"
+      },
+      "human_grade": null
+    },
+    {
+      "variant": "n01-r0",
+      "id": "n01",
+      "max_rounds": 0,
+      "state": "completed",
+      "elapsed_ms": 3484,
+      "requests": 1,
+      "usage_records": 1,
+      "input_tokens_recorded": 4008,
+      "output_tokens_recorded": 535,
+      "stop_reason": "disabled",
+      "actual_rounds": 0,
+      "tool_calls": 0,
+      "initial_evidence": {
+        "required": 0,
+        "covered": null
+      },
+      "final_evidence": {
+        "required": 0,
+        "covered": null
+      },
+      "citations": {
+        "cited_ids": [
+          "S4",
+          "S6",
+          "S8"
+        ],
+        "invalid_ids": [],
+        "status": "present"
+      },
+      "human_grade": null
+    }
+  ],
+  "limitations": "Development regression, one run per cell, not a blind test or significance claim. Initial rankings frozen to isolate context/tool changes. Live hybrid searches use local embeddings. SDK retries disabled for all variants; production answer adapter normally permits one retry."
+}

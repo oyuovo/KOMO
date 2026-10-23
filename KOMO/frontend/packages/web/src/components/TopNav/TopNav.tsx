@@ -3,33 +3,27 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { listDrafts, getMe, resetOnboarding, type UserInfo } from '@komo/shared/api-client';
+import { getMe, resetOnboarding, type UserInfo } from '@komo/shared/api-client';
 import styles from './TopNav.module.css';
 
 const navItems = [
   { href: '/', label: '知识库' },
   { href: '/conversations', label: '对话' },
-  { href: '/drafts', label: '草稿' },
   { href: '/settings', label: '设置' },
 ];
 
 export default function TopNav() {
   const pathname = usePathname();
-  const [draftCount, setDraftCount] = useState(0);
   const [user, setUser] = useState<UserInfo | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
 
-  // 每次路由切换时刷新用户信息和草稿数量
+  // 每次路由切换时刷新用户信息
   useEffect(() => {
     getMe()
       .then((u) => {
         setUser(u);
         setAuthChecked(true);
-        if (u) {
-          listDrafts()
-            .then((drafts) => setDraftCount(drafts.length))
-            .catch(() => {});
-        }
+
       })
       .catch(() => { /* 保留现有用户状态，页面负责展示连接错误。 */ });
   }, [pathname]);
@@ -55,10 +49,6 @@ export default function TopNav() {
           ? pathname === '/'
           : pathname.startsWith(item.href);
 
-        const badge = item.href === '/drafts' && draftCount > 0
-          ? draftCount
-          : undefined;
-
         return (
           <Link
             key={item.href}
@@ -66,7 +56,6 @@ export default function TopNav() {
             className={`${styles.navItem} ${isActive ? styles.navItemActive : ''}`}
           >
             {item.label}
-            {badge && <span className={styles.badge}>{badge}</span>}
           </Link>
         );
       })}

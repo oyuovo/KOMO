@@ -1,0 +1,973 @@
+{
+  "id": "agent-learning-v1",
+  "source_manifest_sha256": "20dea5fb46c3cb6bb5a8754d6c459a5c94dbf3fad5a75f161b46a48dd64c7506",
+  "protocol": "Questions and span labels fixed before the first retrieval run; no retrieval tuning in this round. User questions are not a blind independent test because the curator has seen them.",
+  "cases": [
+    {
+      "id": "a01",
+      "question": "给大模型发一句提示词，就算搭好了Agent吗？文中怎么定义Agent？",
+      "language": "zh",
+      "category": "concept",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "hf-agents",
+          "quote": "An Agent is a system that leverages an AI model to interact with its environment in order to achieve a user-defined objective.",
+          "start_offset": 2215,
+          "end_offset": 2341,
+          "start_line": 50,
+          "end_line": 50
+        }
+      ],
+      "expected_behavior": "解释目标、模型与环境交互，不能把一次文本生成等同于完整Agent。",
+      "reading_ids": [
+        "hf-agents"
+      ],
+      "human_review": false
+    },
+    {
+      "id": "a01-en",
+      "question": "Does sending a prompt to an LLM make an agent? How does this course define an agent?",
+      "language": "en",
+      "category": "concept",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "hf-agents",
+          "quote": "An Agent is a system that leverages an AI model to interact with its environment in order to achieve a user-defined objective.",
+          "start_offset": 2215,
+          "end_offset": 2341,
+          "start_line": 50,
+          "end_line": 50
+        }
+      ],
+      "expected_behavior": "解释目标、模型与环境交互，不能把一次文本生成等同于完整Agent。",
+      "reading_ids": [
+        "hf-agents"
+      ],
+      "human_review": false,
+      "pair_id": "a01"
+    },
+    {
+      "id": "a02",
+      "question": "模型说要查天气时，到底是谁执行函数？执行结果怎么回到模型？",
+      "language": "zh",
+      "category": "paraphrase",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "hf-tools",
+          "quote": "The **Agent** then reads this response, identifies that a tool call is required, executes the tool on the LLM’s behalf, and retrieves the actual weather data.",
+          "start_offset": 2986,
+          "end_offset": 3144,
+          "start_line": 50,
+          "end_line": 50
+        },
+        {
+          "document_id": "hf-tools",
+          "quote": "the Agent appends them as a new message before passing the updated conversation to the LLM again.",
+          "start_offset": 3207,
+          "end_offset": 3304,
+          "start_line": 52,
+          "end_line": 52
+        }
+      ],
+      "expected_behavior": "区分模型生成调用与运行时执行调用，并解释结果回填。",
+      "reading_ids": [
+        "hf-tools"
+      ],
+      "human_review": false
+    },
+    {
+      "id": "a02-en",
+      "question": "Who executes a weather tool call, and how does the result get back to the LLM?",
+      "language": "en",
+      "category": "paraphrase",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "hf-tools",
+          "quote": "The **Agent** then reads this response, identifies that a tool call is required, executes the tool on the LLM’s behalf, and retrieves the actual weather data.",
+          "start_offset": 2986,
+          "end_offset": 3144,
+          "start_line": 50,
+          "end_line": 50
+        },
+        {
+          "document_id": "hf-tools",
+          "quote": "the Agent appends them as a new message before passing the updated conversation to the LLM again.",
+          "start_offset": 3207,
+          "end_offset": 3304,
+          "start_line": 52,
+          "end_line": 52
+        }
+      ],
+      "expected_behavior": "区分模型生成调用与运行时执行调用，并解释结果回填。",
+      "reading_ids": [
+        "hf-tools"
+      ],
+      "human_review": false,
+      "pair_id": "a02"
+    },
+    {
+      "id": "a03",
+      "question": "给Agent提供一个工具，最少需要描述哪些内容？返回值类型是否必填？",
+      "language": "zh",
+      "category": "conditions",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "hf-tools",
+          "quote": "A **textual description of what the function does**.",
+          "start_offset": 2142,
+          "end_offset": 2194,
+          "start_line": 39,
+          "end_line": 39
+        },
+        {
+          "document_id": "hf-tools",
+          "quote": "(Optional) Outputs with typings.",
+          "start_offset": 2280,
+          "end_offset": 2312,
+          "start_line": 42,
+          "end_line": 42
+        }
+      ],
+      "expected_behavior": "说明描述、可调用对象、有类型的参数；输出类型在该课程列表中是可选。",
+      "reading_ids": [
+        "hf-tools"
+      ],
+      "human_review": false
+    },
+    {
+      "id": "a04",
+      "question": "模型输出完一次动作后为什么要停下来，不能接着自己编后续结果吗？",
+      "language": "zh",
+      "category": "paraphrase",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "hf-actions",
+          "quote": "This passes control from the LLM back to the agent and ensures the result is parseable",
+          "start_offset": 2468,
+          "end_offset": 2554,
+          "start_line": 33,
+          "end_line": 33
+        },
+        {
+          "document_id": "hf-actions",
+          "quote": "An external parser reads the formatted action, determines which Tool to call, and extracts the required parameters.",
+          "start_offset": 3145,
+          "end_offset": 3260,
+          "start_line": 50,
+          "end_line": 50
+        }
+      ],
+      "expected_behavior": "说明停止生成、控制权交还运行时、解析和执行；不要把生成文本当作真实工具结果。",
+      "reading_ids": [
+        "hf-actions"
+      ],
+      "human_review": false
+    },
+    {
+      "id": "a05",
+      "question": "Code Agent可以生成可执行代码，是不是因此就能放心直接执行？",
+      "language": "zh",
+      "category": "conditions",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "hf-actions",
+          "quote": "executing LLM-generated code may pose security risks, from prompt injection to the execution of harmful code.",
+          "start_offset": 4950,
+          "end_offset": 5059,
+          "start_line": 84,
+          "end_line": 84
+        }
+      ],
+      "expected_behavior": "不能保证安全；原文提示代码执行风险和框架防护，不应夸大为绝对安全。",
+      "reading_ids": [
+        "hf-actions"
+      ],
+      "human_review": true
+    },
+    {
+      "id": "a06",
+      "question": "工具出错或返回数据以后，Agent下一轮怎么利用这些反馈？",
+      "language": "zh",
+      "category": "paraphrase",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "hf-observations",
+          "quote": "**Appends Results:** Integrates the new information into its existing context, effectively updating its memory.",
+          "start_offset": 511,
+          "end_offset": 622,
+          "start_line": 12,
+          "end_line": 12
+        },
+        {
+          "document_id": "hf-observations",
+          "quote": "**Adapts its Strategy:** Uses this updated context to refine subsequent thoughts and actions.",
+          "start_offset": 625,
+          "end_offset": 718,
+          "start_line": 13,
+          "end_line": 13
+        }
+      ],
+      "expected_behavior": "反馈加入上下文并用于下一步决策，不能说这是模型权重训练。",
+      "reading_ids": [
+        "hf-observations"
+      ],
+      "human_review": false
+    },
+    {
+      "id": "a07",
+      "question": "LangGraph里的State、节点和条件边各负责什么？",
+      "language": "zh",
+      "category": "multi_evidence",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "hf-graph",
+          "quote": "It represents all the information that flows through your application.",
+          "start_offset": 720,
+          "end_offset": 790,
+          "start_line": 13,
+          "end_line": 13
+        },
+        {
+          "document_id": "hf-graph",
+          "quote": "Takes the state as input",
+          "start_offset": 1185,
+          "end_offset": 1209,
+          "start_line": 29,
+          "end_line": 29
+        },
+        {
+          "document_id": "hf-graph",
+          "quote": "**Conditional**: Choose the next node based on the current state",
+          "start_offset": 2534,
+          "end_offset": 2598,
+          "start_line": 81,
+          "end_line": 81
+        }
+      ],
+      "expected_behavior": "说明状态数据、节点读取并返回更新、条件边根据状态路由。",
+      "reading_ids": [
+        "hf-graph"
+      ],
+      "human_review": false
+    },
+    {
+      "id": "a08",
+      "question": "文档分析示例里的tools_condition有什么作用，调用工具后回哪里？",
+      "language": "zh",
+      "category": "identifier",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "hf-document",
+          "quote": "tools_condition,",
+          "start_offset": 6080,
+          "end_offset": 6096,
+          "start_line": 174,
+          "end_line": 174
+        },
+        {
+          "document_id": "hf-document",
+          "quote": "builder.add_edge(\"tools\", \"assistant\")",
+          "start_offset": 6099,
+          "end_offset": 6137,
+          "start_line": 176,
+          "end_line": 176
+        }
+      ],
+      "expected_behavior": "解释根据是否有工具调用路由到tools，否则直接回答；工具完成返回assistant。",
+      "reading_ids": [
+        "hf-document"
+      ],
+      "human_review": false
+    },
+    {
+      "id": "a09",
+      "question": "Agentic RAG相对每次都先检索再回答，多了什么决定权？",
+      "language": "zh",
+      "category": "concept",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "hf-rag",
+          "quote": "Alfred can decide to use any other tool or flow to answer the question.",
+          "start_offset": 1332,
+          "end_offset": 1403,
+          "start_line": 22,
+          "end_line": 22
+        }
+      ],
+      "expected_behavior": "说明可决定用其他工具或流程，不能仅因接入向量库就宣称是Agentic RAG。",
+      "reading_ids": [
+        "hf-rag"
+      ],
+      "human_review": false
+    },
+    {
+      "id": "a10",
+      "question": "短期会话记忆与跨会话长期记忆应分别交给checkpointer还是store？",
+      "language": "zh",
+      "category": "comparison",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "lg-persistence",
+          "quote": "**[Checkpointers](/oss/langgraph/checkpointers)** persist a thread's graph state as checkpoints.",
+          "start_offset": 684,
+          "end_offset": 780,
+          "start_line": 18,
+          "end_line": 18
+        },
+        {
+          "document_id": "lg-persistence",
+          "quote": "**[Stores](/oss/langgraph/stores)** persist application-defined data outside the graph state.",
+          "start_offset": 928,
+          "end_offset": 1021,
+          "start_line": 19,
+          "end_line": 19
+        }
+      ],
+      "expected_behavior": "区分thread内状态快照与跨thread应用数据；二者可同时使用。",
+      "reading_ids": [
+        "lg-persistence"
+      ],
+      "human_review": false
+    },
+    {
+      "id": "a10-en",
+      "question": "How do checkpointers and stores differ for short-term thread memory and long-term cross-thread memory?",
+      "language": "en",
+      "category": "comparison",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "lg-persistence",
+          "quote": "**[Checkpointers](/oss/langgraph/checkpointers)** persist a thread's graph state as checkpoints.",
+          "start_offset": 684,
+          "end_offset": 780,
+          "start_line": 18,
+          "end_line": 18
+        },
+        {
+          "document_id": "lg-persistence",
+          "quote": "**[Stores](/oss/langgraph/stores)** persist application-defined data outside the graph state.",
+          "start_offset": 928,
+          "end_offset": 1021,
+          "start_line": 19,
+          "end_line": 19
+        }
+      ],
+      "expected_behavior": "区分thread内状态快照与跨thread应用数据；二者可同时使用。",
+      "reading_ids": [
+        "lg-persistence"
+      ],
+      "human_review": false,
+      "pair_id": "a10"
+    },
+    {
+      "id": "a11",
+      "question": "进程重启以后，为什么MemorySaver里的聊天状态没了？该换什么？",
+      "language": "zh",
+      "category": "identifier",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "lg-persistence",
+          "quote": "`MemorySaver` and `InMemorySaver` store checkpoints in RAM. When the process restarts, all checkpoints are lost.",
+          "start_offset": 3617,
+          "end_offset": 3729,
+          "start_line": 93,
+          "end_line": 93
+        }
+      ],
+      "expected_behavior": "解释内存不持久，生产使用持久化checkpointer；不把名字中的Saver误解为磁盘持久化。",
+      "reading_ids": [
+        "lg-persistence"
+      ],
+      "human_review": false
+    },
+    {
+      "id": "a12",
+      "question": "人工批准后恢复运行，thread_id换一个新的可以吗？",
+      "language": "zh",
+      "category": "conditions",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "lg-interrupts",
+          "quote": "You must use the **same thread ID** when resuming that was used when the interrupt occurred",
+          "start_offset": 6428,
+          "end_offset": 6519,
+          "start_line": 100,
+          "end_line": 100
+        }
+      ],
+      "expected_behavior": "恢复必须使用相同thread_id；新ID意味着新线程空状态。",
+      "reading_ids": [
+        "lg-interrupts"
+      ],
+      "human_review": false
+    },
+    {
+      "id": "a13",
+      "question": "为什么等我点批准后，批准之前的数据库写入又发生了一次？怎么避免重复副作用？",
+      "language": "zh",
+      "category": "long_tail",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "lg-interrupts",
+          "quote": "side effects called before @[`interrupt`] should (ideally) be idempotent.",
+          "start_offset": 48634,
+          "end_offset": 48707,
+          "start_line": 1354,
+          "end_line": 1354
+        },
+        {
+          "document_id": "lg-interrupts",
+          "quote": "Place side effects after @[`interrupt`] calls",
+          "start_offset": 49174,
+          "end_offset": 49219,
+          "start_line": 1359,
+          "end_line": 1359
+        }
+      ],
+      "expected_behavior": "说明节点恢复会重跑；使用幂等写入或把副作用放到中断后/独立节点，不能说从暂停行无副作用续跑。",
+      "reading_ids": [
+        "lg-interrupts"
+      ],
+      "human_review": true
+    },
+    {
+      "id": "a13-en",
+      "question": "Why can a database write before an interrupt run again after approval, and how can duplicate side effects be avoided?",
+      "language": "en",
+      "category": "long_tail",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "lg-interrupts",
+          "quote": "side effects called before @[`interrupt`] should (ideally) be idempotent.",
+          "start_offset": 48634,
+          "end_offset": 48707,
+          "start_line": 1354,
+          "end_line": 1354
+        },
+        {
+          "document_id": "lg-interrupts",
+          "quote": "Place side effects after @[`interrupt`] calls",
+          "start_offset": 49174,
+          "end_offset": 49219,
+          "start_line": 1359,
+          "end_line": 1359
+        }
+      ],
+      "expected_behavior": "说明节点恢复会重跑；使用幂等写入或把副作用放到中断后/独立节点，不能说从暂停行无副作用续跑。",
+      "reading_ids": [
+        "lg-interrupts"
+      ],
+      "human_review": false,
+      "pair_id": "a13"
+    },
+    {
+      "id": "a14",
+      "question": "为什么用一个很宽的try/except包住interrupt后，人工审批暂停反而失效？",
+      "language": "zh",
+      "category": "long_tail",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "lg-interrupts",
+          "quote": "If you wrap the @[`interrupt`] call in a try/except block, you will catch this exception and the interrupt will not be passed back to the graph.",
+          "start_offset": 38881,
+          "end_offset": 39025,
+          "start_line": 1015,
+          "end_line": 1015
+        }
+      ],
+      "expected_behavior": "interrupt用特殊异常暂停；不要吞掉该异常，可用具体异常类型限制捕获范围。",
+      "reading_ids": [
+        "lg-interrupts"
+      ],
+      "human_review": false
+    },
+    {
+      "id": "a14-en",
+      "question": "Why can wrapping interrupt in a broad try/except prevent human approval from pausing the graph?",
+      "language": "en",
+      "category": "long_tail",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "lg-interrupts",
+          "quote": "If you wrap the @[`interrupt`] call in a try/except block, you will catch this exception and the interrupt will not be passed back to the graph.",
+          "start_offset": 38881,
+          "end_offset": 39025,
+          "start_line": 1015,
+          "end_line": 1015
+        }
+      ],
+      "expected_behavior": "interrupt用特殊异常暂停；不要吞掉该异常，可用具体异常类型限制捕获范围。",
+      "reading_ids": [
+        "lg-interrupts"
+      ],
+      "human_review": false,
+      "pair_id": "a14"
+    },
+    {
+      "id": "a15",
+      "question": "一个节点有多个人工提问，恢复前把提问顺序改掉会有问题吗？",
+      "language": "zh",
+      "category": "long_tail",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "lg-interrupts",
+          "quote": "Matching is **strictly index-based**, so the order of interrupt calls within the node is important.",
+          "start_offset": 42104,
+          "end_offset": 42203,
+          "start_line": 1118,
+          "end_line": 1118
+        }
+      ],
+      "expected_behavior": "恢复值按位置匹配，需保持中断顺序一致。",
+      "reading_ids": [
+        "lg-interrupts"
+      ],
+      "human_review": false
+    },
+    {
+      "id": "a15-en",
+      "question": "Can I reorder multiple interrupt calls within a node before resuming it?",
+      "language": "en",
+      "category": "long_tail",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "lg-interrupts",
+          "quote": "Matching is **strictly index-based**, so the order of interrupt calls within the node is important.",
+          "start_offset": 42104,
+          "end_offset": 42203,
+          "start_line": 1118,
+          "end_line": 1118
+        }
+      ],
+      "expected_behavior": "恢复值按位置匹配，需保持中断顺序一致。",
+      "reading_ids": [
+        "lg-interrupts"
+      ],
+      "human_review": false,
+      "pair_id": "a15"
+    },
+    {
+      "id": "a16",
+      "question": "直接调用graph.nodes中的节点做单测，也能验证检查点功能吗？",
+      "language": "zh",
+      "category": "conditions",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "lg-test",
+          "quote": "Note that this will bypass any checkpointers passed when compiling the graph:",
+          "start_offset": 3328,
+          "end_offset": 3405,
+          "start_line": 113,
+          "end_line": 113
+        }
+      ],
+      "expected_behavior": "不能；直接节点测试绕过checkpointer，不能当作持久化集成测试。",
+      "reading_ids": [
+        "lg-test"
+      ],
+      "human_review": false
+    },
+    {
+      "id": "a17",
+      "question": "为什么每个有状态图的测试都建议重新创建checkpointer？",
+      "language": "zh",
+      "category": "testing",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "lg-test",
+          "quote": "create your graph before each test where you use it, then compile it within tests with a new checkpointer instance.",
+          "start_offset": 1025,
+          "end_offset": 1140,
+          "start_line": 37,
+          "end_line": 37
+        }
+      ],
+      "expected_behavior": "原文给出独立实例模式；隔离测试状态是解释，应与原文事实区分。",
+      "reading_ids": [
+        "lg-test"
+      ],
+      "human_review": false
+    },
+    {
+      "id": "a18",
+      "question": "知识已经存在SQL数据库里，是不是做RAG就必须先重建成向量库？",
+      "language": "zh",
+      "category": "conditions",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "lg-retrieval",
+          "quote": "you do **not** need to rebuild it.",
+          "start_offset": 861,
+          "end_offset": 895,
+          "start_line": 19,
+          "end_line": 19
+        }
+      ],
+      "expected_behavior": "不必；可封装为Agent工具或查询后给LLM上下文。",
+      "reading_ids": [
+        "lg-retrieval"
+      ],
+      "human_review": false
+    },
+    {
+      "id": "a18-en",
+      "question": "Must an existing SQL knowledge base be rebuilt as a vector database to use RAG?",
+      "language": "en",
+      "category": "conditions",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "lg-retrieval",
+          "quote": "you do **not** need to rebuild it.",
+          "start_offset": 861,
+          "end_offset": 895,
+          "start_line": 19,
+          "end_line": 19
+        }
+      ],
+      "expected_behavior": "不必；可封装为Agent工具或查询后给LLM上下文。",
+      "reading_ids": [
+        "lg-retrieval"
+      ],
+      "human_review": false,
+      "pair_id": "a18"
+    },
+    {
+      "id": "a19",
+      "question": "把JSON Schema字典直接传给Python create_agent的response_format会自动选择策略吗？",
+      "language": "zh",
+      "category": "identifier",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "lg-structured",
+          "quote": "JSON Schema dictionaries must be wrapped in an explicit strategy (`ProviderStrategy` or `ToolStrategy`).",
+          "start_offset": 1893,
+          "end_offset": 1997,
+          "start_line": 42,
+          "end_line": 42
+        }
+      ],
+      "expected_behavior": "按此固定版本，字典须显式包装策略；区分schema类型与JSON Schema字典，不能混用JS规则。",
+      "reading_ids": [
+        "lg-structured"
+      ],
+      "human_review": false
+    },
+    {
+      "id": "a20",
+      "question": "ToolStrategy输出校验失败时，handle_errors=False与指定ValueError有什么区别？",
+      "language": "zh",
+      "category": "long_tail",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "lg-structured",
+          "quote": "handle_errors=ValueError  # Only retry on ValueError, raise others",
+          "start_offset": 38599,
+          "end_offset": 38665,
+          "start_line": 1040,
+          "end_line": 1040
+        },
+        {
+          "document_id": "lg-structured",
+          "quote": "handle_errors=False  # All errors raised",
+          "start_offset": 41265,
+          "end_offset": 41305,
+          "start_line": 1126,
+          "end_line": 1126
+        }
+      ],
+      "expected_behavior": "False让错误抛出；ValueError仅对匹配类型重试，其余抛出。",
+      "reading_ids": [
+        "lg-structured"
+      ],
+      "human_review": true
+    },
+    {
+      "id": "a20-en",
+      "question": "For ToolStrategy validation failures, how does handle_errors=False differ from handle_errors=ValueError?",
+      "language": "en",
+      "category": "long_tail",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "lg-structured",
+          "quote": "handle_errors=ValueError  # Only retry on ValueError, raise others",
+          "start_offset": 38599,
+          "end_offset": 38665,
+          "start_line": 1040,
+          "end_line": 1040
+        },
+        {
+          "document_id": "lg-structured",
+          "quote": "handle_errors=False  # All errors raised",
+          "start_offset": 41265,
+          "end_offset": 41305,
+          "start_line": 1126,
+          "end_line": 1126
+        }
+      ],
+      "expected_behavior": "False让错误抛出；ValueError仅对匹配类型重试，其余抛出。",
+      "reading_ids": [
+        "lg-structured"
+      ],
+      "human_review": false,
+      "pair_id": "a20"
+    },
+    {
+      "id": "a21",
+      "question": "模型训练和把工具结果放回上下文，是同一件事吗？请结合两篇资料说明。",
+      "language": "zh",
+      "category": "cross_document",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "hf-post-training",
+          "quote": "It involves training the model on a task-specific dataset with labeled examples.",
+          "start_offset": 996,
+          "end_offset": 1076,
+          "start_line": 11,
+          "end_line": 11
+        },
+        {
+          "document_id": "hf-observations",
+          "quote": "**Appends Results:** Integrates the new information into its existing context, effectively updating its memory.",
+          "start_offset": 511,
+          "end_offset": 622,
+          "start_line": 12,
+          "end_line": 12
+        }
+      ],
+      "expected_behavior": "区分SFT训练与运行时上下文更新；模型权重是否改变的推导须标为补充解释。",
+      "reading_ids": [
+        "hf-post-training",
+        "hf-observations"
+      ],
+      "human_review": false
+    },
+    {
+      "id": "a22",
+      "question": "pi默认把所有工具串行执行吗？某个工具要求sequential时整个批次怎么办？",
+      "language": "zh",
+      "category": "conditions",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": true,
+      "evidence": [
+        {
+          "document_id": "pi-agent",
+          "quote": "`parallel` (default)",
+          "start_offset": 3297,
+          "end_offset": 3317,
+          "start_line": 111,
+          "end_line": 111
+        },
+        {
+          "document_id": "pi-agent",
+          "quote": "the entire batch executes sequentially regardless of the global setting.",
+          "start_offset": 3955,
+          "end_offset": 4027,
+          "start_line": 116,
+          "end_line": 116
+        }
+      ],
+      "expected_behavior": "按该提交默认parallel；任一工具executionMode为sequential会使整个批次串行。",
+      "reading_ids": [
+        "pi-agent"
+      ],
+      "human_review": false
+    },
+    {
+      "id": "n01",
+      "question": "这些资料给出的RAG端到端P99延迟保证是多少毫秒？",
+      "language": "zh",
+      "category": "unanswerable",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": false,
+      "evidence": [],
+      "reading_ids": [
+        "lg-retrieval"
+      ],
+      "human_review": true,
+      "expected_behavior": "所给资料没有这项数值或保证；不能编造。只读到片段时说明是当前证据不足，不能声称已检查全文。"
+    },
+    {
+      "id": "n02",
+      "question": "这个课程给出的DeepSeek训练完整模型的精确GPU数量和账单是多少？",
+      "language": "zh",
+      "category": "unanswerable",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": false,
+      "evidence": [],
+      "reading_ids": [
+        "hf-rl"
+      ],
+      "human_review": true,
+      "expected_behavior": "所给资料没有这项数值或保证；不能编造。只读到片段时说明是当前证据不足，不能声称已检查全文。"
+    },
+    {
+      "id": "n03",
+      "question": "使用pi以后，我这个项目的开发效率必然提高百分之多少？",
+      "language": "zh",
+      "category": "unanswerable",
+      "origin": "assistant-authored-before-run",
+      "gold_status": "provisional",
+      "answerable": false,
+      "evidence": [],
+      "reading_ids": [
+        "pi-overview",
+        "pi-agent"
+      ],
+      "human_review": true,
+      "expected_behavior": "所给资料没有这项数值或保证；不能编造。只读到片段时说明是当前证据不足，不能声称已检查全文。"
+    },
+    {
+      "id": "u01",
+      "question": "完整的RAG应该包括哪些部分",
+      "language": "zh",
+      "category": "user_holdout",
+      "origin": "user-verbatim",
+      "gold_status": "human_pending",
+      "answerable": null,
+      "evidence": [],
+      "reading_ids": [
+        "lg-retrieval",
+        "hf-rag"
+      ],
+      "human_review": true,
+      "expected_behavior": "检查是否区分基础流水线与生产要求；出处未涵盖的权限、评测等应标为补充解释。"
+    },
+    {
+      "id": "u02",
+      "question": "怎么保证agent结构化输出",
+      "language": "zh",
+      "category": "user_holdout",
+      "origin": "user-verbatim",
+      "gold_status": "human_pending",
+      "answerable": null,
+      "evidence": [],
+      "reading_ids": [
+        "lg-structured"
+      ],
+      "human_review": true,
+      "expected_behavior": "检查是否区分格式/Schema约束与语义正确，说明能力条件、校验、失败处理，避免保证永不出错。"
+    },
+    {
+      "id": "u03",
+      "question": "什么是模型后训练",
+      "language": "zh",
+      "category": "user_holdout",
+      "origin": "user-verbatim",
+      "gold_status": "human_pending",
+      "answerable": null,
+      "evidence": [],
+      "reading_ids": [
+        "hf-post-training",
+        "hf-rl"
+      ],
+      "human_review": true,
+      "expected_behavior": "资料覆盖SFT与RL的入门内容，不是后训练全景；检查是否承认边界，区分训练与RAG/提示词。"
+    },
+    {
+      "id": "u04",
+      "question": "agent开发是否推荐从例如pi这样的开源架构起步",
+      "language": "zh",
+      "category": "user_holdout",
+      "origin": "user-verbatim",
+      "gold_status": "human_pending",
+      "answerable": null,
+      "evidence": [],
+      "reading_ids": [
+        "pi-overview",
+        "pi-agent"
+      ],
+      "human_review": true,
+      "expected_behavior": "pi暂按badlogic/pi-mono理解；检查是否结合用户学习目标给出有条件建议，不把README主张当作适用性证明。"
+    }
+  ]
+}

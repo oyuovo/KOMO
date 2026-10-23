@@ -35,7 +35,6 @@ public class KnowledgeDraftService {
 
     private final KnowledgeDraftRepository draftRepository;
     private final KnowledgeRepository knowledgeRepository;
-    private final KnowledgeIndexService indexService;
     private final KnowledgeBaseService knowledgeBaseService;
     private final KnowledgeLinkRepository knowledgeLinkRepository;
     private final WikiLinkService wikiLinkService;
@@ -105,8 +104,6 @@ public class KnowledgeDraftService {
             draftRepository.save(draft);
             return saved;
         });
-        indexService.indexEntry(entry.getId(), entry.getUserId(), entry.getKnowledgeBaseId(),
-            entry.getTitle(), entry.getContentPlain(), entry.getContent());
         wikiLinkService.syncLinks(entry.getUserId(), entry.getId());
         return entry;
     }

@@ -138,7 +138,7 @@ public class KnowledgeController {
         return ResponseEntity.ok(ApiResponse.success(KnowledgeResponse.from(merged)));
     }
 
-    /** 手动重建当前用户的 ES 文档，不删除共享索引。 */
+    /** 补建当前用户的检索文档并清理旧版本，不影响其他用户。 */
     @PostMapping("/reindex")
     public ResponseEntity<ApiResponse<Map<String, Object>>> reindexAll() {
         int count = knowledgeService.reindexAll();

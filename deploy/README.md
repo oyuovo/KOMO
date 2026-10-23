@@ -31,7 +31,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Upload failed' }
 ssh ubuntu@43.142.82.207
 ```
 
-进入服务器后，先备份数据库及当前源码配置。备份可能含环境密钥，保存在服务器上，不要提交到 GitHub。以下操作保留 Docker 数据卷；不用 `down -v`，也不删除 ES 索引。
+进入服务器后，先备份数据库及当前源码配置。备份可能含环境密钥，保存在服务器上，不要提交到 GitHub。以下操作保留 Docker 数据卷；不用 `down -v`，保留旧检索卷用于回退。
 
 在交互式 SSH 中逐步执行并检查返回结果，不要先设置 `set -e`，否则一个失败命令就可能结束 SSH 会话。若旧备份脚本在 `source .env` 时报 `$'\r': command not found`，先单独上传新版 `deploy/backup.sh`；新版直接读取容器配置，不需要修改服务器密钥文件。
 
@@ -46,16 +46,15 @@ tar -xzf /tmp/komo-update.tar.gz -C /opt/komo
 cd /opt/komo/docker
 sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet
 
-# 基础镜像仍是 ES 8.12.0，构建增加 analysis-smartcn 插件。
-sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml build elasticsearch
-sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps elasticsearch ai-service
+# 先在docker/.env配置AI_INTERNAL_TOKEN，并向Java提供相同值。
+sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml build ai-service
+sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d qdrant ai-service
 # Python 源码是只读挂载，配置没变时 up 不会重启它，必须显式 restart。
 sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml restart ai-service
-sudo docker exec komo-es bin/elasticsearch-plugin list
 curl -fsS http://127.0.0.1:8001/health
 ```
 
-ES 插件不会改变现有索引的分词器，也不会自动重建知识数据。构建可能需要从外网下载插件；失败时先解决下载问题，不要跳过失败继续更新。此轮 Python 依赖未变，无须重建 AI 依赖镜像。
+Python依赖已变更，必须重建AI镜像。首次检索需下载embedding模型，建议先预热，随后从设置页维护检索索引。验证Java、Python与Qdrant的新链路后，再停止并移除旧komo-es容器；不要删除业务数据库或旧数据卷。详见`KOMO/ai-service/RETRIEVAL.md`。
 
 本次后端 unit 加入了桌面客户端的 CORS Origin。先查看服务器的定制项，再安装仓库 unit；如果线上有额外域名、JVM 参数或路径，保留这些配置。仅更新 JAR 不会更新 systemd 配置。
 
@@ -93,7 +92,7 @@ sudo journalctl -u komo-backend -n 80 --no-pager
 sudo docker logs --tail 80 komo-ai
 ```
 
-再用线上账号发起一轮对话，检查标题和列表换行，并等待待审草稿生成。本地测试账号、已有对话和草稿不会随 Git 推送或这套部署操作传到服务器。桌面安装包也不由这些脚本发布，需要另行构建。
+再用线上账号打开文档并提问，确认回答完成、原文引用可展开、刷新后回答与引用仍在，并验证普通聊天。草稿提取默认暂停，不应等待新草稿生成。本地测试账号、已有对话和草稿不会随 Git 推送或这套部署操作传到服务器。桌面安装包也不由这些脚本发布，需要另行构建。
 
 ## 后端就绪检查与 exit code 7（2026-10-15）
 

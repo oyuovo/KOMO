@@ -37,7 +37,6 @@ class KnowledgeDraftConfirmationTest {
     private final KnowledgeRepository entries = mock(KnowledgeRepository.class);
     private final KnowledgeBaseRepository bases = mock(KnowledgeBaseRepository.class);
     private final KnowledgeLinkRepository links = mock(KnowledgeLinkRepository.class);
-    private final KnowledgeIndexService index = mock(KnowledgeIndexService.class);
     private final WikiLinkService wiki = mock(WikiLinkService.class);
     private final TransactionTemplate tx = mock(TransactionTemplate.class);
     private KnowledgeDraftService service;
@@ -48,7 +47,7 @@ class KnowledgeDraftConfirmationTest {
     @BeforeEach
     void setup() {
         SecurityContext.setCurrentUserId(user);
-        service = new KnowledgeDraftService(drafts, entries, index, new KnowledgeBaseService(bases), links, wiki, tx);
+        service = new KnowledgeDraftService(drafts, entries, new KnowledgeBaseService(bases), links, wiki, tx);
         draft = KnowledgeDraft.builder().userId(user).title("新补充").content("需要保存的正文")
             .extractType(KnowledgeDraft.ExtractType.SUPPLEMENT).build();
         draft.setId(draftId);
@@ -82,8 +81,7 @@ class KnowledgeDraftConfirmationTest {
             assertTrue(inTransaction);
             return invocation.getArgument(0);
         });
-        doAnswer(invocation -> { assertFalse(inTransaction); return null; })
-            .when(index).indexEntry(any(), any(), any(), any(), any(), any());
+
     }
 
     @AfterEach
@@ -133,7 +131,7 @@ class KnowledgeDraftConfirmationTest {
         verify(entries, never()).save(any());
         verify(links, never()).save(any());
         verify(drafts, never()).save(any());
-        verifyNoInteractions(index, wiki);
+        verifyNoInteractions(wiki);
         assertEquals(KnowledgeDraft.DraftStatus.PENDING, draft.getStatus());
     }
 
@@ -146,7 +144,7 @@ class KnowledgeDraftConfirmationTest {
         assertEquals(KnowledgeDraft.DraftStatus.EDITED, draft.getStatus());
         assertEquals("编辑正文", draft.getContent());
         verify(links).save(argThat(link -> link.getTargetEntryId().equals(parentId)));
-        verify(index).indexEntry(saved.getId(), user, kbId, "编辑标题", "编辑正文", "编辑正文");
+        verify(wiki).syncLinks(user, saved.getId());
     }
 
     @Test
@@ -186,6 +184,6 @@ class KnowledgeDraftConfirmationTest {
         draft.setStatus(KnowledgeDraft.DraftStatus.CONFIRMED);
         assertThrows(BusinessException.class, () -> service.confirm(draftId, kbId));
         verify(entries, never()).save(any());
-        verifyNoInteractions(links, index, wiki);
+        verifyNoInteractions(links, wiki);
     }
 }

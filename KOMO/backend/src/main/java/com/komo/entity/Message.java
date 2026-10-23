@@ -35,6 +35,10 @@ public class Message extends BaseEntity {
     @Column(name = "tokens_used")
     private Integer tokensUsed;
 
+    /** 阅读时使用的文档版本、原文片段与引用检查结果；历史消息可为空。 */
+    @Column(name = "reading_context", columnDefinition = "TEXT")
+    private String readingContext;
+
     public enum MessageRole {
         USER, ASSISTANT
     }

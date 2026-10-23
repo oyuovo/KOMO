@@ -28,13 +28,21 @@ services:
     container_name: komo-ai
     restart: unless-stopped
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
     environment:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - AI_INTERNAL_TOKEN=${AI_INTERNAL_TOKEN:?Set AI_INTERNAL_TOKEN in docker/.env}
+      - QDRANT_URL=http://qdrant:6333
+      - EMBEDDING_CACHE_DIR=/models
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-BAAI/bge-small-zh-v1.5}
     volumes:
       - ../KOMO/ai-service:/app
+      - embedding_cache:/models
     networks:
       - komo-net
+    depends_on:
+      qdrant:
+        condition: service_started
     command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 
   rabbitmq:
@@ -57,28 +65,22 @@ services:
     networks:
       - komo-net
 
-  elasticsearch:
-    build:
-      context: ./elasticsearch
-    image: komo-elasticsearch:8.12.0-smartcn
-    container_name: komo-es
+  qdrant:
+    image: qdrant/qdrant:v1.15.1
+    container_name: komo-qdrant
     restart: unless-stopped
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=true
-      - ELASTIC_PASSWORD=${ES_PASSWORD:?Set ES_PASSWORD in docker/.env}
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
     ports:
-      - "9201:9200"
+      - "127.0.0.1:6333:6333"
     volumes:
-      - es_data:/usr/share/elasticsearch/data
+      - qdrant_data:/qdrant/storage
     networks:
       - komo-net
 
 volumes:
   postgres_data:
   rabbitmq_data:
-  es_data:
+  qdrant_data:
+  embedding_cache:
 
 networks:
   komo-net:

@@ -149,6 +149,42 @@
 }
 
 /* 面板内 markdown 紧凑化 */
+.editLink {
+  flex-shrink: 0;
+  color: var(--komo-accent);
+  font-size: 12px;
+}
+
+.evidence {
+  margin-top: 12px;
+  border-top: 1px solid var(--komo-border);
+  padding-top: 8px;
+}
+
+.evidenceNote {
+  color: var(--komo-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.source {
+  margin: 8px 0;
+  font-size: 12px;
+}
+
+.source summary {
+  cursor: pointer;
+  color: var(--komo-accent);
+  overflow-wrap: anywhere;
+}
+
+.source pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
 .bubble :global(h1),
 .bubble :global(h2),
 .bubble :global(h3) {

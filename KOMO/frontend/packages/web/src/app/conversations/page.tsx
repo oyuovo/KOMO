@@ -58,7 +58,7 @@ function ConversationsContent() {
           <p className={styles.placeholderIcon}>💬</p>
           <p className={styles.placeholderTitle}>选择或创建一个对话</p>
           <p className={styles.placeholderDesc}>
-            选择知识库创建对话，AI 将基于知识库内容回答并自动提取知识
+            选择知识库进行一般讨论；围绕某篇文档学习，请打开文章使用阅读问答
           </p>
         </div>
       </main>

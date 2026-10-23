@@ -20,11 +20,15 @@ class AsyncServicesTest(unittest.IsolatedAsyncioTestCase):
 
         async def chunks():
             yield types.SimpleNamespace(choices=[types.SimpleNamespace(
-                delta=types.SimpleNamespace(content="first token"))])
+                finish_reason=None, delta=types.SimpleNamespace(content="first token"))])
 
         async def provider(**kwargs):
             if kwargs.get("stream"):
-                return chunks()
+                iterator = chunks()
+                class Response:
+                    def __aiter__(self): return iterator
+                    async def close(self): await iterator.aclose()
+                return Response()
             entered.set()
             await release.wait()
             return types.SimpleNamespace(choices=[types.SimpleNamespace(

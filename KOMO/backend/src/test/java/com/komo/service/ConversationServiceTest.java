@@ -37,13 +37,13 @@ class ConversationServiceTest {
             mock(MessageRepository.class),
             mock(ConversationPersistenceService.class),
             draftService,
-            mock(KnowledgeIndexService.class),
+            mock(KnowledgeRetrievalService.class),
             mock(KnowledgeBaseService.class),
             mock(KnowledgeRepository.class),
             mock(DedupService.class),
             mock(RabbitTemplate.class),
             mock(UserService.class),
-            restTemplate
+            restTemplate, mock(ReadingConversationService.class)
         );
     }
 
@@ -56,13 +56,13 @@ class ConversationServiceTest {
             mock(MessageRepository.class),
             mock(ConversationPersistenceService.class),
             mock(KnowledgeDraftService.class),
-            mock(KnowledgeIndexService.class),
+            mock(KnowledgeRetrievalService.class),
             mock(KnowledgeBaseService.class),
             knowledgeRepository,
             mock(DedupService.class),
             mock(RabbitTemplate.class),
             mock(UserService.class),
-            mock(RestTemplate.class)
+            mock(RestTemplate.class), mock(ReadingConversationService.class)
         );
     }
 
@@ -227,13 +227,13 @@ class ConversationServiceTest {
             mock(MessageRepository.class),
             mock(ConversationPersistenceService.class),
             mock(KnowledgeDraftService.class),
-            mock(KnowledgeIndexService.class),
+            mock(KnowledgeRetrievalService.class),
             mock(KnowledgeBaseService.class),
             mock(KnowledgeRepository.class),
             mock(DedupService.class),
             rabbitTemplate,
             userService,
-            mock(RestTemplate.class)
+            mock(RestTemplate.class), mock(ReadingConversationService.class)
         );
 
         // triggerExtraction 对 READING 对话直接拒绝

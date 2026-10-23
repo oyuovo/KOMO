@@ -58,3 +58,6 @@ komo-frontend.tar.gz
 .local/
 qa-shots/
 .qoder/
+
+# Local embedding downloads
+.cache/

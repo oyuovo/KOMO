@@ -17,13 +17,13 @@
                          ▼
               ┌──────────────────┐
               │  Docker Compose   │
-              │  PG / ES / MQ     │
+              │ PG / Qdrant / MQ  │
               └──────────────────┘
 ```
 
 ## 1. 前置要求
 
-- **VPS**: 2 核 CPU / 4 GB RAM 以上（Elasticsearch 需要至少 512 MB 堆内存）
+- **VPS**: 2 核 CPU / 4 GB RAM 以上（embedding推理与索引会占用额外内存，须以实际语料测量）
 - **OS**: Ubuntu 22.04+ / Debian 12+
 - **域名**: 一个已解析到 VPS IP 的域名（例如 `komo.example.com`）
 - **软件**:
@@ -68,7 +68,7 @@ cp docker/.env.example docker/.env
 echo "JWT_SECRET=$(openssl rand -base64 32)" >> docker/.env
 echo "DB_PASSWORD=$(openssl rand -base64 24)" >> docker/.env
 echo "RABBITMQ_PASS=$(openssl rand -base64 24)" >> docker/.env
-echo "ES_PASSWORD=$(openssl rand -base64 24)" >> docker/.env
+echo "AI_INTERNAL_TOKEN=$(openssl rand -base64 32)" >> docker/.env
 
 # 编辑 docker/.env，填入你的 DeepSeek API Key
 nano docker/.env
@@ -82,8 +82,7 @@ DB_USER=komo
 DB_PASSWORD=<生成的密码>
 RABBITMQ_USER=komo
 RABBITMQ_PASS=<生成的密码>
-ES_USERNAME=elastic
-ES_PASSWORD=<生成的密码>
+AI_INTERNAL_TOKEN=<独立生成的内部服务密钥>
 JWT_SECRET=<生成的 256-bit base64>
 DEEPSEEK_API_KEY=sk-your-key-here
 ```
@@ -95,7 +94,7 @@ DEEPSEEK_API_KEY=sk-your-key-here
 **不要手改 `docker/docker-compose.yml`** —— 那是本地开发用的，改了会与仓库版本持续冲突。
 生产用随仓提供的覆盖文件 `docker/docker-compose.prod.yml`，它做了三件事：
 
-1. **数据端口全部改绑 `127.0.0.1`** —— PG(5434)、ES(9201)、RabbitMQ(5672)、AI(8001)。
+1. **数据端口全部改绑 `127.0.0.1`** —— PG(5434)、Qdrant(6333)、RabbitMQ(5672)、AI(8001)。
    基础文件把它们发布到 `0.0.0.0`，在公网服务器上等于直接摆到全网扫描器面前。
 2. **15672 RabbitMQ 管理台不再发布**。确实需要看的时候用 SSH 转发，不要改配置：
    ```bash
@@ -135,8 +134,7 @@ export RABBITMQ_HOST=localhost
 export RABBITMQ_PORT=5672
 export RABBITMQ_USER=komo
 export RABBITMQ_PASS=<从 docker/.env 获取>
-export ES_USERNAME=elastic
-export ES_PASSWORD=<从 docker/.env 获取>
+export AI_INTERNAL_TOKEN=<从 docker/.env 获取>
 export JWT_SECRET=<从 docker/.env 获取>
 export AI_SERVICE_URL=http://localhost:8001
 
@@ -161,7 +159,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 docker ps --format "{{.Names}}: {{.Status}}"
 # 预期输出：
 # komo-postgres: Up ...
-# komo-es: Up ...
+# komo-qdrant: Up ...
 # komo-rabbitmq: Up ...
 # komo-ai: Up ...
 ```
@@ -185,7 +183,8 @@ scp target\komo-backend-0.1.0.jar ubuntu@<服务器IP>:/opt/komo/komo-backend.ja
 cd /opt/komo
 export $(grep -v '^#' /opt/komo/docker/.env | xargs)
 export DB_HOST=localhost DB_PORT=5434 RABBITMQ_HOST=localhost RABBITMQ_PORT=5672
-export ES_USERNAME=elastic ES_HOST=localhost ES_PORT=9201 AI_SERVICE_URL=http://localhost:8001
+export AI_SERVICE_URL=http://localhost:8001
+export AI_INTERNAL_TOKEN=<从 docker/.env 获取>
 export SERVER_ADDRESS=127.0.0.1 COOKIE_SECURE=true JPA_DDL_AUTO=update
 java -jar /opt/komo/komo-backend.jar
 ```
@@ -193,7 +192,7 @@ java -jar /opt/komo/komo-backend.jar
 ### 使用 systemd 管理后端
 
 > unit 文件已随仓库提供：**`deploy/komo-backend.service`**（含 `COOKIE_SECURE=true`、`JPA_DDL_AUTO`、
-> `JAVA_TOOL_OPTIONS` 限堆、`ES_HOST/ES_PORT` 等生产必设项，比下面的示例更全）。
+> `JAVA_TOOL_OPTIONS` 限堆、`AI_INTERNAL_TOKEN` 等生产必设项，比下面的示例更全）。
 > 安装：`sudo cp deploy/komo-backend.service /etc/systemd/system/ && sudo systemctl daemon-reload`。
 > 首次部署用 `JPA_DDL_AUTO=update` 建表，确认表结构后改 `validate` 并重启。
 
@@ -213,7 +212,6 @@ Environment=DB_HOST=localhost
 Environment=DB_PORT=5434
 Environment=RABBITMQ_HOST=localhost
 Environment=RABBITMQ_PORT=5672
-Environment=ES_USERNAME=elastic
 Environment=AI_SERVICE_URL=http://localhost:8001
 Environment=JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 # fat JAR 由本地 mvn package 构建后 scp 到此路径（见 §6）；服务器无 Maven。
@@ -459,7 +457,7 @@ curl https://komo.example.com/api/health
 # Docker 容器日志
 docker logs komo-postgres --tail 50
 docker logs komo-ai --tail 50
-docker logs komo-es --tail 50
+docker logs komo-qdrant --tail 50
 
 # 后端日志（systemd）
 sudo journalctl -u komo-backend -f

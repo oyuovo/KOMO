@@ -17,6 +17,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { getMessages, type MessageData } from '@komo/shared/api-client';
+import { mergeConversationMessages } from './conversationMessages';
 import {
   conversationStreamStore,
   type ConversationStreamState,
@@ -28,6 +29,7 @@ export interface UseConversationStreamResult {
   /** 服务端消息 + 流式乐观消息的合并展示列表 */
   displayMessages: MessageData[];
   loading: boolean;
+  canSend: boolean;
   error: string | null;
   /** 是否正在流式输出 */
   sending: boolean;
@@ -48,9 +50,10 @@ export function useConversationStream(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [input, setInput] = useState('');
-  // 最近一次消息列表拉取完成时间（客户端时钟），
-  // 用于判断流式交换是否已存在于服务端消息中
-  const lastFetchTimeRef = useRef(0);
+  const scope = useMemo(() => ({ id: conversationId, active: false, request: 0 }), [conversationId]);
+  const [readyScope, setReadyScope] = useState<typeof scope | null>(null);
+  const currentScope = useRef(scope);
+  currentScope.current = scope;
   const onDoneRef = useRef(options?.onDone);
   onDoneRef.current = options?.onDone;
 
@@ -64,96 +67,91 @@ export function useConversationStream(
   const activeStream: ConversationStreamState | null =
     conversationId ? streams[conversationId] ?? null : null;
   const sending = activeStream?.phase === 'streaming';
+  const canSend = readyScope === scope && !loading && !sending && activeStream?.phase !== 'done';
 
   const reload = useCallback(async () => {
-    if (!conversationId) return;
-    const msgs = await getMessages(conversationId);
-    setMessages(msgs);
-    lastFetchTimeRef.current = Date.now();
-  }, [conversationId]);
+    if (!scope.id || !scope.active) return;
+    const request = ++scope.request;
+    setLoading(true);
+    setError(null);
+    const current = () => scope.active && currentScope.current === scope && request === scope.request;
+    try {
+      const msgs = await getMessages(scope.id);
+      if (!current()) return;
+      setMessages(msgs);
+      setReadyScope(scope);
+      const stream = conversationStreamStore.getSnapshot()[scope.id];
+      if (stream?.phase === 'done' && msgs.some(message => message.id === stream.assistantMessageId)) {
+        conversationStreamStore.clear(scope.id, stream);
+        onDoneRef.current?.();
+      }
+    } catch (err) {
+      if (current()) setError((err as Error).message);
+    } finally {
+      if (current()) setLoading(false);
+    }
+  }, [scope]);
 
   // 会话切换时重置并拉取
   useEffect(() => {
-    if (!conversationId) return;
-    setLoading(true);
+    scope.active = true;
+    setLoading(Boolean(scope.id));
     setError(null);
     setMessages([]);
-    reload()
-      .catch((err) => setError((err as Error).message))
-      .finally(() => setLoading(false));
-  }, [conversationId, reload]);
+    setReadyScope(null);
+    void reload();
+    return () => { scope.active = false; };
+  }, [scope, reload]);
 
-  // 合并服务端消息与流式状态：发送中的乐观消息、切页返回后的部分回复都在这里拼装。
-  // 判断依据（同一客户端时钟，无服务器时钟偏差问题）：
-  //   - 消息列表在流开始之后拉取过 → 后端已落库用户消息（streamMessage 先存用户消息再流式）
-  //   - 此时尾条已是 AI 回复 → 本次回复也已落库（done/断连后重进页面）
-  const displayMessages = useMemo<MessageData[]>(() => {
-    if (!activeStream || !conversationId) return messages;
-    // 网络错误且未收到任何内容 → 回滚乐观消息
-    if (activeStream.phase === 'error' && !activeStream.aiContent) return messages;
-
-    const userPersisted = lastFetchTimeRef.current > activeStream.startedAt;
-    const tail = messages[messages.length - 1];
-    const assistantPersisted = userPersisted && tail?.role === 'ASSISTANT';
-
-    const result = [...messages];
-    if (!userPersisted) {
-      result.push({
-        id: `stream-user-${activeStream.startedAt}`,
-        conversationId,
-        role: 'USER',
-        content: activeStream.userContent,
-        tokensUsed: null,
-        createdAt: new Date(activeStream.startedAt).toISOString(),
-      });
-    }
-    if (!assistantPersisted) {
-      result.push({
-        id: `stream-ai-${activeStream.startedAt}`,
-        conversationId,
-        role: 'ASSISTANT',
-        content: activeStream.aiContent,
-        tokensUsed: null,
-        createdAt: new Date(activeStream.startedAt).toISOString(),
-      });
-    }
-    return result;
-  }, [messages, activeStream, conversationId]);
+  const displayMessages = useMemo(() => readyScope === scope
+    ? mergeConversationMessages(messages, activeStream, conversationId) : [],
+    [messages, activeStream, conversationId, readyScope, scope]);
 
   // 流结束/出错后的对齐：done → 重拉已落库消息并清理流状态；error → 提示与回滚。
   useEffect(() => {
-    if (!activeStream || !conversationId || loading) return;
+    if (!activeStream || !conversationId || loading || readyScope !== scope) return;
+    let cancelled = false;
     if (activeStream.phase === 'done') {
-      reload()
-        .then(() => {
-          conversationStreamStore.clear(conversationId);
+      const request = ++scope.request;
+      getMessages(conversationId)
+        .then((msgs) => {
+          if (cancelled || currentScope.current !== scope || request !== scope.request) return;
+          setMessages(msgs);
+          if (!msgs.some(message => message.id === activeStream.assistantMessageId)) {
+            setError('回答已生成，历史消息尚未同步，请重新加载会话');
+            return;
+          }
+          conversationStreamStore.clear(conversationId, activeStream);
           onDoneRef.current?.();
         })
         .catch(() => {
-          // 拉取失败：保留流式内容展示，下次进入页面再对齐
+          if (!cancelled) setError('回答已生成，历史消息加载失败，请重新加载会话');
         });
     } else if (activeStream.phase === 'error') {
       setError(activeStream.error ?? 'AI 服务连接中断');
       if (!activeStream.aiContent) {
         // 完全没收到内容：回滚乐观消息，恢复输入框
         setInput(activeStream.userContent);
-        conversationStreamStore.clear(conversationId);
+        conversationStreamStore.clear(conversationId, activeStream);
       }
     }
-  }, [activeStream, loading, conversationId, reload]);
+    return () => { cancelled = true; };
+  }, [activeStream, loading, conversationId, scope, readyScope]);
 
   const handleSend = useCallback(async () => {
     if (!conversationId) return;
     const content = input.trim();
-    if (!content || sending) return;
+    if (!content || !canSend) return;
+    setError(null);
     setInput('');
-    await conversationStreamStore.start(conversationId, content);
-  }, [conversationId, input, sending]);
+    await conversationStreamStore.start(conversationId, content, messages.map(message => message.id));
+  }, [conversationId, input, canSend, messages]);
 
   return {
     messages,
     displayMessages,
     loading,
+    canSend,
     error,
     sending,
     input,

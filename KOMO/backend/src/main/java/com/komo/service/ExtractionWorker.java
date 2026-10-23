@@ -27,7 +27,8 @@ public class ExtractionWorker {
         this.conversationService = conversationService;
     }
 
-    @RabbitListener(queues = "komo.extraction.queue", concurrency = "1")
+    @RabbitListener(queues = "komo.extraction.queue", concurrency = "1",
+        autoStartup = "${komo.extraction.enabled:false}")
     public void handleExtractionTask(ExtractionTaskPayload payload) {
         log.info("[extraction-worker] 收到提取任务 conversationId={} messageId={} messagesCount={}",
             payload.conversationId(), payload.messageId(), payload.messages().size());

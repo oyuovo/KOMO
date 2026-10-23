@@ -73,6 +73,7 @@
 /* Top Meta */
 .topMeta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   font-size: var(--komo-text-sm);
@@ -376,10 +377,26 @@
 
 /* AI 问答 tab 激活：右侧栏改为弹性布局，面板内部自己滚动 */
 .tocFloatAgent {
+  width: 380px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding-bottom: 16px;
+  padding: 24px 16px 16px;
+}
+
+.readingToggle {
+  border: 0;
+  background: var(--komo-accent-soft);
+  color: var(--komo-accent);
+  padding: 4px 10px;
+  border-radius: var(--komo-radius-sm);
+  font: inherit;
+  cursor: pointer;
+}
+
+@media (max-width: 800px) {
+  .sidebar { display: none; }
+  .articleContainer { padding: 24px 16px 64px; }
 }
 
 /* Embed widget inside floating panel */

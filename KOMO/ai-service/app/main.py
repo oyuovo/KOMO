@@ -7,6 +7,8 @@ from app.api.chat import router as chat_router
 from app.api.extraction import router as extraction_router
 from app.api.dedup import router as dedup_router
 from app.api.recommendation import router as recommendation_router
+from app.api.reading import router as reading_router
+from app.api.retrieval import router as retrieval_router
 from app.core.config import ALLOWED_ORIGINS
 
 # 输出应用日志，使提取候选数、过滤数量和异常可在本地及容器日志中追踪。
@@ -26,6 +28,8 @@ app.include_router(chat_router)
 app.include_router(extraction_router)
 app.include_router(dedup_router)
 app.include_router(recommendation_router)
+app.include_router(reading_router)
+app.include_router(retrieval_router)
 
 
 @app.get("/health")

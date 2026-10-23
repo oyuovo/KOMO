@@ -45,14 +45,14 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
     private static final Logger log = LoggerFactory.getLogger(KnowledgeService.class);
 
     private final KnowledgeLinkRepository knowledgeLinkRepository;
-    private final KnowledgeIndexService indexService;
+    private final KnowledgeRetrievalService indexService;
     private final KnowledgeBaseService knowledgeBaseService;
     private final WikiLinkService wikiLinkService;
     private final TransactionTemplate transactionTemplate;
 
     public KnowledgeService(KnowledgeRepository repository,
                             KnowledgeLinkRepository knowledgeLinkRepository,
-                            KnowledgeIndexService indexService,
+                            KnowledgeRetrievalService indexService,
                             KnowledgeBaseService knowledgeBaseService,
                             WikiLinkService wikiLinkService,
                             TransactionTemplate transactionTemplate) {
@@ -108,9 +108,7 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
                 .categoryId(request.getCategoryId())
                 .tagNames(request.getTags())
                 .build()));
-        indexService.indexEntry(entry.getId(), entry.getUserId(), entry.getKnowledgeBaseId(),
-            entry.getTitle(), entry.getContentPlain(), entry.getContent());
-        // 同步 [[wiki 链接]]（纯 DB 操作，独立于 ES 索引同步）
+        // 同步 [[wiki 链接]]（纯 DB 操作，检索在读取当前版本时补建）
         wikiLinkService.syncLinks(entry.getUserId(), entry.getId());
         return entry;
     }
@@ -126,8 +124,6 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
             current.setTagNames(request.getTags());
             return repository.save(current);
         });
-        indexService.updateEntry(entry.getId(), entry.getUserId(), entry.getKnowledgeBaseId(),
-            entry.getTitle(), entry.getContentPlain(), entry.getContent());
         wikiLinkService.syncLinks(entry.getUserId(), entry.getId());
         return entry;
     }
@@ -138,7 +134,6 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
             current.setDeletedAt(LocalDateTime.now());
             return repository.save(current);
         });
-        indexService.deleteEntry(id);
         // 清理该文章的 wiki 链接（出链 + 入链），系统关联保持原行为
         wikiLinkService.deleteRelatedLinks(id);
         log.info("[AUDIT] action=DELETE_KNOWLEDGE userId={} entryId={} title={}",
@@ -262,11 +257,7 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "合并失败，请重试");
         }
 
-        // 外部 ES 调用必须发生在数据库事务提交之后。
-        indexService.updateEntry(
-            merged.getId(), merged.getUserId(), merged.getKnowledgeBaseId(),
-            merged.getTitle(), merged.getContentPlain(), merged.getContent());
-        indexService.deleteEntry(fragmentId);
+        // 检索只接受当前版本快照，无外部索引双写。
         // 合并后目标文章内容变化，同步 wiki 链接
         wikiLinkService.syncLinks(merged.getUserId(), merged.getId());
         return merged;
@@ -386,10 +377,9 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
         return union.isEmpty() ? 0 : (double) intersection.size() / union.size();
     }
 
-    /** 手动重建 ES 索引：从 DB 全量回填当前用户未删除条目。返回索引条数。 */
+    /** 补建当前版本并清理本用户的旧检索片段。 */
     public int reindexAll() {
         UUID userId = SecurityContext.getCurrentUserId();
-        List<KnowledgeEntry> allActive = repository.findAllByUserIdAndDeletedAtIsNull(userId);
-        return indexService.reindexUser(userId, allActive);
+        return indexService.reindexUser(userId);
     }
 }

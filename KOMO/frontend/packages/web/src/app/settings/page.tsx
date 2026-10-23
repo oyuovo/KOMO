@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { getMe, logout, listDrafts, listKnowledge, reindexKnowledge, exportKnowledge, updatePreferences, isTauriRuntime, type UserInfo } from '@komo/shared/api-client';
 import { getAutostartEnabled, setAutostartEnabled } from '@/lib/desktop/autostart';
@@ -16,7 +17,6 @@ export default function SettingsPage() {
   const [reindexState, setReindexState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [reindexCount, setReindexCount] = useState(0);
   const [exporting, setExporting] = useState(false);
-  const [autoExtract, setAutoExtract] = useState(true);
   const [dailyRecommendationEnabled, setDailyRecommendationEnabled] = useState(true);
   // 桌面端专属（Tauri 容器内才渲染）：开机自启开关。
   const [isDesktop, setIsDesktop] = useState(false);
@@ -39,7 +39,6 @@ export default function SettingsPage() {
         return;
       }
       setUser(u);
-      setAutoExtract(u.autoExtract);
       setDailyRecommendationEnabled(u.dailyRecommendationEnabled);
       Promise.all([
         listDrafts().then((d) => setDraftCount(d.length)).catch(() => {}),
@@ -47,16 +46,6 @@ export default function SettingsPage() {
       ]);
     }).catch((err) => setAuthError(err.message));
   }, []);
-
-  const handleToggleAutoExtract = async () => {
-    const next = !autoExtract;
-    setAutoExtract(next); // optimistic update
-    try {
-      await updatePreferences({ autoExtract: next });
-    } catch {
-      setAutoExtract(!next); // rollback
-    }
-  };
 
   const handleToggleDailyRecommendation = async () => {
     const next = !dailyRecommendationEnabled;
@@ -179,8 +168,8 @@ export default function SettingsPage() {
         <div className={styles.card}>
           <div className={styles.row}>
             <div>
-              <span className={styles.label}>重建搜索索引</span>
-              <span className={styles.hint}>搜索不到最新内容时可重建</span>
+              <span className={styles.label}>维护检索索引</span>
+              <span className={styles.hint}>补建当前文档的索引，并清理已删除或旧版本片段</span>
             </div>
             <button
               className={styles.reindexBtn}
@@ -191,7 +180,7 @@ export default function SettingsPage() {
             </button>
           </div>
           {reindexState === 'success' && (
-            <p className={styles.reindexSuccess}>已重建 {reindexCount} 条索引</p>
+            <p className={styles.reindexSuccess}>已准备 {reindexCount} 篇文档的检索索引</p>
           )}
           {reindexState === 'error' && (
             <p className={styles.reindexError}>重建失败，请检查后端服务</p>
@@ -200,26 +189,10 @@ export default function SettingsPage() {
       </div>
 
       <div className={styles.section}>
-        <h2 className={styles.sectionTitle}>提取偏好</h2>
+        <h2 className={styles.sectionTitle}>历史草稿</h2>
         <div className={styles.card}>
-          <div className={styles.row}>
-            <div>
-              <span className={styles.label}>自动提取草稿</span>
-              <span className={styles.hint}>
-                {autoExtract
-                  ? '对话结束后自动提取知识草稿（静默模式）'
-                  : '需在对话页手动触发提取，可降低 API 成本'}
-              </span>
-            </div>
-            <label className={styles.toggle}>
-              <input
-                type="checkbox"
-                checked={autoExtract}
-                onChange={handleToggleAutoExtract}
-              />
-              <span className={styles.slider} />
-            </label>
-          </div>
+          <p className={styles.aboutText}>草稿提取已暂停。已有内容仍可查看和处理；阅读后可直接编辑自己的文档。</p>
+          <Link href="/drafts">查看历史草稿（{draftCount}条待处理）</Link>
         </div>
       </div>
 
@@ -276,7 +249,7 @@ export default function SettingsPage() {
         <div className={styles.card}>
           <p className={styles.aboutText}>
             KOMO (Knowledge On My Own) — AI 驱动的个人知识管理工具。
-            核心能力：对话中自动提取和归纳知识要点，帮助你持续积累和发现知识。
+            围绕原文解释和追问，核对依据，用自己的理解完善文档。
           </p>
           <p className={styles.version}>v0.1.0 MVP</p>
         </div>

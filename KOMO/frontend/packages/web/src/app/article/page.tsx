@@ -40,11 +40,8 @@ function extractToc(content: string): TocItem[] {
   return items;
 }
 
-function ArticleContent() {
+function ArticleContent({ id }: { id: string }) {
   const router = useRouter();
-  // 查询参数路由（桌面端静态导出兼容）：id 由 ?id= 提供
-  const searchParams = useSearchParams();
-  const id = searchParams.get('id') ?? '';
 
   const [article, setArticle] = useState<KnowledgeItem | null>(null);
   const [relatedArticles, setRelatedArticles] = useState<KnowledgeItem[]>([]);
@@ -335,6 +332,9 @@ function ArticleContent() {
             <Link href={`/article/edit?id=${article.id}`} className={styles.editLink}>
               编辑
             </Link>
+            <button className={styles.readingToggle} onClick={() => setRightTab(rightTab === 'agent' ? 'toc' : 'agent')}>
+              {rightTab === 'agent' ? '收起问答' : '阅读问答'}
+            </button>
             <span>·</span>
             <button className={styles.deleteLink} onClick={handleDelete}>
               删除
@@ -494,8 +494,10 @@ function ArticleContent() {
             </>
           ) : (
             <ReadingAgentPanel
+              key={article.id}
               articleId={article.id}
               articleTitle={article.title}
+              articleContent={article.content ?? ''}
               quote={agentQuote}
               onQuoteConsumed={() => setAgentQuote(null)}
             />
@@ -505,10 +507,16 @@ function ArticleContent() {
   );
 }
 
+function ArticleRoute() {
+  const params = useSearchParams();
+  const id = params.get('id') ?? '';
+  return <ArticleContent key={id} id={id} />;
+}
+
 export default function ArticlePage() {
   return (
     <Suspense fallback={<div />}>
-      <ArticleContent />
+      <ArticleRoute />
     </Suspense>
   );
 }

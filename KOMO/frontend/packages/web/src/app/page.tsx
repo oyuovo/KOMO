@@ -64,12 +64,12 @@ export default function HomePage() {
         <div className={styles.landingHero}>
           <span className={styles.landingBadge}>Knowledge On My Own</span>
           <h1 className={styles.landingTitle}>
-            把每一次对话
+            读懂文档
             <br />
-            沉淀为自己的知识
+            写下自己的理解
           </h1>
           <p className={styles.landingDesc}>
-            KOMO 是 AI 驱动的个人知识管理工具：与 AI 对话探索新知，系统自动提取要点、查重整合，形成属于你自己的知识库。
+            导入你的文档，围绕原文与AI讨论，核对依据后用自己的理解完善笔记。
           </p>
           <Link href="/login" className={styles.landingCta}>
             登录体验
@@ -146,26 +146,14 @@ export default function HomePage() {
           onStatsChange={setStats}
         />
 
-        {/* Draft Hint */}
-        <div className={styles.draftHint}>
-          <span className={styles.draftHintMsg}>
-            💡 AI 对话完成后知识点会自动提取到草稿，前往审核。
-          </span>
-          <div className={styles.draftHintActions}>
-            <Link href="/drafts" className={styles.draftHintLink}>
-              查看草稿
-            </Link>
-          </div>
-        </div>
-
         {/* Start Conversation */}
         <div className={styles.startConvo}>
-          <h3 className={styles.startConvoTitle}>通过对话发现知识</h3>
+          <h3 className={styles.startConvoTitle}>从一篇文档开始理解</h3>
           <p className={styles.startConvoDesc}>
-            与 DeepSeek AI 对话，系统会自动从回复中提取知识要点。
+            打开文章，在阅读问答中解释概念、追问前提、核对原文，再自行编辑完善。
           </p>
-          <Link href="/conversations" className={styles.btnPrimary}>
-            开始对话
+          <Link href="/knowledge/import" className={styles.btnPrimary}>
+            导入文档
           </Link>
         </div>
 

@@ -3,8 +3,6 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-  listConversations,
-  listDrafts,
   listKnowledge,
   completeOnboarding,
   type UserInfo,
@@ -29,13 +27,10 @@ export default function OnboardingGuide({ user }: Props) {
     let cancelled = false;
     (async () => {
       try {
-        const [convs, drafts, knowledge] = await Promise.all([
-          listConversations(), listDrafts(), listKnowledge(),
-        ]);
+        const knowledge = await listKnowledge();
         if (cancelled) return;
-        const next = resolveOnboardingStep(convs.length, drafts.length, knowledge.totalElements);
+        const next = resolveOnboardingStep(knowledge.totalElements);
         setStep(next);
-        if (next === null) await completeOnboarding();
       } catch (error) {
         // 请求失败不能伪装成“没有知识”，也不推进服务端的新手状态。
         if (!cancelled) setStep(null);
@@ -51,25 +46,18 @@ export default function OnboardingGuide({ user }: Props) {
 
   const steps: Record<GuideStep, { icon: string; title: string; desc: string; cta: string; href: string }> = {
     1: {
-      icon: '💬',
-      title: '开始你的第一次对话',
-      desc: '与 AI 对话是 KOMO 的核心。AI 回复后会自动提取知识要点，帮你积累个人知识库。',
-      cta: '开始对话',
-      href: '/conversations',
+      icon: '📄',
+      title: '从你想读懂的文档开始',
+      desc: '先导入一篇Markdown文档，或新建文章记录正在学习的内容。',
+      cta: '导入文档',
+      href: '/knowledge/import',
     },
     2: {
       icon: '📝',
-      title: '查看 AI 提取的知识草稿',
-      desc: '你的对话中可能已经提取了知识点，前往草稿箱审核并确认入库。',
-      cta: '查看草稿',
-      href: '/drafts',
-    },
-    3: {
-      icon: '✅',
-      title: '确认知识入库',
-      desc: '在草稿箱中确认、编辑或驳回每条草稿。确认后的知识将存入知识库，增强未来的 AI 对话。',
-      cta: '去草稿箱',
-      href: '/drafts',
+      title: '边读边问，再写下自己的理解',
+      desc: '打开下方文章，在阅读问答中提问或引用选区。展开参考原文核对，再点击编辑文档自行完善。',
+      cta: '新建笔记',
+      href: '/knowledge/create',
     },
   };
 
@@ -80,7 +68,7 @@ export default function OnboardingGuide({ user }: Props) {
       <div className={styles.header}>
         <span className={styles.icon}>{current.icon}</span>
         <span className={styles.title}>{current.title}</span>
-        <span className={styles.stepBadge}>步骤 {step}/3</span>
+        <span className={styles.stepBadge}>步骤 {step}/2</span>
         <button
           className={styles.closeBtn}
           onClick={() => setDismissed(true)}
@@ -94,6 +82,10 @@ export default function OnboardingGuide({ user }: Props) {
         <Link href={current.href} className={styles.cta}>
           {current.cta} →
         </Link>
+        {step === 2 && <button className={styles.closeBtn} onClick={async () => {
+          try { await completeOnboarding(); setDismissed(true); }
+          catch (error) { console.warn('保存阅读指引状态失败', error); }
+        }}>我知道了</button>}
       </div>
     </div>
   );

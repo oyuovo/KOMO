@@ -19,7 +19,7 @@ import static org.mockito.Mockito.when;
 class KnowledgeServiceMergeTest {
 
     @Test
-    void retriesOptimisticConflictInANewTransactionBeforeSyncingIndex() {
+    void retriesOptimisticConflictInANewTransactionBeforeSyncingLinks() {
         UUID fragmentId = UUID.randomUUID();
         UUID targetId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -35,7 +35,7 @@ class KnowledgeServiceMergeTest {
         when(transactions.execute(any()))
             .thenThrow(new ObjectOptimisticLockingFailureException(KnowledgeEntry.class, targetId))
             .thenReturn(merged);
-        KnowledgeIndexService indexService = mock(KnowledgeIndexService.class);
+        KnowledgeRetrievalService indexService = mock(KnowledgeRetrievalService.class);
         WikiLinkService wikiLinkService = mock(WikiLinkService.class);
         KnowledgeService service = new KnowledgeService(
             mock(KnowledgeRepository.class),
@@ -50,8 +50,6 @@ class KnowledgeServiceMergeTest {
 
         assertSame(merged, result);
         verify(transactions, times(2)).execute(any());
-        verify(indexService).updateEntry(targetId, userId, null, "target", "merged", "merged");
-        verify(indexService).deleteEntry(fragmentId);
         verify(wikiLinkService).syncLinks(userId, targetId);
     }
 }

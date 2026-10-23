@@ -130,7 +130,7 @@ class ConversationDedupReviewTest {
             .thenReturn(List.of(hit(UUID.randomUUID(), "")));
         var result = new DedupService(f.index, f.drafts).checkDuplicate(f.user, "", CONTENT);
         assertEquals(0.3, result.getScore(), 0.0001);
-        assertEquals(18.0, result.getMltRawScore());
+        assertEquals(18.0, result.getRetrievalRawScore());
         assertEquals(0.0, result.getTitleLcsScore());
     }
 
@@ -143,7 +143,7 @@ class ConversationDedupReviewTest {
         final UUID conversation = UUID.randomUUID();
         final UUID message = UUID.randomUUID();
         final KnowledgeDraftService drafts = mock(KnowledgeDraftService.class);
-        final KnowledgeIndexService index = mock(KnowledgeIndexService.class);
+        final KnowledgeRetrievalService index = mock(KnowledgeRetrievalService.class);
         final RestTemplate http = mock(RestTemplate.class);
         final ConversationService service;
 
@@ -151,7 +151,7 @@ class ConversationDedupReviewTest {
             service = new ConversationService(mock(ConversationRepository.class), mock(MessageRepository.class),
                 mock(ConversationPersistenceService.class), drafts, index, mock(KnowledgeBaseService.class),
                 mock(KnowledgeRepository.class), new DedupService(index, drafts), mock(RabbitTemplate.class),
-                mock(UserService.class), http);
+                mock(UserService.class), http, mock(ReadingConversationService.class));
             ReflectionTestUtils.setField(service, "aiBaseUrl", "http://test.invalid");
             when(http.postForObject(contains("/api/extraction/extract"), any(), eq(Map.class)))
                 .thenReturn(Map.of("knowledge_points", List.of(Map.of("title", TITLE, "content", CONTENT,

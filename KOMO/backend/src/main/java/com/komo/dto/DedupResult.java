@@ -29,8 +29,8 @@ public class DedupResult {
     /** 匹配的草稿 ID */
     private String matchedDraftId;
 
-    /** MLT 原始得分（用于调试） */
-    private Double mltRawScore;
+    /** 融合排名原始得分（用于调试，不是重复概率） */
+    private Double retrievalRawScore;
 
     /** 标题 LCS 得分 */
     private Double titleLcsScore;
@@ -43,13 +43,13 @@ public class DedupResult {
             .build();
     }
 
-    public static DedupResult knowledgeMatch(String entryId, double score, double mlt, double lcs) {
+    public static DedupResult knowledgeMatch(String entryId, double score, double retrieval, double lcs) {
         return DedupResult.builder()
             .strongMatch(score > 0.6)
             .score(score)
             .matchSource("knowledge_base")
             .matchedEntryId(entryId)
-            .mltRawScore(mlt)
+            .retrievalRawScore(retrieval)
             .titleLcsScore(lcs)
             .build();
     }

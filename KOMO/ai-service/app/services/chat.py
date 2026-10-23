@@ -41,41 +41,55 @@ async def chat_stream(
     inside_safety = False
     pending = ""  # 尾部可能是被切开的不完整标记，暂存等下一个 chunk
 
-    async for chunk in response:
-        delta = chunk.choices[0].delta
-        if not delta.content:
-            # 思考模式下 DeepSeek 先发 reasoning_content（content 为 None），跳过
-            continue
-        text = pending + delta.content
-        pending = ""
-        out = ""
-        while text:
-            if inside_safety:
-                idx = text.find(_SAFETY_CLOSE)
-                if idx == -1:
-                    keep = _max_partial_overlap(text, _SAFETY_CLOSE)
-                    if keep:
-                        pending = text[-keep:]
-                    text = ""
-                else:
-                    text = text[idx + len(_SAFETY_CLOSE):]
-                    inside_safety = False
-            else:
-                idx = text.find(_SAFETY_OPEN)
-                if idx == -1:
-                    keep = _max_partial_overlap(text, _SAFETY_OPEN)
-                    if keep:
-                        out += text[:-keep]
-                        pending = text[-keep:]
+    finished = False
+    try:
+        async for chunk in response:
+            if not chunk.choices:
+                continue
+            choice = chunk.choices[0]
+            if choice.finish_reason and choice.finish_reason != "stop":
+                raise ValueError("Chat generation did not finish normally: " + choice.finish_reason)
+            if choice.finish_reason == "stop":
+                finished = True
+            delta = choice.delta
+            if not delta.content:
+                # 思考模式下 DeepSeek 先发 reasoning_content（content 为 None），跳过
+                continue
+            text = pending + delta.content
+            pending = ""
+            out = ""
+            while text:
+                if inside_safety:
+                    idx = text.find(_SAFETY_CLOSE)
+                    if idx == -1:
+                        keep = _max_partial_overlap(text, _SAFETY_CLOSE)
+                        if keep:
+                            pending = text[-keep:]
+                        text = ""
                     else:
-                        out += text
-                    text = ""
+                        text = text[idx + len(_SAFETY_CLOSE):]
+                        inside_safety = False
                 else:
-                    out += text[:idx]
-                    text = text[idx + len(_SAFETY_OPEN):]
-                    inside_safety = True
-        if out:
-            yield out
+                    idx = text.find(_SAFETY_OPEN)
+                    if idx == -1:
+                        keep = _max_partial_overlap(text, _SAFETY_OPEN)
+                        if keep:
+                            out += text[:-keep]
+                            pending = text[-keep:]
+                        else:
+                            out += text
+                        text = ""
+                    else:
+                        out += text[:idx]
+                        text = text[idx + len(_SAFETY_OPEN):]
+                        inside_safety = True
+            if out:
+                yield out
+
+    finally:
+        await response.close()
+    if not finished:
+        raise ValueError("Chat generation ended without a stop marker")
 
     # 流结束：未闭合的 ds_safety 之后的内容全部丢弃（审查文本不该给用户）；
     # 非标记态的 pending 是正常文本，补发
@@ -94,5 +108,10 @@ async def chat_sync(
         temperature=0.7,
         max_tokens=4096,
     )
+    if not response.choices or response.choices[0].finish_reason != "stop":
+        raise ValueError("Chat generation did not finish normally")
     content = response.choices[0].message.content or ""
-    return _SAFETY_PATTERN.sub("", content)
+    cleaned = _SAFETY_PATTERN.sub("", content)
+    if not cleaned.strip():
+        raise ValueError("Chat generation returned an empty answer")
+    return cleaned

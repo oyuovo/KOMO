@@ -1,0 +1,22 @@
+{
+  "documents": [
+    {"id": "retry", "title": "指数退避", "content": "# 指数退避\n指数退避令第n次失败后的等待时长按二的幂增长，并可加入随机抖动。应限制最大等待时间与总重试次数。对于非幂等写入，必须先保证重复调用安全。"},
+    {"id": "lock", "title": "乐观并发控制", "content": "# 乐观并发控制\n更新语句携带读取时的版本号。版本不匹配时更新失败，必须重新读取当前状态，再决定是否在新事务中重试。不能只重复旧语句。"},
+    {"id": "code409", "title": "存储错误码", "content": "# ERR_LOCK_409\nERR_LOCK_409代表版本冲突，应重新读取文档。ERR_NET_408代表网络请求超时，不能作为版本冲突处理。"},
+    {"id": "code408", "title": "网络超时", "content": "# ERR_NET_408\nERR_NET_408说明请求等待超过期限。记录请求ID，确认是否已执行，避免盲目重复产生副作用。"},
+    {"id": "cache", "title": "缓存失效", "content": "# 缓存失效\n缓存设置过期时间，热点数据可提前刷新。更新数据库后失效缓存，避免旧数据持续返回。"},
+    {"id": "auth", "title": "资源隔离", "content": "# 资源隔离\n每次查找资源必须带上所有者标识。不能只凭客户端提供的资源编号读取记录，否则可能发生水平越权。"},
+    {"id": "transaction", "title": "事务边界", "content": "# 事务边界\n远程网络调用应放在数据库事务之外，避免长时间占用连接和持有锁。先保存本地状态，调用外部服务，再用新事务记录结果。"},
+    {"id": "vector", "title": "向量索引", "content": "# 向量索引\n余弦相似度可以衡量向量方向接近程度。主题相近不代表逻辑等价，更不代表一个段落支持某个结论。"}
+  ],
+  "queries": [
+    {"id": "synonym", "query": "失败后怎样让下一次尝试前的停顿越来越长？", "document_id": "retry", "evidence": "按二的幂增长"},
+    {"id": "paraphrase", "query": "两个人同时改同一份数据，怎么发现别人已经先保存了？", "document_id": "lock", "evidence": "版本不匹配时更新失败"},
+    {"id": "exact-code", "query": "ERR_LOCK_409怎么处理？", "document_id": "code409", "evidence": "应重新读取文档"},
+    {"id": "near-code", "query": "ERR_NET_408是什么？", "document_id": "code408", "evidence": "请求等待超过期限"},
+    {"id": "conditions", "query": "是不是所有写操作失败后都可以自动再执行一次？", "document_id": "retry", "evidence": "必须先保证重复调用安全"},
+    {"id": "permission", "query": "怎么防止一个账号看到另一个账号的文章？", "document_id": "auth", "evidence": "必须带上所有者标识"},
+    {"id": "boundary", "query": "调用第三方接口时为什么不应该一直开着数据库事务？", "document_id": "transaction", "evidence": "避免长时间占用连接和持有锁"},
+    {"id": "missing", "query": "本文规定了多少秒的默认重试间隔？", "document_id": null, "evidence": null}
+  ]
+}

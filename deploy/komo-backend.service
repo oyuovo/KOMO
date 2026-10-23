@@ -19,9 +19,6 @@ Environment=DB_HOST=localhost
 Environment=DB_PORT=5434
 Environment=RABBITMQ_HOST=localhost
 Environment=RABBITMQ_PORT=5672
-Environment=ES_HOST=localhost
-Environment=ES_PORT=9201
-Environment=ES_USERNAME=elastic
 Environment=AI_SERVICE_URL=http://localhost:8001
 # 生产必设项（HTTPS 反代后）：
 # 8081 只监听回环，外部流量必须经 nginx：否则直连后端会绕过 HTTPS、

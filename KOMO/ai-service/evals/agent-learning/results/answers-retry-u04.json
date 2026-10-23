@@ -1,0 +1,400 @@
+{
+  "started_at": "2026-10-19T14:20:01.366064+00:00",
+  "requests_sha256": "7f19f4c5b8681fd420c3042892af3c236a171457b9199c5a39db16b6c45ea9b6",
+  "model": "deepseek-v4-flash",
+  "endpoint": "https://api.deepseek.com/v1/chat/completions",
+  "selected_case_ids": [
+    "u04"
+  ],
+  "state": "completed",
+  "actual_token_usage": null,
+  "results": [
+    {
+      "id": "u04",
+      "question": "agent开发是否推荐从例如pi这样的开源架构起步",
+      "state": "completed",
+      "human_grade": null,
+      "context": {
+        "policy_version": "reading-hybrid-v2",
+        "document_id": "reading-u04",
+        "document_title": "Agent learning source pack",
+        "document_hash": "31f29a97f35737ffa356e56662ef94a0489441b06a0552fbddf66a3a8dd41c50",
+        "mode": "hybrid_sections",
+        "sources": [
+          {
+            "id": "S1",
+            "heading": "Source: Pi",
+            "start_line": 3,
+            "end_line": 16,
+            "start_offset": 2,
+            "end_offset": 692,
+            "text": "# Source: Pi\n\n<p align=\"center\">\n  <a href=\"https://pi.dev\">\n    <img alt=\"pi logo\" src=\"https://pi.dev/logo-auto.svg\" width=\"128\">\n  </a>\n</p>\n<p align=\"center\">\n  <a href=\"https://discord.com/invite/3cU7Bz4UPx\"><img alt=\"Discord\" src=\"https://img.shields.io/badge/discord-community-5865F2?style=flat-square&logo=discord&logoColor=white\" /></a>\n  <a href=\"https://www.npmjs.com/package/@earendil-works/pi-coding-agent\"><img alt=\"npm\" src=\"https://img.shields.io/npm/v/@earendil-works/pi-coding-agent?style=flat-square\" /></a>\n</p>\n\n> New issues and PRs from new contributors are auto-closed by default. Maintainers review auto-closed issues daily. See [CONTRIBUTING.md](CONTRIBUTING.md).\n\n"
+          },
+          {
+            "id": "S2",
+            "heading": "Pi",
+            "start_line": 17,
+            "end_line": 26,
+            "start_offset": 692,
+            "end_offset": 1673,
+            "text": "# Pi\n\nPi is a minimal, extensible agent harness that you can make your own.\n\nAdapt Pi to your workflows, not the other way around. Customize Pi with [extensions](packages/coding-agent/docs/extensions.md), [skills](packages/coding-agent/docs/skills.md), [prompt templates](packages/coding-agent/docs/prompt-templates.md), and [themes](packages/coding-agent/docs/themes.md). Bundle them as [Pi packages](packages/coding-agent/docs/packages.md) and share via npm or git.\n\nPi ships with powerful defaults but skips features like sub-agents and plan mode. Ask Pi to build what you want, or install a package that does it your way.\n\nUse Pi [interactively](packages/coding-agent/docs/usage.md), automate it in [print or JSON mode](packages/coding-agent/docs/cli.md), control it over [RPC](packages/coding-agent/docs/rpc.md), or build apps with the [Pi TypeScript SDK](packages/coding-agent/docs/sdk.md). See [OpenClaw](https://github.com/OpenClaw/OpenClaw) for a real-world integration.\n\n"
+          },
+          {
+            "id": "S3",
+            "heading": "Pi / Getting started",
+            "start_line": 27,
+            "end_line": 59,
+            "start_offset": 1673,
+            "end_offset": 2620,
+            "text": "## Getting started\n\nInstall the command-line interface:\n\n```bash\ncurl -fsSL https://pi.dev/install.sh | sh\n```\n\nOn Windows:\n\n```shell\npowershell -c \"irm https://pi.dev/install.ps1 | iex\"\n```\n\nThe installer pins all dependencies and updates Pi with `pi update`. Alternatively, install directly with npm, which does not pin transitive dependencies:\n\n```bash\nnpm install -g --ignore-scripts @earendil-works/pi-coding-agent\n```\n\nPi requires Node.js 22.19 or newer. The macOS, Linux, and Windows installers can install it if needed. Pi does not require dependency lifecycle scripts for a normal npm installation.\n\nStart Pi in the directory where you want it to work:\n\n```bash\ncd /path/to/project\npi\n```\n\nFor a built-in AI provider, run `/login` inside Pi to connect a subscription or API key. Then give Pi a task.\n\nSee the [documentation](https://pi.dev/docs/latest) for full setup and usage instructions, or [visit pi.dev](https://pi.dev) for demos.\n\n"
+          },
+          {
+            "id": "S4",
+            "heading": "Pi / Run with Nix",
+            "start_line": 60,
+            "end_line": 75,
+            "start_offset": 2620,
+            "end_offset": 3537,
+            "text": "## Run with Nix\n\n```bash\nnix run github:earendil-works/pi/stable\n```\n\n`stable` points at the latest release. Install it with `nix profile add github:earendil-works/pi/stable` and update with `nix profile upgrade pi`. Use a release tag such as `github:earendil-works/pi/v1.0.0` to pin a version, or `github:earendil-works/pi` for unreleased changes on `main`. Nix builds Pi from source.\n\nSupports ARM64 and x86-64 on Linux and macOS. Use `nix build .` or `nix run .` to build or run your checkout.\n\nNix builds are offline, so the bundled model data comes from a pi.dev model catalog revision pinned in `nix/model-catalog.json`. At runtime, Pi still overlays newer catalog data from pi.dev as usual. The Nix workflow replaces the pin on `main` when it no longer matches the checkout, for example after a provider is added or gains a new model type. To refresh it by hand:\n\n```bash\nnpm run update:model-catalog-pin\n```\n\n"
+          },
+          {
+            "id": "S5",
+            "heading": "Pi / Packages",
+            "start_line": 76,
+            "end_line": 91,
+            "start_offset": 3537,
+            "end_offset": 4607,
+            "text": "## Packages\n\nThis monorepo contains the Pi CLI and its supporting libraries.\n\n| Package | Description |\n|---------|-------------|\n| **[@earendil-works/chord](packages/chord)** | Typed host runtime for hot-reloadable plugins, contracts, replicated state, and RPC over JSON links |\n| **[@earendil-works/pi-telemetry](packages/telemetry)** | Vendor-neutral telemetry contracts, reference adapter, conformance tests, and typed schemas |\n| **[@earendil-works/pi-ai](packages/ai)** | Unified multi-provider LLM API (OpenAI, Anthropic, Google, etc.) |\n| **[@earendil-works/pi-durable](packages/durable)** | Durable conversation, task, and document runtime |\n| **[@earendil-works/pi-agent-core](packages/agent)** | Agent runtime with tool calling and state management |\n| **[@earendil-works/pi-coding-agent](packages/coding-agent)** | Interactive coding agent CLI |\n| **[@earendil-works/pi-tui](packages/tui)** | Terminal UI library with differential rendering |\n\nFor Slack/chat automation and workflows see [earendil-works/pi-chat](https://github.com/earendil-works/pi-chat).\n\n"
+          },
+          {
+            "id": "S6",
+            "heading": "Pi / Permissions & Containerization",
+            "start_line": 92,
+            "end_line": 101,
+            "start_offset": 4607,
+            "end_offset": 5334,
+            "text": "## Permissions & Containerization\n\nPi does not include a built-in permission system for restricting filesystem, process, network, or credential access. By default, it runs with the permissions of the user and process that launched it.\n\nIf you need stronger boundaries, containerize or sandbox Pi. See [packages/coding-agent/docs/containerization.md](packages/coding-agent/docs/containerization.md) for three patterns:\n\n- **Gondolin extension**: keep `pi` and provider auth on the host while routing built-in tools and `!` commands into a local Linux micro-VM.\n- **Plain Docker**: run the whole `pi` process in a local container for simple isolation.\n- **OpenShell**: run the whole `pi` process in a policy-controlled sandbox.\n\n"
+          },
+          {
+            "id": "S7",
+            "heading": "Pi / Contributing",
+            "start_line": 102,
+            "end_line": 105,
+            "start_offset": 5334,
+            "end_offset": 5596,
+            "text": "## Contributing\n\nSee [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines and [AGENTS.md](AGENTS.md) for project-specific rules (for both humans and agents).  Longer term plans for Pi can also be found in [RFCs](https://rfc.earendil.com/keyword/pi/).\n\n"
+          },
+          {
+            "id": "S8",
+            "heading": "Pi / Development",
+            "start_line": 106,
+            "end_line": 116,
+            "start_offset": 5596,
+            "end_offset": 6071,
+            "text": "## Development\n\n```bash\nnpm install --ignore-scripts  # Install all dependencies without running lifecycle scripts\nnpm run build         # Refresh model data, then build all packages\nnpm run build:offline # Rebuild using existing model data without network access\nnpm run check         # Lint, format, and type check\n./test.sh            # Run tests (skips LLM-dependent tests without API keys)\n./pi-test.sh         # Run pi from sources (can be run from any directory)\n```\n\n"
+          },
+          {
+            "id": "S9",
+            "heading": "Pi / Development / Using local packages outside the monorepo",
+            "start_line": 117,
+            "end_line": 158,
+            "start_offset": 6071,
+            "end_offset": 7478,
+            "text": "### Using local packages outside the monorepo\n\nBuild every public package into one coherent local artifact set:\n\n```bash\nnpm run pack:packages -- --out .artifacts/pi-packages\n```\n\nThis refreshes model data before building `pi-ai`. To avoid network access when\nmodel data is already hydrated, pass `--offline-model-data`.\n\nThen configure an external project to consume one package and resolve all of\nits Pi dependencies from the same artifact set. npm is the default:\n\n```bash\nnode scripts/use-local-packages.mjs \\\n  --manifest .artifacts/pi-packages/manifest.json \\\n  --consumer ../my-project \\\n  --package @earendil-works/pi-durable \\\n  --package @earendil-works/pi-agent-core\ncd ../my-project\nnpm install --ignore-scripts\n```\n\nFor a pnpm project, point `--consumer` at the workspace root:\n\n```bash\nnode scripts/use-local-packages.mjs \\\n  --manifest .artifacts/pi-packages/manifest.json \\\n  --consumer ../my-project \\\n  --package @earendil-works/pi-agent-core \\\n  --package-manager pnpm\ncd ../my-project\npnpm install --ignore-scripts\n```\n\nRepeat `--package` for each direct dependency. The command updates the\nconsumer's `package.json` with content-addressed local `file:` references. It\nwrites transitive overrides to `package.json` for npm or `pnpm-workspace.yaml`\nfor pnpm. Keep the artifact directory available while installing or updating\nthe consumer. Re-run both commands after changing Pi source.\n\n"
+          },
+          {
+            "id": "S10",
+            "heading": "Pi / Building standalone binaries from release source",
+            "start_line": 159,
+            "end_line": 171,
+            "start_offset": 7478,
+            "end_offset": 8186,
+            "text": "## Building standalone binaries from release source\n\nGitHub releases include a versioned source archive covered by the release's `SHA256SUMS` file. Extract it and run the same build script used for the official standalone binaries:\n\n```bash\nVERSION=\"<release-version>\"\ntar -xzf \"pi-${VERSION}-source.tar.gz\"\ncd \"pi-${VERSION}\"\n./scripts/build-binaries.sh --offline-model-data --platform linux-x64 --out \"$PWD/out\"\n```\n\nThe archive includes release model data and native prebuilds. `--offline-model-data` uses that model data without refreshing provider catalogs. The script installs dependencies and builds the executable with its runtime assets; pass `--skip-install` if dependencies are already provided.\n\n"
+          },
+          {
+            "id": "S11",
+            "heading": "Pi / License",
+            "start_line": 202,
+            "end_line": 212,
+            "start_offset": 10399,
+            "end_offset": 10653,
+            "text": "## License\n\nMIT\n\n<p align=\"center\">\n  <a href=\"https://pi.dev\">pi.dev</a> domain graciously donated by\n  <br /><br />\n  <a href=\"https://exe.dev\"><img src=\"packages/coding-agent/docs/images/exy.png\" alt=\"Exy mascot\" width=\"48\" /><br />exe.dev</a>\n</p>\n\n\n"
+          },
+          {
+            "id": "S12",
+            "heading": "Source: @earendil-works/pi-agent-core",
+            "start_line": 213,
+            "end_line": 214,
+            "start_offset": 10653,
+            "end_offset": 10694,
+            "text": "# Source: @earendil-works/pi-agent-core\n\n"
+          },
+          {
+            "id": "S13",
+            "heading": "@earendil-works/pi-agent-core",
+            "start_line": 215,
+            "end_line": 218,
+            "start_offset": 10694,
+            "end_offset": 10818,
+            "text": "# @earendil-works/pi-agent-core\n\nStateful agent with tool execution and event streaming. Built on `@earendil-works/pi-ai`.\n\n"
+          },
+          {
+            "id": "S14",
+            "heading": "@earendil-works/pi-agent-core / Installation",
+            "start_line": 219,
+            "end_line": 224,
+            "start_offset": 10818,
+            "end_offset": 10890,
+            "text": "## Installation\n\n```bash\nnpm install @earendil-works/pi-agent-core\n```\n\n"
+          },
+          {
+            "id": "S15",
+            "heading": "@earendil-works/pi-agent-core / Quick Start",
+            "start_line": 225,
+            "end_line": 254,
+            "start_offset": 10890,
+            "end_offset": 11722,
+            "text": "## Quick Start\n\n```typescript\nimport { Agent } from \"@earendil-works/pi-agent-core\";\nimport { createModels } from \"@earendil-works/pi-ai\";\nimport { anthropicProvider } from \"@earendil-works/pi-ai/providers/anthropic\";\n\nconst models = createModels();\nmodels.setProvider(anthropicProvider());\nconst model = models.getModel(\"anthropic\", \"claude-sonnet-4-6\");\nif (!model) throw new Error(\"Model not found\");\n\nconst agent = new Agent({\n  initialState: {\n    systemPrompt: \"You are a helpful assistant.\",\n    model,\n  },\n  streamFn: models.streamSimple.bind(models),\n});\n\nagent.subscribe((event) => {\n  if (event.type === \"message_update\" && event.assistantMessageEvent.type === \"text_delta\") {\n    // Stream just the new text chunk\n    process.stdout.write(event.assistantMessageEvent.delta);\n  }\n});\n\nawait agent.prompt(\"Hello!\");\n```\n\n"
+          },
+          {
+            "id": "S16",
+            "heading": "@earendil-works/pi-agent-core / Core Concepts",
+            "start_line": 255,
+            "end_line": 256,
+            "start_offset": 11722,
+            "end_offset": 11740,
+            "text": "## Core Concepts\n\n"
+          },
+          {
+            "id": "S17",
+            "heading": "@earendil-works/pi-agent-core / Agent State",
+            "start_line": 524,
+            "end_line": 527,
+            "start_offset": 23854,
+            "end_offset": 24066,
+            "text": "During streaming, `agent.state.streamingMessage` contains the current partial assistant message.\n\n`agent.state.isStreaming` remains `true` until the run fully settles, including awaited `agent_end` subscribers.\n\n"
+          },
+          {
+            "id": "S18",
+            "heading": "@earendil-works/pi-agent-core / Methods",
+            "start_line": 528,
+            "end_line": 529,
+            "start_offset": 24066,
+            "end_offset": 24078,
+            "text": "## Methods\n\n"
+          },
+          {
+            "id": "S19",
+            "heading": "@earendil-works/pi-agent-core / Tools / MCP and Codemode",
+            "start_line": 720,
+            "end_line": 723,
+            "start_offset": 29504,
+            "end_offset": 29906,
+            "text": "### MCP and Codemode\n\n`@earendil-works/pi-mcp` connects to MCP servers and `@earendil-works/pi-codemode` runs model-written JavaScript that calls tools. [examples/mcp-codemode](examples/mcp-codemode) wraps both as `AgentTool`s: one tool per MCP tool, and a `codemode` tool whose scripts call the agent's tools through `runToolCall()`, so `beforeToolCall` and `afterToolCall` apply to those calls too.\n\n"
+          },
+          {
+            "id": "S20",
+            "heading": "@earendil-works/pi-agent-core / Proxy Usage",
+            "start_line": 724,
+            "end_line": 740,
+            "start_offset": 29906,
+            "end_offset": 30256,
+            "text": "## Proxy Usage\n\nFor browser apps that proxy through a backend:\n\n```typescript\nimport { Agent, streamProxy } from \"@earendil-works/pi-agent-core\";\n\nconst agent = new Agent({\n  streamFn: (model, context, options) =>\n    streamProxy(model, context, {\n      ...options,\n      authToken: \"...\",\n      proxyUrl: \"https://your-server.com\",\n    }),\n});\n```\n\n"
+          },
+          {
+            "id": "S21",
+            "heading": "@earendil-works/pi-agent-core / Low-Level API",
+            "start_line": 741,
+            "end_line": 775,
+            "start_offset": 30256,
+            "end_offset": 31673,
+            "text": "## Low-Level API\n\nFor direct control without the Agent class:\n\n```typescript\nimport { agentLoop, agentLoopContinue } from \"@earendil-works/pi-agent-core\";\n\nconst context: AgentContext = {\n  messages: [{ role: \"system\", content: \"You are helpful.\", timestamp: Date.now() }],\n  tools: [],\n};\n\nconst config: AgentLoopConfig = {\n  model: getModel(\"openai\", \"gpt-4o\"),\n  convertToLlm: (msgs) => msgs.filter(m => [\"user\", \"assistant\", \"toolResult\"].includes(m.role)),\n  toolExecution: \"parallel\",  // overridden by per-tool executionMode if set\n  beforeToolCall: async ({ toolCall, args, context }) => undefined,\n  afterToolCall: async ({ toolCall, result, isError, context }) => undefined,\n};\n\nconst userMessage = { role: \"user\", content: \"Hello\", timestamp: Date.now() };\n\nconst streamFn = models.streamSimple.bind(models);\nfor await (const event of agentLoop([userMessage], context, config, undefined, streamFn)) {\n  console.log(event.type);\n}\n\n// Continue from existing context\nfor await (const event of agentLoopContinue(context, config, undefined, streamFn)) {\n  console.log(event.type);\n}\n```\n\nThese low-level streams are observational. They preserve event order, but they do not wait for your async event handling to settle before later producer phases continue. If you need message processing to act as a barrier before tool preflight, use the `Agent` class instead of raw `agentLoop()` or `agentLoopContinue()`.\n\n"
+          },
+          {
+            "id": "S22",
+            "heading": "@earendil-works/pi-agent-core / License",
+            "start_line": 776,
+            "end_line": 778,
+            "start_offset": 31673,
+            "end_offset": 31689,
+            "text": "## License\n\nMIT\n"
+          }
+        ],
+        "warnings": [
+          "partial_document"
+        ],
+        "context_chars": 11934,
+        "document_chars": 31689,
+        "retrieval": {
+          "strategy": "bm25-dense-rrf-v1",
+          "candidates": [
+            {
+              "chunk_index": 1,
+              "score": 0.03177805800756621,
+              "lexical_rank": 1,
+              "dense_rank": 5
+            },
+            {
+              "chunk_index": 3,
+              "score": 0.030330882352941176,
+              "lexical_rank": 4,
+              "dense_rank": 8
+            },
+            {
+              "chunk_index": 5,
+              "score": 0.030309988518943745,
+              "lexical_rank": 5,
+              "dense_rank": 7
+            },
+            {
+              "chunk_index": 6,
+              "score": 0.029957522915269395,
+              "lexical_rank": 3,
+              "dense_rank": 11
+            },
+            {
+              "chunk_index": 43,
+              "score": 0.029906956136464335,
+              "lexical_rank": 14,
+              "dense_rank": 1
+            },
+            {
+              "chunk_index": 2,
+              "score": 0.029116045245077504,
+              "lexical_rank": 2,
+              "dense_rank": 17
+            },
+            {
+              "chunk_index": 14,
+              "score": 0.028958333333333336,
+              "lexical_rank": 15,
+              "dense_rank": 4
+            },
+            {
+              "chunk_index": 4,
+              "score": 0.027984344422700584,
+              "lexical_rank": 10,
+              "dense_rank": 13
+            },
+            {
+              "chunk_index": 13,
+              "score": 0.027777777777777776,
+              "lexical_rank": 24,
+              "dense_rank": 3
+            },
+            {
+              "chunk_index": 15,
+              "score": 0.0277569392348087,
+              "lexical_rank": 26,
+              "dense_rank": 2
+            },
+            {
+              "chunk_index": 8,
+              "score": 0.027526395173453996,
+              "lexical_rank": 8,
+              "dense_rank": 18
+            },
+            {
+              "chunk_index": 32,
+              "score": 0.02749719416386083,
+              "lexical_rank": 21,
+              "dense_rank": 6
+            },
+            {
+              "chunk_index": 0,
+              "score": 0.026916221033868093,
+              "lexical_rank": 6,
+              "dense_rank": 25
+            },
+            {
+              "chunk_index": 20,
+              "score": 0.026875901875901876,
+              "lexical_rank": 17,
+              "dense_rank": 12
+            },
+            {
+              "chunk_index": 45,
+              "score": 0.026687875574407917,
+              "lexical_rank": 22,
+              "dense_rank": 9
+            },
+            {
+              "chunk_index": 16,
+              "score": 0.02649122807017544,
+              "lexical_rank": 16,
+              "dense_rank": 15
+            },
+            {
+              "chunk_index": 9,
+              "score": 0.026356857985087564,
+              "lexical_rank": 13,
+              "dense_rank": 19
+            },
+            {
+              "chunk_index": 7,
+              "score": 0.026161328190508135,
+              "lexical_rank": 7,
+              "dense_rank": 29
+            },
+            {
+              "chunk_index": 17,
+              "score": 0.026050420168067225,
+              "lexical_rank": 25,
+              "dense_rank": 10
+            },
+            {
+              "chunk_index": 11,
+              "score": 0.02571241401899771,
+              "lexical_rank": 11,
+              "dense_rank": 26
+            },
+            {
+              "chunk_index": 12,
+              "score": 0.025603864734299518,
+              "lexical_rank": 9,
+              "dense_rank": 30
+            },
+            {
+              "chunk_index": 39,
+              "score": 0.025158227848101268,
+              "lexical_rank": 19,
+              "dense_rank": 20
+            },
+            {
+              "chunk_index": 10,
+              "score": 0.02487789987789988,
+              "lexical_rank": 12,
+              "dense_rank": 31
+            },
+            {
+              "chunk_index": 42,
+              "score": 0.02452153110047847,
+              "lexical_rank": 28,
+              "dense_rank": 16
+            }
+          ]
+        },
+        "run_id": "b722bf68-6af3-404e-a0ae-3014ed5c71dc",
+        "state": "completed",
+        "citations": {
+          "cited_ids": [
+            "S2",
+            "S5",
+            "S13",
+            "S15",
+            "S21",
+            "S19",
+            "S11",
+            "S22",
+            "S6",
+            "S3"
+          ],
+          "invalid_ids": [],
+          "status": "present"
+        },
+        "elapsed_ms": 10531
+      },
+      "answer": "**结论：可以有条件地推荐。** 如果你的目标是“快速拿到一个可运行、可扩展、可读源码的 agent 基座”，Pi 这类开源架构适合作为起点；但如果你期待开箱即用的完整平台或强权限隔离，它并不直接满足，需要自己补。\n\n### 支持从 Pi 起步的证据\n\n- Pi 的定位就是**最小、可扩展的 agent harness**，强调“让 Pi 适配你的工作流”，可用 extensions、skills、prompt templates、themes 定制，并打包通过 npm 或 git 共享[S2]。\n- 接入方式比较完整：可交互使用、以 print/JSON 模式自动化、通过 RPC 控制，或用 TypeScript SDK 构建应用[S2]。\n- 包分层清晰：`pi-ai` 提供多 provider LLM API，`pi-agent-core` 提供带工具调用和状态管理的 agent runtime，另有 CLI、TUI 等[S5][S13]。\n- `pi-agent-core` 文档给出了 `Agent` 类的 Quick Start、事件流订阅、低层 `agentLoop`/`agentLoopContinue`，以及 MCP/Codemode 的封装示例[S15][S21][S19]。\n- 许可为 MIT，便于学习和二次开发[S11][S22]。\n\n### 需要提前接受的前提与限制\n\n1. **它不是“功能齐全”的成品。** 文档明确说 Pi 自带强大默认能力，但**跳过了 sub-agents 和 plan mode**；需要你让 Pi 构建，或安装相应包[S2]。也就是说，你得到的是基座，不是完整产品。\n2. **没有内置权限系统。** Pi 不限制文件系统、进程、网络或凭据访问，默认以启动它的用户和进程权限运行；需要更强边界时应容器化或沙箱化，文档列出 Gondolin、Plain Docker、OpenShell 三种模式[S6]。生产环境尤其要先处理这一点。\n3. **低层 API 有事件屏障差异。** `agentLoop()`/`agentLoopContinue()` 的事件流是观察性的，不等待异步事件处理完成；若需要消息处理在工具预检前形成屏障，应使用 `Agent` 类[S21]。\n4. **运行环境有要求。** 需要 Node.js 22.19 或更新版本；安装器会固定依赖，而直接用 npm 安装不会固定传递依赖[S3]。\n5. **本轮文档是部分覆盖。** 以上判断只基于当前可见片段，不能据此推断 Pi 全文或生态没有其他能力。\n\n### 适合与不适合的场景\n\n**比较适合从 Pi 起步：**\n- 想学习 agent loop、工具调用、状态管理和事件流；\n- 需要多 provider 模型接入；\n- 希望先跑通单 agent，再按需加扩展；\n- 能接受自己补权限、子 agent、计划模式等能力。\n\n**不建议直接作为生产基座：**\n- 需要强隔离、细粒度权限、合规审计，却又不准备做容器化/沙箱；\n- 想要开箱即用的完整 agent 平台；\n- 团队不熟悉 TypeScript/Node 生态。\n\n**补充解释（非作者观点）：** 实际选型时，可以先用 Pi 跑通“单 agent + 工具调用 + 流式输出”的最小闭环，再评估权限隔离、可观测性、评测和部署成本；不要因为架构“极简”就默认它适合直接上生产。\n\n如果你愿意说明目标场景（学习原型、内部工具还是生产产品）和团队技术栈，我可以进一步帮你判断 Pi 与其他起步方式的取舍。"
+    }
+  ]
+}

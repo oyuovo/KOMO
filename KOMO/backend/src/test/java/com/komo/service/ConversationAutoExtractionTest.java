@@ -110,7 +110,7 @@ class ConversationAutoExtractionTest {
         }
     }
 
-    enum ExtractionDisabledBy { MANUAL_PREFERENCE, READING_CONVERSATION, NO_KNOWLEDGE_BASE }
+    enum ExtractionDisabledBy { GLOBAL_POLICY, MANUAL_PREFERENCE, READING_CONVERSATION, NO_KNOWLEDGE_BASE }
 
     @Test
     @Timeout(10)
@@ -166,6 +166,7 @@ class ConversationAutoExtractionTest {
     void replyDoesNotEnqueueWhenAutomaticExtractionIsDisabled(ExtractionDisabledBy disabledBy) {
         Fixture fixture = new Fixture(false);
         switch (disabledBy) {
+            case GLOBAL_POLICY -> ReflectionTestUtils.setField(fixture.service, "extractionEnabled", false);
             case MANUAL_PREFERENCE -> fixture.user.setAutoExtract(false);
             case READING_CONVERSATION -> fixture.conversation.setType(Conversation.ConversationType.READING);
             case NO_KNOWLEDGE_BASE -> fixture.conversation.setKnowledgeBaseId(null);
@@ -173,6 +174,64 @@ class ConversationAutoExtractionTest {
 
         fixture.service.sendMessage(fixture.conversationId, fixture.userId, QUESTION);
 
+        verifyNoInteractions(fixture.rabbitTemplate);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"eof", "error", "empty", "truncated_event"})
+    @Timeout(10)
+    void incompleteStreamNeverPersistsOrReportsCompletion(String ending) throws Exception {
+        Fixture fixture = new Fixture(false);
+        String wire = ending.equals("empty") ? "data: [DONE]\n\n" : "data: partial answer\n\n";
+        if (ending.equals("error")) wire += "data: [ERROR] upstream detail\n\n";
+        if (ending.equals("truncated_event")) wire += "data: [DONE]";
+        byte[] bytes = wire.getBytes(StandardCharsets.UTF_8);
+        HttpServer upstream = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        upstream.createContext("/api/chat/stream", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (OutputStream body = exchange.getResponseBody()) { body.write(bytes); }
+        });
+        upstream.start();
+        try {
+            ReflectionTestUtils.setField(fixture.service, "aiBaseUrl", "http://127.0.0.1:" + upstream.getAddress().getPort());
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            fixture.service.streamMessage(fixture.conversationId, fixture.userId, QUESTION, response);
+            org.mockito.Mockito.verify(fixture.persistence, org.mockito.Mockito.never()).saveAssistantMessage(
+                any(), any(), anyString(), anyString(), anyBoolean());
+            verifyNoInteractions(fixture.rabbitTemplate);
+            String result = response.getContentAsString(StandardCharsets.UTF_8);
+            assertTrue(result.contains("event: error"));
+            org.junit.jupiter.api.Assertions.assertFalse(result.contains("event: done"));
+            org.junit.jupiter.api.Assertions.assertFalse(result.contains("upstream detail"));
+        } finally {
+            upstream.stop(0);
+        }
+    }
+
+    @Test
+    void pausedExtractionRejectsManualRequestsEvenIfUserPreferenceIsEnabled() {
+        Fixture fixture = new Fixture(false);
+        ReflectionTestUtils.setField(fixture.service, "extractionEnabled", false);
+        org.junit.jupiter.api.Assertions.assertThrows(com.komo.exception.BusinessException.class,
+            () -> fixture.service.triggerExtraction(fixture.conversationId, fixture.userId));
+        verifyNoInteractions(fixture.rabbitTemplate);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void failedSyncNeverSavesAnErrorMessageAsAnAnswer(boolean providerThrows) {
+        Fixture fixture = new Fixture(false);
+        if (providerThrows) {
+            when(fixture.restTemplate.postForObject(anyString(), any(), eq(Map.class)))
+                .thenThrow(new org.springframework.web.client.RestClientException("provider details"));
+        } else {
+            when(fixture.restTemplate.postForObject(anyString(), any(), eq(Map.class))).thenReturn(Map.of("content", " "));
+        }
+        org.junit.jupiter.api.Assertions.assertThrows(com.komo.exception.BusinessException.class,
+            () -> fixture.service.sendMessage(fixture.conversationId, fixture.userId, QUESTION));
+        org.mockito.Mockito.verify(fixture.persistence, org.mockito.Mockito.never()).saveAssistantMessage(
+            any(), any(), anyString(), anyString(), anyBoolean());
         verifyNoInteractions(fixture.rabbitTemplate);
     }
 
@@ -185,6 +244,7 @@ class ConversationAutoExtractionTest {
         final User user = User.builder().autoExtract(true).build();
         final ConversationPersistenceService persistence = mock(ConversationPersistenceService.class);
         final RabbitTemplate rabbitTemplate = mock(RabbitTemplate.class);
+        final RestTemplate restTemplate = mock(RestTemplate.class);
         final ConversationService service;
         final List<Map<String, String>> expectedHistory;
 
@@ -192,7 +252,6 @@ class ConversationAutoExtractionTest {
             ConversationRepository conversations = mock(ConversationRepository.class);
             MessageRepository messages = mock(MessageRepository.class);
             UserService users = mock(UserService.class);
-            RestTemplate restTemplate = mock(RestTemplate.class);
             when(conversations.findByIdAndUserId(conversationId, userId)).thenReturn(Optional.of(conversation));
             when(users.findById(userId)).thenReturn(user);
             when(restTemplate.postForObject(anyString(), any(), eq(Map.class)))
@@ -217,10 +276,11 @@ class ConversationAutoExtractionTest {
                 });
 
             service = new ConversationService(conversations, messages, persistence,
-                mock(KnowledgeDraftService.class), mock(KnowledgeIndexService.class),
+                mock(KnowledgeDraftService.class), mock(KnowledgeRetrievalService.class),
                 mock(KnowledgeBaseService.class), mock(KnowledgeRepository.class),
-                mock(DedupService.class), rabbitTemplate, users, restTemplate);
+                mock(DedupService.class), rabbitTemplate, users, restTemplate, mock(ReadingConversationService.class));
             ReflectionTestUtils.setField(service, "aiBaseUrl", "http://127.0.0.1");
+            ReflectionTestUtils.setField(service, "extractionEnabled", true);
         }
 
         void assertEnqueuedReply() {

@@ -9,6 +9,7 @@
  * 流结束后页面重新拉取消息即可拿到完整回复。
  */
 import { authenticatedFetch } from '@komo/shared/api-client';
+import { SseDecoder } from './sse';
 
 export interface ConversationStreamState {
   conversationId: string;
@@ -16,6 +17,10 @@ export interface ConversationStreamState {
   userContent: string;
   /** 已累积的 AI 回复 */
   aiContent: string;
+  readingContext?: string;
+  /** IDs observed before sending; timestamps cannot prove persistence. */
+  previousMessageIds: string[];
+  assistantMessageId?: string;
   phase: 'streaming' | 'done' | 'error';
   error: string | null;
   startedAt: number;
@@ -45,7 +50,8 @@ class ConversationStreamStore {
   }
 
   /** 清除指定对话的流状态（页面在服务端消息对齐后调用） */
-  clear(conversationId: string): void {
+  clear(conversationId: string, expected?: ConversationStreamState): void {
+    if (expected && this.streams[conversationId] !== expected) return;
     if (!(conversationId in this.streams)) return;
     const next = { ...this.streams };
     delete next[conversationId];
@@ -57,7 +63,7 @@ class ConversationStreamStore {
    * 发起流式请求。reader 存活于模块级，组件 unmount 不中断。
    * 同一对话同时只允许一个活跃流；网络层异常在内部消化，不会抛出。
    */
-  async start(conversationId: string, content: string): Promise<void> {
+  async start(conversationId: string, content: string, previousMessageIds: string[] = []): Promise<void> {
     if (this.isActive(conversationId)) return;
 
     this.streams = {
@@ -66,6 +72,7 @@ class ConversationStreamStore {
         conversationId,
         userContent: content,
         aiContent: '',
+        previousMessageIds: [...previousMessageIds],
         phase: 'streaming',
         error: null,
         startedAt: Date.now(),
@@ -93,59 +100,40 @@ class ConversationStreamStore {
       if (!reader) throw new Error('No response body');
 
       const decoder = new TextDecoder();
-      let buffer = '';
-      // SSE 解析状态
-      let currentEvent = '';
-      let firstDataLine = true;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            currentEvent = line.slice(7).trim();
-            firstDataLine = true;
-          } else if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (currentEvent === 'error') {
-              streamError = data;
-            } else if (currentEvent === 'done') {
-              // done 事件的 data 忽略
-            } else {
-              // 多行 data: 用 \n 连接，还原原始换行
-              if (firstDataLine) {
-                fullContent += data;
-                firstDataLine = false;
-              } else {
-                fullContent += '\n' + data;
-              }
+      const parser = new SseDecoder();
+      let completed = false;
+      const consume = (text: string) => {
+        for (const event of parser.push(text)) {
+          if (event.type === 'token') fullContent += event.data;
+          else if (event.type === 'reading_context') this.patch(conversationId, { readingContext: event.data });
+          else if (event.type === 'error') streamError = event.data;
+          else if (event.type === 'done') {
+            const payload = JSON.parse(event.data);
+            if (typeof payload.messageId !== 'string' || !payload.messageId) {
+              throw new Error('回答保存状态未知，请重新加载会话');
             }
-          } else if (line === '') {
-            // 空行 = SSE 事件边界，重置状态
-            currentEvent = '';
-            firstDataLine = true;
+            this.patch(conversationId, { assistantMessageId: payload.messageId });
+            completed = true;
           }
         }
-
-        // 每个 chunk 更新一次订阅方，避免过多重渲染
         this.patch(conversationId, { aiContent: fullContent });
-      }
-
-      // 流结束 — 刷新 decoder 和 buffer 中残留的数据
-      buffer += decoder.decode(); // stream: false, flush final bytes
-      if (buffer.trim()) {
-        const lines = buffer.split('\n');
-        for (const line of lines) {
-          if (line.startsWith('data: ') && !line.startsWith('data: [DONE]')) {
-            fullContent += line.slice(6);
+      };
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          consume(decoder.decode(value, { stream: true }));
+          // The server's terminal event is authoritative; a proxy may keep HTTP open.
+          if (completed || streamError) {
+            await reader.cancel();
+            break;
           }
         }
+        consume(decoder.decode());
+      } finally {
+        reader.releaseLock();
       }
+      if (!completed && !streamError) streamError = '连接中断，回答尚未完成，请重试';
 
       this.finish(
         conversationId,

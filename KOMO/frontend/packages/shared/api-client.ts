@@ -702,6 +702,8 @@ export interface MessageData {
   role: 'USER' | 'ASSISTANT';
   content: string;
   tokensUsed: number | null;
+  /** JSON snapshot returned by the reading core; absent on historical/general chat. */
+  readingContext?: string | null;
   createdAt: string;
 }
 

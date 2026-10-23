@@ -1,31 +1,17 @@
 # KOMO — Knowledge On My Own
 
-> AI 驱动的个人知识管理工具。不仅能用你的知识回答问题，还能从回答中帮你发现你不知道自己不知道的东西。
+> 通过有依据的AI对话读懂自己的文档，再用自己的理解完善它。
 
-<p align="center">
-  <strong>🔗 对话 → 提取 → 积累 → 增强对话 → 打破认知边界</strong>
-</p>
+## 核心流程
 
----
+1. 导入Markdown文档，或自己创建和编辑文章。
+2. 打开文章的阅读问答，围绕全文或选中的原文提问。
+3. 展开回答使用的参考片段，核对原文、适用条件和例外。
+4. 理解之后，由用户自行编辑文档；AI不会自动保存生成内容。
 
-## 核心理念
+文档阅读核心已从Java提示词中独立为可离线评测的Python模块。短文优先全文输入，长文使用BM25与本地embedding混合召回，回答保留原文证据快照。普通聊天也使用同一检索层；ES已移除。当前尚未实现自主工具循环。详见[阅读核心](KOMO/ai-service/READING_CORE.md)与[混合检索架构和接入](KOMO/ai-service/RETRIEVAL.md)。
 
-传统知识管理工具是"手动录入 → 整理分类 → 搜索查阅"。KOMO 把这个流程反转了：
-
-1. **你和 AI 对话**，像和朋友聊天一样自然
-2. **AI 回复的同时**，系统自动从回复中提取结构化知识点
-3. **你在草稿箱确认/编辑/驳回**，而不是被强制中断阅读
-4. **知识入库后**，下次对话时 AI 自动引用你的知识库提供个性化回答
-
-这个"反向知识提取"循环让你在不知不觉中积累知识，而不是把"整理知识"变成一种负担。
-
-### 和 Notion AI / ChatGPT 的区别？
-
-| | Notion AI | ChatGPT | KOMO |
-|---|---|---|---|
-| 知识来源 | 手动录入 | 对话中产生但无法沉淀 | **对话中自动提取入库** |
-| 知识复用 | 手动搜索引用 | 每次重新提问 | **下次对话自动 RAG 增强** |
-| 新知发现 | 无 | 无 | **标注知识库中缺失的领域** |
+旧草稿提取流程默认暂停，已有草稿可在设置中查看和处理。
 
 ---
 
@@ -34,15 +20,15 @@
 ```
 React (Next.js 16)                       ←  Web 前端
          │ REST + SSE
-Java Spring Boot 3 (:8081)               ←  业务逻辑、认证、CRUD、任务队列
+Java Spring Boot 3 (:8081)               ←  业务逻辑、认证、CRUD、阅读消息持久化
          │ HTTP                          │ AMQP
-Python FastAPI (:8001, Docker)           ←  AI 对话、知识提取、推荐、RAG 检索服务化（预留）
+Python FastAPI (:8001, Docker)           ←  阅读核心、证据选择、模型调用、离线评测
          │                               ↓
-PostgreSQL (:5434) + Elasticsearch (:9201) + RabbitMQ
-         数据存储        全文检索（SmartCN）    提取任务队列 + DLQ 重试
+PostgreSQL (:5434) + Qdrant (:6333) + RabbitMQ（旧草稿流程暂停）
+         数据存储        片段与向量检索    旧提取队列（默认暂停）
 ```
 
-**三语言架构**：Java 做高并发业务逻辑、Python 做 AI/ML、TypeScript 做跨平台前端。Python 运行在 Docker 中隔离。
+Java保留业务与权限边界，Python负责文档阅读策略和模型适配，TypeScript负责共享界面。语言选择不代表已达到高并发或高可用。
 
 ### 技术栈
 
@@ -51,7 +37,7 @@ PostgreSQL (:5434) + Elasticsearch (:9201) + RabbitMQ
 | Web 前端 | Next.js 16 (Turbopack), TypeScript, Radix UI, CSS Modules |
 | 后端 | Java 21 + Spring Boot 3.2, Spring Security (JWT), JPA + Hibernate |
 | AI 服务 | Python 3.12 + FastAPI, DeepSeek V3, OpenAI-compatible SDK |
-| 数据库 | PostgreSQL 16 (ltree 树形分类), Elasticsearch 8 (SmartCN 全文检索) |
+| 数据库 | PostgreSQL 16 (ltree 树形分类), Qdrant 1.15.1 (向量与版本片段) |
 | 基础设施 | Docker Compose, RabbitMQ, Nginx |
 
 ---
@@ -61,14 +47,13 @@ PostgreSQL (:5434) + Elasticsearch (:9201) + RabbitMQ
 ### 已完成 (MVP)
 
 - ✅ **AI 对话** — DeepSeek V3 驱动，SSE 流式输出，Markdown 渲染
-- ✅ **知识自动提取** — AI 回复后静默提取知识点，置信度过滤
-- ✅ **草稿管理** — 确认入库 / 编辑后入库 / 驳回 / 批量操作
+- **历史草稿** — 保留已有数据和确认/驳回能力；新提取默认暂停
 - ✅ **知识 CRUD** — Markdown 编辑 + 实时预览，全文搜索
 - ✅ **RAG 检索增强** — 对话中自动注入相关知识库内容
-- ✅ **侧边栏阅读 Agent** — 文章页划词追问，基于文章全文与选区上下文流式回答，不产生知识草稿
+- ✅ **文档阅读问答** — 独立Python阅读核心、原文片段与行号、文档快照、流式输出；用户自行编辑文档
 - ✅ **[[双向链接]]** — Obsidian 式 `[[文章标题]]` 引用，保存时自动建链，正文可点击跳转，页脚展示"引用了 / 被引用于"
 - ✅ **用户系统** — JWT 双 Token (Access 1h / Refresh 7d)，httpOnly Cookie + CSRF 防护
-- ✅ **数据安全** — 全链路 `user_id` 归属校验，ES 检索多租户隔离
+- ✅ **数据安全** — 全链路 `user_id` 归属校验，检索用户/版本过滤与原文复核
 
 ### 路线图
 
@@ -101,7 +86,8 @@ cd komo
 
 ```bash
 cp docker/.env.example docker/.env
-# 编辑 docker/.env，填入你的 DeepSeek API Key 等信息
+# 编辑 docker/.env，填入DeepSeek API Key和独立随机AI_INTERNAL_TOKEN
+# 启动Java时也须提供同一AI_INTERNAL_TOKEN及数据库环境变量
 ```
 
 ### 3. 启动基础设施
@@ -109,7 +95,7 @@ cp docker/.env.example docker/.env
 ```bash
 cd docker
 docker-compose up -d
-# 启动 PostgreSQL + Elasticsearch + RabbitMQ + Python AI 服务
+# 启动 PostgreSQL + Qdrant + RabbitMQ + Python AI 服务
 ```
 
 ### 4. 启动后端

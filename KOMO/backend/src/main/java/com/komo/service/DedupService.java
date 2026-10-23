@@ -11,7 +11,7 @@ import java.util.UUID;
 
 /**
  * 知识去重服务。
- * Layer 1: ES more_like_this 查询
+ * Layer 1: 混合检索召回候选
  * Layer 2: 标题 LCS 兜底
  * Layer 3: DeepSeek LLM 语义判定（异步）
  */
@@ -19,14 +19,9 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class DedupService {
 
-    private final KnowledgeIndexService indexService;
+    private final KnowledgeRetrievalService indexService;
     private final KnowledgeDraftService draftService;
 
-    /**
-     * 历史分数缩放，仅用于候选提示，不是重复概率。
-     * 分词器、语料及查询条件变化后需要重新评测，不能据此丢弃内容。
-     */
-    private static final double MLT_NORMAL_SCALE = 60.0;  // ES MLT 得分归一化系数
     /**
      * 高分候选直接标记为疑似重复，保留在草稿箱交给用户审阅。
      */
@@ -38,12 +33,12 @@ public class DedupService {
      * 检查候选草稿是否与已有知识库或待处理草稿重复。
      */
     public DedupResult checkDuplicate(UUID userId, String title, String contentPlain) {
-        // ===== Layer 1: ES more_like_this =====
+        // ===== Layer 1: 混合检索（排名分数不能当作重复概率） =====
         List<Map<String, Object>> similar = indexService.findSimilar(userId, title, contentPlain, 5);
         DedupResult best = DedupResult.noMatch();
 
         for (Map<String, Object> entry : similar) {
-            Double mltScore = entry.get("_score") instanceof Number
+            Double retrievalScore = entry.get("_score") instanceof Number
                 ? ((Number) entry.get("_score")).doubleValue() : 0;
             String entryTitle = (String) entry.getOrDefault("title", "");
             String entryId = (String) entry.get("_id");
@@ -51,12 +46,11 @@ public class DedupService {
             // Layer 2: 标题 LCS 兜底
             double lcsScore = computeTitleLcs(title, entryTitle);
 
-            // 综合评分 = max(MLT归一化, LCS)
-            double mltNorm = Math.min(mltScore / MLT_NORMAL_SCALE, 1.0);
-            double combined = Math.max(mltNorm, lcsScore);
+            // 召回候选至少进入人工/模型审阅；只有标题重合度触发高分提示。
+            double combined = Math.max(0.3, lcsScore);
 
             if (combined > best.getScore()) {
-                best = DedupResult.knowledgeMatch(entryId, combined, mltScore, lcsScore);
+                best = DedupResult.knowledgeMatch(entryId, combined, retrievalScore, lcsScore);
             }
         }
 

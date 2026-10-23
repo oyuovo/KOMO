@@ -249,9 +249,9 @@ export default function DraftsPage() {
       {/* Header */}
       <div className={styles.header}>
         <div>
-          <h1 className={styles.title}>知识草稿</h1>
+          <h1 className={styles.title}>历史草稿</h1>
           <p className={styles.subtitle}>
-            {drafts.length} 条待处理 · AI 对话中自动提取
+            {drafts.length} 条待处理 · 提取流程已暂停
           </p>
         </div>
         {selectedIds.size > 0 && (
@@ -282,7 +282,7 @@ export default function DraftsPage() {
             <p className={styles.emptyIcon}>📝</p>
             <p className={styles.emptyTitle}>没有待处理的草稿</p>
             <p className={styles.emptyDesc}>
-              开始一次 AI 对话，系统会自动从回复中提取知识点
+              可以打开文档边读边问，理解后自行编辑完善
             </p>
           </div>
         )}

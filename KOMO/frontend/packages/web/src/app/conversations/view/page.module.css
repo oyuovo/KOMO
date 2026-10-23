@@ -33,12 +33,6 @@
   white-space: nowrap;
 }
 
-.chatHeaderRight {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
 /* KB Switcher */
 .kbSwitcherWrap {
   position: relative;
@@ -107,27 +101,6 @@
   margin: 4px 0;
 }
 
-.extractBtn {
-  padding: 6px 14px;
-  border: 1px solid var(--komo-primary, #2563eb);
-  border-radius: var(--komo-radius-sm);
-  background: transparent;
-  color: var(--komo-primary, #2563eb);
-  font-size: var(--komo-text-sm);
-  font-weight: 500;
-  font-family: inherit;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.extractBtn:hover:not(:disabled) {
-  background: var(--komo-primary, #2563eb);
-  color: #fff;
-}
-.extractBtn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 /* ===== Message List ===== */
 .messageList {
   flex: 1;
@@ -192,45 +165,6 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
 }
-
-/* ===== Draft Hint Bar ===== */
-.draftHint {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 24px;
-  background: var(--komo-accent-soft);
-  border-bottom: 1px solid rgba(184, 92, 56, 0.1);
-  font-size: var(--komo-text-sm);
-}
-
-.draftHintMsg {
-  color: var(--komo-accent);
-  font-weight: 500;
-}
-
-.draftHintActions {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-
-.draftHintLink {
-  color: var(--komo-accent);
-  font-weight: 600;
-  text-decoration: none;
-}
-.draftHintLink:hover { text-decoration: underline; }
-
-.draftHintDismiss {
-  background: none;
-  border: none;
-  color: var(--komo-text-tertiary);
-  font-size: var(--komo-text-sm);
-  font-family: inherit;
-  cursor: pointer;
-}
-.draftHintDismiss:hover { color: var(--komo-text); }
 
 /* ===== Input Area ===== */
 .inputArea {
