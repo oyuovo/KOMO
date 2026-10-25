@@ -13,6 +13,9 @@ import com.komo.exception.BusinessException;
 import com.komo.exception.ErrorCode;
 import com.komo.repository.KnowledgeLinkRepository;
 import com.komo.repository.KnowledgeRepository;
+import com.komo.repository.CategoryRepository;
+import com.komo.repository.ConversationRepository;
+import com.komo.entity.Conversation.ConversationType;
 import com.komo.security.SecurityContext;
 import com.komo.util.MarkdownUtils;
 import org.springframework.data.domain.Page;
@@ -30,6 +33,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -49,19 +53,24 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
     private final KnowledgeBaseService knowledgeBaseService;
     private final WikiLinkService wikiLinkService;
     private final TransactionTemplate transactionTemplate;
+    private final CategoryRepository categoryRepository;
+    private final ConversationRepository conversations;
 
     public KnowledgeService(KnowledgeRepository repository,
                             KnowledgeLinkRepository knowledgeLinkRepository,
                             KnowledgeRetrievalService indexService,
                             KnowledgeBaseService knowledgeBaseService,
                             WikiLinkService wikiLinkService,
-                            TransactionTemplate transactionTemplate) {
+                            TransactionTemplate transactionTemplate,
+                            CategoryRepository categoryRepository, ConversationRepository conversations) {
         super(repository);
         this.knowledgeLinkRepository = knowledgeLinkRepository;
         this.indexService = indexService;
         this.knowledgeBaseService = knowledgeBaseService;
         this.wikiLinkService = wikiLinkService;
         this.transactionTemplate = transactionTemplate;
+        this.categoryRepository = categoryRepository;
+        this.conversations = conversations;
     }
 
     @Override
@@ -95,47 +104,83 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
             ? request.getKnowledgeBaseId()
             : knowledgeBaseService.getDefaultBase(getCurrentUserId()).getId();
 
-        KnowledgeEntry entry = transactionTemplate.execute(status -> repository.save(
-            KnowledgeEntry.builder()
-                .userId(getCurrentUserId())
-                .title(request.getTitle())
-                .content(request.getContent())
-                .contentPlain(MarkdownUtils.stripMarkdown(request.getContent()))
-                .source(KnowledgeSource.MANUAL)
-                .entryType(request.getEntryType() != null
-                    ? request.getEntryType() : KnowledgeEntry.KnowledgeType.FACT)
-                .knowledgeBaseId(kbId)
-                .categoryId(request.getCategoryId())
-                .tagNames(request.getTags())
-                .build()));
-        // 同步 [[wiki 链接]]（纯 DB 操作，检索在读取当前版本时补建）
-        wikiLinkService.syncLinks(entry.getUserId(), entry.getId());
-        return entry;
+        return transactionTemplate.execute(status -> {
+            knowledgeBaseService.lockForReference(kbId, getCurrentUserId());
+            validateCategory(request.getCategoryId(), kbId);
+            KnowledgeEntry entry = repository.save(
+                KnowledgeEntry.builder()
+                    .userId(getCurrentUserId())
+                    .title(request.getTitle())
+                    .content(request.getContent())
+                    .contentPlain(MarkdownUtils.stripMarkdown(request.getContent()))
+                    .source(KnowledgeSource.MANUAL)
+                    .entryType(request.getEntryType() != null
+                        ? request.getEntryType() : KnowledgeEntry.KnowledgeType.FACT)
+                    .knowledgeBaseId(kbId)
+                    .categoryId(request.getCategoryId())
+                    .tagNames(request.getTags())
+                    .build());
+            wikiLinkService.syncLinks(entry.getUserId(), entry.getId());
+            return entry;
+        });
     }
 
     public KnowledgeEntry update(UUID id, KnowledgeUpdateRequest request) {
-        KnowledgeEntry entry = transactionTemplate.execute(status -> {
-            KnowledgeEntry current = findByIdOrThrow(id);
+        return transactionTemplate.execute(status -> {
+            KnowledgeEntry current = getById(id);
+            if (request.getVersion() == null || !request.getVersion().equals(current.getVersion())) {
+                throw new BusinessException(ErrorCode.CONFLICT,
+                    "文章已被修改，请先保留当前编辑内容，再重新加载最新文章进行核对");
+            }
+            UUID targetKbId = request.getKnowledgeBaseId() != null
+                ? request.getKnowledgeBaseId() : current.getKnowledgeBaseId();
+            if (request.getKnowledgeBaseId() != null) {
+                knowledgeBaseService.lockForReference(targetKbId, getCurrentUserId());
+            }
+            validateCategory(request.getCategoryId(), targetKbId);
+            current.setKnowledgeBaseId(targetKbId);
             current.setTitle(request.getTitle());
             current.setContent(request.getContent());
             current.setContentPlain(MarkdownUtils.stripMarkdown(request.getContent()));
-            current.setEntryType(request.getEntryType());
+            if (request.getEntryType() != null) current.setEntryType(request.getEntryType());
             current.setCategoryId(request.getCategoryId());
-            current.setTagNames(request.getTags());
+            // 编辑页没有标签控件：未提交时保留，显式空字符串才清空。
+            if (request.getTags() != null) current.setTagNames(request.getTags());
+            KnowledgeEntry saved = repository.save(current);
+            conversations.syncReadingBaseByArticleIdAndUserId(id, getCurrentUserId(), targetKbId, ConversationType.READING);
+            wikiLinkService.syncLinks(saved.getUserId(), saved.getId());
+            return saved;
+        });
+    }
+
+    /** 分类移动只改分类，始终保留数据库中的最新正文及元数据。 */
+    public KnowledgeEntry moveToCategory(UUID id, UUID categoryId) {
+        return transactionTemplate.execute(status -> {
+            KnowledgeEntry current = getById(id);
+            validateCategory(categoryId, current.getKnowledgeBaseId());
+            current.setCategoryId(categoryId);
             return repository.save(current);
         });
-        wikiLinkService.syncLinks(entry.getUserId(), entry.getId());
-        return entry;
+    }
+
+    private void validateCategory(UUID categoryId, UUID knowledgeBaseId) {
+        if (categoryId == null) return;
+        var category = categoryRepository.findByIdAndUserIdForUpdate(categoryId, getCurrentUserId())
+            .orElseThrow(() -> new BusinessException(ErrorCode.CATEGORY_NOT_FOUND));
+        if (!Objects.equals(category.getKnowledgeBaseId(), knowledgeBaseId)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "分类不属于文章所在知识库");
+        }
     }
 
     public void softDelete(UUID id) {
         KnowledgeEntry entry = transactionTemplate.execute(status -> {
             KnowledgeEntry current = findByIdOrThrow(id);
             current.setDeletedAt(LocalDateTime.now());
-            return repository.save(current);
+            KnowledgeEntry saved = repository.save(current);
+            conversations.syncReadingBaseByArticleIdAndUserId(id, getCurrentUserId(), null, ConversationType.READING);
+            wikiLinkService.deleteRelatedLinks(id);
+            return saved;
         });
-        // 清理该文章的 wiki 链接（出链 + 入链），系统关联保持原行为
-        wikiLinkService.deleteRelatedLinks(id);
         log.info("[AUDIT] action=DELETE_KNOWLEDGE userId={} entryId={} title={}",
             entry.getUserId(), id, entry.getTitle());
     }
@@ -218,6 +263,10 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
             throw new BusinessException(ErrorCode.BAD_REQUEST, "不能嵌入到自身");
         }
 
+        if (target.getKnowledgeBaseId() != null) {
+            knowledgeBaseService.lockForReference(target.getKnowledgeBaseId(), getCurrentUserId());
+        }
+
         // 检查关联是否已存在
         if (knowledgeLinkRepository.existsBySourceEntryIdAndTargetEntryId(entryId, targetEntryId)) {
             throw new BusinessException(ErrorCode.CONFLICT, "该文章已嵌入到此目标");
@@ -233,8 +282,10 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
 
         // 将碎片移入目标文章的知识库
         if (target.getKnowledgeBaseId() != null) {
+            if (!Objects.equals(entry.getKnowledgeBaseId(), target.getKnowledgeBaseId())) entry.setCategoryId(null);
             entry.setKnowledgeBaseId(target.getKnowledgeBaseId());
             repository.save(entry);
+            conversations.syncReadingBaseByArticleIdAndUserId(entryId, getCurrentUserId(), target.getKnowledgeBaseId(), ConversationType.READING);
         }
 
         return link;
@@ -245,7 +296,11 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
         KnowledgeEntry merged = null;
         for (int retry = 0; retry < 3; retry++) {
             try {
-                merged = transactionTemplate.execute(status -> doMergeInto(fragmentId, targetId));
+                merged = transactionTemplate.execute(status -> {
+                    KnowledgeEntry saved = doMergeInto(fragmentId, targetId);
+                    wikiLinkService.syncLinks(saved.getUserId(), saved.getId());
+                    return saved;
+                });
                 break;
             } catch (org.springframework.orm.ObjectOptimisticLockingFailureException e) {
                 if (retry == 2) throw e;
@@ -257,9 +312,6 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "合并失败，请重试");
         }
 
-        // 检索只接受当前版本快照，无外部索引双写。
-        // 合并后目标文章内容变化，同步 wiki 链接
-        wikiLinkService.syncLinks(merged.getUserId(), merged.getId());
         return merged;
     }
 
@@ -293,6 +345,7 @@ public class KnowledgeService extends BaseService<KnowledgeEntry, KnowledgeRepos
         // 软删除碎片（内容已合并进目标文章）
         fragment.setDeletedAt(LocalDateTime.now());
         repository.save(fragment);
+        conversations.syncReadingBaseByArticleIdAndUserId(fragmentId, getCurrentUserId(), null, ConversationType.READING);
 
         return target;
     }

@@ -74,7 +74,7 @@ public class KnowledgeDraftService {
 
     private KnowledgeEntry persistConfirmation(UUID draftId, String title, String content,
                                                  UUID overrideKbId, UUID parentEntryId, boolean edited) {
-        KnowledgeEntry entry = transactionTemplate.execute(status -> {
+        return transactionTemplate.execute(status -> {
             KnowledgeDraft draft = findOwnDraft(draftId);
             if (draft.getStatus() != KnowledgeDraft.DraftStatus.PENDING) {
                 throw new BusinessException(ErrorCode.DRAFT_ALREADY_PROCESSED, "该草稿已处理");
@@ -102,10 +102,9 @@ public class KnowledgeDraftService {
             draft.setConfirmedEntryId(saved.getId());
             draft.setProcessedAt(LocalDateTime.now());
             draftRepository.save(draft);
+            wikiLinkService.syncLinks(saved.getUserId(), saved.getId());
             return saved;
         });
-        wikiLinkService.syncLinks(entry.getUserId(), entry.getId());
-        return entry;
     }
 
     private UUID resolveTargetKnowledgeBase(KnowledgeDraft draft, UUID overrideKbId, UUID parentEntryId) {
@@ -129,7 +128,7 @@ public class KnowledgeDraftService {
         } else {
             targetKbId = knowledgeBaseService.getDefaultBase(draft.getUserId()).getId();
         }
-        knowledgeBaseService.findByIdOrThrow(targetKbId);
+        knowledgeBaseService.lockForReference(targetKbId, draft.getUserId());
         return targetKbId;
     }
 
@@ -215,7 +214,7 @@ public class KnowledgeDraftService {
 
     /** 安全查询：带归属校验的草稿单条查询 */
     private KnowledgeDraft findOwnDraft(UUID draftId) {
-        return draftRepository.findByIdAndUserId(draftId, SecurityContext.getCurrentUserId())
+        return draftRepository.findByIdAndUserIdForUpdate(draftId, SecurityContext.getCurrentUserId())
             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "草稿不存在"));
     }
 }

@@ -19,6 +19,8 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -58,6 +60,7 @@ public class ConversationService {
     private final UserService userService;
     private final RestTemplate restTemplate;
     private final ReadingConversationService readingService;
+    private final TransactionTemplate transactionTemplate;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -82,7 +85,8 @@ public class ConversationService {
                                DedupService dedupService,
                                RabbitTemplate rabbitTemplate,
                                UserService userService,
-                               RestTemplate restTemplate, ReadingConversationService readingService) {
+                               RestTemplate restTemplate, ReadingConversationService readingService,
+                               TransactionTemplate transactionTemplate) {
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
         this.conversationPersistenceService = conversationPersistenceService;
@@ -95,13 +99,14 @@ public class ConversationService {
         this.userService = userService;
         this.restTemplate = restTemplate;
         this.readingService = readingService;
+        this.transactionTemplate = transactionTemplate;
     }
 
     /** 创建新对话 */
     @Transactional
     public Conversation create(UUID userId, String title, UUID knowledgeBaseId) {
         if (knowledgeBaseId != null) {
-            knowledgeBaseService.findByIdOrThrow(knowledgeBaseId);
+            knowledgeBaseService.lockForReference(knowledgeBaseId, userId);
         }
         Conversation convo = Conversation.builder()
             .userId(userId)
@@ -131,12 +136,20 @@ public class ConversationService {
     /** 获取或创建文章的侧边栏阅读问答会话（每篇文章复用同一个会话） */
     @Transactional
     public Conversation getOrCreateReadingConversation(UUID userId, UUID articleId) {
-        KnowledgeEntry article = knowledgeRepository.findByIdAndUserId(articleId, userId)
+        var location = knowledgeRepository.findLocationByIdAndUserId(articleId, userId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.KNOWLEDGE_NOT_FOUND, "文章不存在或无权访问"));
+        UUID kbId = location.getKnowledgeBaseId();
+        if (kbId != null) knowledgeBaseService.lockForReference(kbId, userId);
+        KnowledgeEntry article = knowledgeRepository.findByIdAndUserIdForUpdate(articleId, userId)
             .orElseThrow(() -> new BusinessException(ErrorCode.KNOWLEDGE_NOT_FOUND, "文章不存在或无权访问"));
         if (article.getDeletedAt() != null) {
             throw new BusinessException(ErrorCode.KNOWLEDGE_NOT_FOUND, "文章不存在或无权访问");
         }
+        if (!java.util.Objects.equals(kbId, article.getKnowledgeBaseId())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "文章已迁移，请重新打开阅读问答");
+        }
 
+        conversationRepository.syncReadingBaseByArticleIdAndUserId(articleId, userId, kbId, ConversationType.READING);
         return conversationRepository
             .findFirstByUserIdAndArticleIdAndTypeOrderByUpdatedAtDesc(userId, articleId, ConversationType.READING)
             .orElseGet(() -> conversationRepository.save(Conversation.builder()
@@ -160,7 +173,7 @@ public class ConversationService {
         }
 
         if (knowledgeBaseId != null) {
-            knowledgeBaseService.findByIdOrThrow(knowledgeBaseId);
+            knowledgeBaseService.lockForReference(knowledgeBaseId, userId);
         }
 
         convo.setKnowledgeBaseId(knowledgeBaseId);
@@ -187,14 +200,15 @@ public class ConversationService {
         conversationRepository.delete(convo);
     }
 
-    /** 批量删除对话。逐条处理，单条失败不影响其他。 */
-    @Transactional
+    /** 每项使用独立事务；提交成功后才计数，失败项的消息、草稿和会话一起回滚。 */
     public BatchDeleteResult batchDelete(List<UUID> ids, UUID userId) {
+        TransactionTemplate isolated = new TransactionTemplate(transactionTemplate.getTransactionManager());
+        isolated.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         int deleted = 0;
         int failed = 0;
         for (UUID id : ids) {
             try {
-                delete(id, userId);
+                isolated.executeWithoutResult(status -> delete(id, userId));
                 deleted++;
             } catch (Exception e) {
                 failed++;

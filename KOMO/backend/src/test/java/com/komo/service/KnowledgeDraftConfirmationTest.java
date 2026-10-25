@@ -47,7 +47,9 @@ class KnowledgeDraftConfirmationTest {
     @BeforeEach
     void setup() {
         SecurityContext.setCurrentUserId(user);
-        service = new KnowledgeDraftService(drafts, entries, new KnowledgeBaseService(bases), links, wiki, tx);
+        service = new KnowledgeDraftService(drafts, entries, new KnowledgeBaseService(bases, entries,
+            mock(com.komo.repository.CategoryRepository.class), mock(com.komo.repository.ConversationRepository.class),
+            mock(com.komo.repository.DailyRecommendationRepository.class)), links, wiki, tx);
         draft = KnowledgeDraft.builder().userId(user).title("新补充").content("需要保存的正文")
             .extractType(KnowledgeDraft.ExtractType.SUPPLEMENT).build();
         draft.setId(draftId);
@@ -55,9 +57,9 @@ class KnowledgeDraftConfirmationTest {
         parent.setId(parentId);
         KnowledgeBase kb = KnowledgeBase.builder().userId(user).name("自己的知识库").build();
         kb.setId(kbId);
-        when(drafts.findByIdAndUserId(draftId, user)).thenReturn(Optional.of(draft));
+        when(drafts.findByIdAndUserIdForUpdate(draftId, user)).thenReturn(Optional.of(draft));
         when(entries.findByIdAndUserId(parentId, user)).thenReturn(Optional.of(parent));
-        when(bases.findById(kbId)).thenReturn(Optional.of(kb));
+        when(bases.findByIdAndUserIdForUpdate(kbId, user)).thenReturn(Optional.of(kb));
         when(bases.findAllByUserIdAndType(eq(user), any())).thenReturn(List.of(kb));
         when(tx.execute(any())).thenAnswer(invocation -> {
             inTransaction = true;
@@ -81,6 +83,11 @@ class KnowledgeDraftConfirmationTest {
             assertTrue(inTransaction);
             return invocation.getArgument(0);
         });
+
+        doAnswer(invocation -> {
+            assertTrue(inTransaction, "Wiki sync must share the confirmation transaction");
+            return null;
+        }).when(wiki).syncLinks(any(), any());
 
     }
 
@@ -119,7 +126,7 @@ class KnowledgeDraftConfirmationTest {
     void cannotConfirmIntoAnotherUsersKnowledgeBase(boolean edited) {
         KnowledgeBase foreign = KnowledgeBase.builder().userId(UUID.randomUUID()).name("另一个用户").build();
         foreign.setId(kbId);
-        when(bases.findById(kbId)).thenReturn(Optional.of(foreign));
+        when(bases.findByIdAndUserIdForUpdate(kbId, user)).thenReturn(Optional.of(foreign));
         assertThrows(BusinessException.class, () -> {
             if (edited) service.editAndConfirm(draftId, "新标题", "新正文", kbId);
             else service.confirmWithParent(draftId, kbId, null);
@@ -174,7 +181,7 @@ class KnowledgeDraftConfirmationTest {
 
     @Test
     void missingKnowledgeBaseDoesNotLeaveAnOrphanEntry() {
-        when(bases.findById(kbId)).thenReturn(Optional.empty());
+        when(bases.findByIdAndUserIdForUpdate(kbId, user)).thenReturn(Optional.empty());
         assertThrows(BusinessException.class, () -> service.confirm(draftId, kbId));
         assertNoWrites();
     }

@@ -9,6 +9,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.DynamicUpdate;
 
 import java.util.UUID;
 
@@ -17,6 +18,7 @@ import java.util.UUID;
  * AI 基于用户知识库生成自查问题，引导用户发现知识盲区。
  */
 @Entity
+@DynamicUpdate // 更新处理状态时保留并发删除知识库所清空的建议引用。
 @Table(name = "daily_recommendations", indexes = {
     @Index(name = "idx_daily_rec_user_status", columnList = "user_id, status, created_at")
 })

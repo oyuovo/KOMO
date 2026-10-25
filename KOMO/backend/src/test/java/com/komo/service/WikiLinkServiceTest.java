@@ -5,6 +5,8 @@ import com.komo.entity.KnowledgeLink;
 import com.komo.repository.KnowledgeLinkRepository;
 import com.komo.repository.KnowledgeRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 
 import java.time.LocalDateTime;
@@ -53,11 +55,11 @@ class WikiLinkServiceTest {
         when(knowledgeRepository.findAllByUserIdAndTitleIgnoreCaseAndDeletedAtIsNull(userId, "目标文章"))
             .thenReturn(List.of(target));
 
-        // 旧链接返回一条，验证全量重建
+        // 删除不再引用的旧链接，补建新链接。
         KnowledgeLink oldLink = KnowledgeLink.builder()
             .sourceEntryId(sourceId).targetEntryId(UUID.randomUUID())
             .relation(KnowledgeLink.RelationType.RELATED).build();
-        when(knowledgeLinkRepository.findAllBySourceEntryIdAndRelation(sourceId, KnowledgeLink.RelationType.RELATED))
+        when(knowledgeLinkRepository.findAllBySourceEntryIdAndUserId(sourceId, userId))
             .thenReturn(List.of(oldLink));
 
         service.syncLinks(userId, sourceId);
@@ -79,7 +81,7 @@ class WikiLinkServiceTest {
         when(knowledgeRepository.findByIdAndUserId(sourceId, userId)).thenReturn(Optional.of(source));
         when(knowledgeRepository.findAllByUserIdAndTitleIgnoreCaseAndDeletedAtIsNull(userId, "不存在的文章"))
             .thenReturn(List.of());
-        when(knowledgeLinkRepository.findAllBySourceEntryIdAndRelation(sourceId, KnowledgeLink.RelationType.RELATED))
+        when(knowledgeLinkRepository.findAllBySourceEntryIdAndUserId(sourceId, userId))
             .thenReturn(List.of());
 
         service.syncLinks(userId, sourceId);
@@ -108,7 +110,7 @@ class WikiLinkServiceTest {
         when(knowledgeRepository.findByIdAndUserId(sourceId, userId)).thenReturn(Optional.of(source));
         when(knowledgeRepository.findAllByUserIdAndTitleIgnoreCaseAndDeletedAtIsNull(userId, "歧义标题"))
             .thenReturn(List.of(otherKb, sameKbNew, sameKbOld));
-        when(knowledgeLinkRepository.findAllBySourceEntryIdAndRelation(sourceId, KnowledgeLink.RelationType.RELATED))
+        when(knowledgeLinkRepository.findAllBySourceEntryIdAndUserId(sourceId, userId))
             .thenReturn(List.of());
 
         service.syncLinks(userId, sourceId);
@@ -129,7 +131,7 @@ class WikiLinkServiceTest {
         // 只有自身命中
         when(knowledgeRepository.findAllByUserIdAndTitleIgnoreCaseAndDeletedAtIsNull(userId, "自引"))
             .thenReturn(List.of(source));
-        when(knowledgeLinkRepository.findAllBySourceEntryIdAndRelation(sourceId, KnowledgeLink.RelationType.RELATED))
+        when(knowledgeLinkRepository.findAllBySourceEntryIdAndUserId(sourceId, userId))
             .thenReturn(List.of());
 
         service.syncLinks(userId, sourceId);
@@ -145,7 +147,7 @@ class WikiLinkServiceTest {
         KnowledgeEntry source = entry(sourceId, userId, "来源", "无链接", UUID.randomUUID());
         when(knowledgeRepository.findByIdAndUserId(sourceId, userId)).thenReturn(Optional.of(source));
         // 旧 RELATED 链接为空（SUPPLEMENTS 由系统管理，不经此路径）
-        when(knowledgeLinkRepository.findAllBySourceEntryIdAndRelation(sourceId, KnowledgeLink.RelationType.RELATED))
+        when(knowledgeLinkRepository.findAllBySourceEntryIdAndUserId(sourceId, userId))
             .thenReturn(List.of());
 
         service.syncLinks(userId, sourceId);
@@ -167,11 +169,45 @@ class WikiLinkServiceTest {
         when(knowledgeRepository.findByIdAndUserId(sourceId, userId)).thenReturn(Optional.of(source));
         when(knowledgeRepository.findAllByUserIdAndTitleIgnoreCaseAndDeletedAtIsNull(userId, "目标"))
             .thenReturn(List.of(target));
-        when(knowledgeLinkRepository.findAllBySourceEntryIdAndRelation(sourceId, KnowledgeLink.RelationType.RELATED))
+        when(knowledgeLinkRepository.findAllBySourceEntryIdAndUserId(sourceId, userId))
             .thenReturn(List.of());
 
         service.syncLinks(userId, sourceId);
 
         verify(knowledgeLinkRepository, org.mockito.Mockito.times(1)).save(any(KnowledgeLink.class));
+    }
+
+    @ParameterizedTest
+    @EnumSource(KnowledgeLink.RelationType.class)
+    void reusesExistingRelationWithoutChangingTypeOrIdentity(KnowledgeLink.RelationType relation) {
+        UUID user = UUID.randomUUID(), sourceId = UUID.randomUUID(), targetId = UUID.randomUUID(), kb = UUID.randomUUID();
+        KnowledgeEntry source = entry(sourceId, user, "来源", "[[目标]]", kb);
+        KnowledgeEntry target = entry(targetId, user, "目标", "正文", kb);
+        KnowledgeLink existing = KnowledgeLink.builder().sourceEntryId(sourceId).targetEntryId(targetId).relation(relation).build();
+        when(knowledgeRepository.findByIdAndUserId(sourceId, user)).thenReturn(Optional.of(source));
+        when(knowledgeRepository.findAllByUserIdAndTitleIgnoreCaseAndDeletedAtIsNull(user, "目标"))
+            .thenReturn(List.of(target));
+        when(knowledgeLinkRepository.findAllBySourceEntryIdAndUserId(sourceId, user)).thenReturn(List.of(existing));
+
+        service.syncLinks(user, sourceId);
+
+        verify(knowledgeLinkRepository, never()).deleteAllInBatch(anyList());
+        verify(knowledgeLinkRepository, never()).save(any());
+        assertEquals(relation, existing.getRelation());
+    }
+
+    @Test
+    void removingWikiReferencePreservesSupplementRelation() {
+        UUID user = UUID.randomUUID(), sourceId = UUID.randomUUID();
+        KnowledgeEntry source = entry(sourceId, user, "来源", "引用已移除", UUID.randomUUID());
+        KnowledgeLink supplement = KnowledgeLink.builder().sourceEntryId(sourceId).targetEntryId(UUID.randomUUID())
+            .relation(KnowledgeLink.RelationType.SUPPLEMENTS).build();
+        when(knowledgeRepository.findByIdAndUserId(sourceId, user)).thenReturn(Optional.of(source));
+        when(knowledgeLinkRepository.findAllBySourceEntryIdAndUserId(sourceId, user)).thenReturn(List.of(supplement));
+
+        service.syncLinks(user, sourceId);
+
+        verify(knowledgeLinkRepository, never()).deleteAllInBatch(anyList());
+        verify(knowledgeLinkRepository, never()).save(any());
     }
 }

@@ -112,6 +112,23 @@ class DailyRecommendationServiceTest {
         verify(records, times(2)).save(any());
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void suggestionIsCheckedAfterAiReturnsInsideTheSaveTransaction(boolean exists) {
+        UUID suggested = UUID.randomUUID();
+        when(http.postForObject(anyString(), any(), eq(Map.class))).thenAnswer(invocation -> {
+            assertFalse(inTransaction);
+            return Map.of("questions", List.of(Map.of("text", "new question", "suggested_kb_id", suggested.toString())));
+        });
+        when(bases.findForReference(suggested, userId)).thenAnswer(invocation -> {
+            assertTrue(inTransaction);
+            return exists ? Optional.of(com.komo.entity.KnowledgeBase.builder().userId(userId).build()) : Optional.empty();
+        });
+        var saved = service.generateTodayRecommendation(userId, true);
+        assertEquals(exists ? suggested : null, saved.getSuggestedKbId());
+        verify(bases).findForReference(suggested, userId);
+    }
+
     @Test
     void newDayWithoutRecordsCanGenerate() {
         when(records.findTopByUserIdAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(

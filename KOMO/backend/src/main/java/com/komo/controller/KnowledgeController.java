@@ -5,6 +5,7 @@ import com.komo.dto.request.AddLinkRequest;
 import com.komo.dto.request.BatchIdsRequest;
 import com.komo.dto.request.KnowledgeCreateRequest;
 import com.komo.dto.request.KnowledgeUpdateRequest;
+import com.komo.dto.request.KnowledgeCategoryRequest;
 import com.komo.dto.response.ApiResponse;
 import com.komo.dto.response.KnowledgeLinkResponse;
 import com.komo.dto.response.KnowledgeResponse;
@@ -77,6 +78,15 @@ public class KnowledgeController {
     ) {
         KnowledgeEntry entry = knowledgeService.update(id, request);
         return ResponseEntity.ok(ApiResponse.success(KnowledgeResponse.from(entry)));
+    }
+
+    @PutMapping("/{id}/category")
+    public ResponseEntity<ApiResponse<KnowledgeResponse>> moveToCategory(
+        @PathVariable UUID id,
+        @Valid @RequestBody KnowledgeCategoryRequest request
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(
+            KnowledgeResponse.from(knowledgeService.moveToCategory(id, request.categoryId()))));
     }
 
     @DeleteMapping("/{id}")

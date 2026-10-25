@@ -161,7 +161,7 @@ export default function ConversationSidebar({ activeConversationId, onConversati
                     }`}
                   >
                     <span className={styles.convIcon}>💬</span>
-                    <span className={styles.convTitle}>{conv.title}</span>
+                    <span className={styles.convTitle}>{conv.type === 'READING' ? `阅读历史 · ${conv.title}` : conv.title}</span>
                   </Link>
                   <button
                     className={styles.deleteBtn}
@@ -202,7 +202,7 @@ export default function ConversationSidebar({ activeConversationId, onConversati
                 }`}
               >
                 <span className={styles.convIcon}>💬</span>
-                <span className={styles.convTitle}>{conv.title}</span>
+                <span className={styles.convTitle}>{conv.type === 'READING' ? `阅读历史 · ${conv.title}` : conv.title}</span>
               </Link>
               <button
                 className={styles.deleteBtn}

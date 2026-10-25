@@ -8,7 +8,6 @@ import {
   updateKnowledge,
   listKnowledgeBases,
   listCategories,
-  type KnowledgeItem,
   type KnowledgeBaseData,
   type CategoryData,
 } from '@komo/shared/api-client';
@@ -39,49 +38,70 @@ function EditKnowledgeContent() {
   const [kbs, setKbs] = useState<KnowledgeBaseData[]>([]);
   const [selectedKbId, setSelectedKbId] = useState<string>('');
   const [categories, setCategories] = useState<CategoryData[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string>('');
+  const [version, setVersion] = useState<number | null>(null);
+  const [loadedId, setLoadedId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!id) return;
-    getMe().then((u) => {
-      if (!u) { router.push('/login'); return; }
-      // Load KBs first
-      listKnowledgeBases().then((list) => {
-      setKbs(list);
-      const defaultKb = list.find((kb) => kb.type === 'DEFAULT') || list[0];
-      if (defaultKb) setSelectedKbId(defaultKb.id);
-    }).catch(() => {});
-    // Load article
-    getKnowledge(id)
-      .then((article) => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadedId(null);
+    setVersion(null);
+    setError(null);
+    const load = async () => {
+      try {
+        if (!id) throw new Error('未指定文章');
+        const user = await getMe();
+        if (cancelled) return;
+        if (!user) { router.push('/login'); return; }
+        const [article, list] = await Promise.all([getKnowledge(id), listKnowledgeBases()]);
+        if (cancelled) return;
+        if (article.version == null) throw new Error('文章缺少版本信息，请联网重新加载后再编辑');
+        setKbs(list);
         setTitle(article.title);
         setContent(article.content);
         setEntryType(article.entryType || 'CONCEPT');
         setCategoryId(article.categoryId || '');
-        if (article.knowledgeBaseId) setSelectedKbId(article.knowledgeBaseId);
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-    }).catch((err) => { setError(err.message); setLoading(false); });
+        setSelectedKbId(article.knowledgeBaseId || '');
+        setVersion(article.version);
+        setLoadedId(id);
+      } catch (err) {
+        if (!cancelled) setError((err as Error).message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void load();
+    return () => { cancelled = true; };
   }, [id]);
 
   useEffect(() => {
-    if (!selectedKbId) { setCategories([]); return; }
+    let cancelled = false;
+    setCategories([]);
+    setCategoryError(null);
+    setCategoriesLoading(Boolean(selectedKbId));
+    if (!selectedKbId) return;
     listCategories(selectedKbId)
-      .then(setCategories)
-      .catch(() => setCategories([]));
+      .then(data => { if (!cancelled) setCategories(data); })
+      .catch(() => { if (!cancelled) setCategoryError('分类加载失败，请重新选择知识库重试'); })
+      .finally(() => { if (!cancelled) setCategoriesLoading(false); });
+    return () => { cancelled = true; };
   }, [selectedKbId]);
 
   const handleSave = async () => {
-    if (!title.trim() || !content.trim()) return;
+    if (!title.trim() || !content.trim() || version === null || loadedId !== id || saving) return;
     setSaving(true);
     setError(null);
     try {
       await updateKnowledge(id, {
+        version,
         title: title.trim(),
         content: content.trim(),
         entryType,
-        categoryId: categoryId || undefined,
+        knowledgeBaseId: selectedKbId || undefined,
+        categoryId: categoryId || null,
       });
       router.push(`/article?id=${id}`);
     } catch (err) {
@@ -92,7 +112,7 @@ function EditKnowledgeContent() {
   };
 
   if (loading) return <div className={styles.page}><p className={styles.status}>加载中...</p></div>;
-  if (error) return <div className={styles.page}><p className={styles.status}>{error}</p></div>;
+  if (loadedId !== id) return <div className={styles.page}><p className={styles.status}>{error || '加载中...'}</p></div>;
 
   return (
     <div className={styles.page}>
@@ -105,12 +125,14 @@ function EditKnowledgeContent() {
           <button
             className={styles.saveBtn}
             onClick={handleSave}
-            disabled={saving || !title.trim() || !content.trim()}
+            disabled={saving || version === null || !title.trim() || !content.trim()}
           >
             {saving ? '保存中...' : '保存修改'}
           </button>
         </div>
       </div>
+
+      {error && <p className={styles.status} role="alert">{error}。当前编辑内容已保留在下方。</p>}
 
       {/* 类型选择 */}
       <div className={styles.typeSelector}>
@@ -132,8 +154,9 @@ function EditKnowledgeContent() {
           <select
             className={styles.select}
             value={selectedKbId}
-            onChange={(e) => { setSelectedKbId(e.target.value); setCategoryId(''); }}
+            onChange={(e) => { setSelectedKbId(e.target.value); setCategoryId(''); setCategories([]); }}
           >
+            {!selectedKbId && <option value="">未分配知识库</option>}
             {kbs.map((kb) => (
               <option key={kb.id} value={kb.id}>{kb.name}</option>
             ))}
@@ -144,6 +167,7 @@ function EditKnowledgeContent() {
           <select
             className={styles.select}
             value={categoryId}
+            disabled={categoriesLoading || !selectedKbId}
             onChange={(e) => setCategoryId(e.target.value)}
           >
             <option value="">无分类</option>
@@ -159,6 +183,7 @@ function EditKnowledgeContent() {
                 );
               })}
           </select>
+          {categoryError && <p className={styles.status} role="alert">{categoryError}</p>}
         </div>
       </div>
 

@@ -15,6 +15,7 @@ import java.util.UUID;
 @Builder
 public class KnowledgeResponse {
     private UUID id;
+    private Long version;
     private String title;
     private String content;
     private String source;
@@ -29,6 +30,7 @@ public class KnowledgeResponse {
     public static KnowledgeResponse from(KnowledgeEntry entry) {
         return KnowledgeResponse.builder()
             .id(entry.getId())
+            .version(entry.getVersion())
             .title(entry.getTitle())
             .content(entry.getContent())
             .source(entry.getSource() != null ? entry.getSource().name() : null)

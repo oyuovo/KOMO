@@ -98,7 +98,7 @@ function ConversationDetailContent({ conversationId }: { conversationId: string 
   }, [displayMessages]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.nativeEvent.isComposing || e.keyCode === 229 || loading) return;
+    if (e.nativeEvent.isComposing || e.keyCode === 229 || loading || readingHistory) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -106,6 +106,7 @@ function ConversationDetailContent({ conversationId }: { conversationId: string 
   };
 
   const currentConv = conversations.find((c) => c.id === conversationId);
+  const readingHistory = currentConv?.type === 'READING';
 
   return (
     <div className={styles.layout}>
@@ -119,6 +120,7 @@ function ConversationDetailContent({ conversationId }: { conversationId: string 
             <button
               className={`${styles.kbSwitcher} ${currentKbId === null ? styles.kbSwitcherNoKb : ''}`}
               onClick={() => setShowKbSwitcher(!showKbSwitcher)}
+              disabled={readingHistory}
             >
               {getCurrentKbName()} ▾
             </button>
@@ -192,6 +194,7 @@ function ConversationDetailContent({ conversationId }: { conversationId: string 
 
         {/* Input Area */}
         <div className={styles.inputArea}>
+          {readingHistory && <p className={styles.statusMsg}>阅读问答历史。继续提问请从原文章打开阅读问答；原文章已删除时仅保留历史。</p>}
           <div className={styles.inputWrapper}>
             <textarea
               ref={inputRef as React.RefObject<HTMLTextAreaElement>}
@@ -200,13 +203,13 @@ function ConversationDetailContent({ conversationId }: { conversationId: string 
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              disabled={sending || loading}
+              disabled={sending || loading || readingHistory}
               rows={3}
             />
             <button
               className={styles.sendBtn}
               onClick={handleSend}
-              disabled={loading || !canSend || !input.trim()}
+              disabled={loading || readingHistory || !canSend || !input.trim()}
             >
               发送
             </button>

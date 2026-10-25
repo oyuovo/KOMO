@@ -135,6 +135,11 @@ public class DailyRecommendationService {
             .build();
 
         DailyRecommendation saved = transactionTemplate.execute(status -> {
+            // AI 调用期间知识库可能已被删除，建议不能重新写入失效引用。
+            if (rec.getSuggestedKbId() != null
+                && knowledgeBaseService.findForReference(rec.getSuggestedKbId(), userId).isEmpty()) {
+                rec.setSuggestedKbId(null);
+            }
             // 生成成功后才替换；AI 超时或零产出不应丢掉用户仍可使用的旧推荐。
             for (DailyRecommendation old : recommendationRepository.findByUserIdAndStatus(userId, "ACTIVE")) {
                 old.setStatus("DISMISSED");

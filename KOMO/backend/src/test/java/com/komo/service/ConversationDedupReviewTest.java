@@ -151,7 +151,7 @@ class ConversationDedupReviewTest {
             service = new ConversationService(mock(ConversationRepository.class), mock(MessageRepository.class),
                 mock(ConversationPersistenceService.class), drafts, index, mock(KnowledgeBaseService.class),
                 mock(KnowledgeRepository.class), new DedupService(index, drafts), mock(RabbitTemplate.class),
-                mock(UserService.class), http, mock(ReadingConversationService.class));
+                mock(UserService.class), http, mock(ReadingConversationService.class), mock(org.springframework.transaction.support.TransactionTemplate.class));
             ReflectionTestUtils.setField(service, "aiBaseUrl", "http://test.invalid");
             when(http.postForObject(contains("/api/extraction/extract"), any(), eq(Map.class)))
                 .thenReturn(Map.of("knowledge_points", List.of(Map.of("title", TITLE, "content", CONTENT,

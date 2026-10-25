@@ -43,7 +43,7 @@ class ConversationServiceTest {
             mock(DedupService.class),
             mock(RabbitTemplate.class),
             mock(UserService.class),
-            restTemplate, mock(ReadingConversationService.class)
+            restTemplate, mock(ReadingConversationService.class), mock(org.springframework.transaction.support.TransactionTemplate.class)
         );
     }
 
@@ -51,6 +51,12 @@ class ConversationServiceTest {
     private ConversationService newService(
         ConversationRepository conversationRepository, KnowledgeRepository knowledgeRepository
     ) {
+        when(knowledgeRepository.findLocationByIdAndUserId(any(), any())).thenAnswer(call ->
+            knowledgeRepository.findByIdAndUserId(call.getArgument(0), call.getArgument(1))
+                .filter(article -> article.getDeletedAt() == null)
+                .map(article -> (KnowledgeRepository.Location) article::getKnowledgeBaseId));
+        when(knowledgeRepository.findByIdAndUserIdForUpdate(any(), any())).thenAnswer(call ->
+            knowledgeRepository.findByIdAndUserId(call.getArgument(0), call.getArgument(1)));
         return new ConversationService(
             conversationRepository,
             mock(MessageRepository.class),
@@ -62,7 +68,7 @@ class ConversationServiceTest {
             mock(DedupService.class),
             mock(RabbitTemplate.class),
             mock(UserService.class),
-            mock(RestTemplate.class), mock(ReadingConversationService.class)
+            mock(RestTemplate.class), mock(ReadingConversationService.class), mock(org.springframework.transaction.support.TransactionTemplate.class)
         );
     }
 
@@ -233,7 +239,7 @@ class ConversationServiceTest {
             mock(DedupService.class),
             rabbitTemplate,
             userService,
-            mock(RestTemplate.class), mock(ReadingConversationService.class)
+            mock(RestTemplate.class), mock(ReadingConversationService.class), mock(org.springframework.transaction.support.TransactionTemplate.class)
         );
 
         // triggerExtraction 对 READING 对话直接拒绝

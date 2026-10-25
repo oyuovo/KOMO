@@ -13,6 +13,7 @@ import {
   type CategoryData,
 } from '@komo/shared/api-client';
 import styles from './page.module.css';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 
 /** 从 flat category list 计算缩进层级（基于 ltree path 中的 . 数量） */
 function getDepth(cat: CategoryData): number {
@@ -25,7 +26,10 @@ export default function CategoriesPage() {
   const [needsAuth, setNeedsAuth] = useState(false);
   const [kbs, setKbs] = useState<KnowledgeBaseData[]>([]);
   const [selectedKbId, setSelectedKbId] = useState<string>('');
-  const [categories, setCategories] = useState<CategoryData[]>([]);
+  const [categoryData, setCategories] = useState<CategoryData[]>([]);
+  const [categoryKb, setCategoryKb] = useState<string | null>(null);
+  const categories = categoryKb === selectedKbId ? categoryData : [];
+  const beginRequest = useLatestRequest(selectedKbId);
   const [error, setError] = useState<string | null>(null);
 
   // Create state
@@ -38,69 +42,84 @@ export default function CategoriesPage() {
   const [editName, setEditName] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
     getMe().then((u) => {
+      if (cancelled) return;
       if (!u) { setNeedsAuth(true); return; }
       listKnowledgeBases()
         .then((list) => {
+          if (cancelled) return;
           setKbs(list);
           const defaultKb = list.find((kb) => kb.type === 'DEFAULT') || list[0];
           if (defaultKb) setSelectedKbId(defaultKb.id);
         })
         .catch(() => {});
-    }).catch((err) => { setError(err.message); });
+    }).catch((err) => { if (!cancelled) setError(err.message); });
+    return () => { cancelled = true; };
   }, []);
 
   // Load categories when KB changes
   useEffect(() => {
-    if (!selectedKbId) { setCategories([]); return; }
-    listCategories(selectedKbId)
-      .then(setCategories)
-      .catch(() => setCategories([]));
+    setError(null);
+    fetchCategories();
   }, [selectedKbId]);
 
-  const fetchCategories = () => {
+  const fetchCategories = async () => {
+    const isCurrent = beginRequest();
     if (!selectedKbId) return;
-    listCategories(selectedKbId).then(setCategories).catch(() => {});
+    try {
+      const data = await listCategories(selectedKbId);
+      if (!isCurrent()) return;
+      setCategoryKb(selectedKbId); setCategories(data);
+    } catch (err) {
+      if (isCurrent()) setError((err as Error).message);
+    }
   };
 
   const handleCreate = async () => {
     if (!newName.trim() || !selectedKbId) return;
+    const isCurrent = beginRequest();
     try {
       await createCategory({
         name: newName.trim(),
         knowledgeBaseId: selectedKbId,
         parentId: newParentId || undefined,
       });
+      if (!isCurrent()) return;
       setNewName('');
       setNewParentId('');
       setCreating(false);
       setError(null);
       fetchCategories();
     } catch (err) {
-      setError((err as Error).message);
+      if (isCurrent()) setError((err as Error).message);
     }
   };
 
   const handleRename = async (id: string) => {
     if (!editName.trim()) return;
+    const isCurrent = beginRequest();
     try {
       await updateCategory(id, editName.trim());
+      if (!isCurrent()) return;
       setEditingId(null);
       setError(null);
       fetchCategories();
     } catch (err) {
-      setError((err as Error).message);
+      if (isCurrent()) setError((err as Error).message);
     }
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`确定删除分类「${name}」？`)) return;
+    if (!confirm(`确定删除分类「${name}」？文章将保留并移到“无分类”；有子分类时不可删除。`)) return;
+    const isCurrent = beginRequest();
     try {
       await deleteCategory(id);
+      if (!isCurrent()) return;
       setError(null);
       fetchCategories();
     } catch (err) {
-      setError((err as Error).message);
+      if (isCurrent()) setError((err as Error).message);
     }
   };
 
@@ -138,6 +157,7 @@ export default function CategoriesPage() {
             setCreating(false);
             setEditingId(null);
             setNewName('');
+            setNewParentId('');
           }}
         >
           {kbs.map((kb) => (

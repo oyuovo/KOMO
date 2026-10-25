@@ -278,7 +278,7 @@ class ConversationAutoExtractionTest {
             service = new ConversationService(conversations, messages, persistence,
                 mock(KnowledgeDraftService.class), mock(KnowledgeRetrievalService.class),
                 mock(KnowledgeBaseService.class), mock(KnowledgeRepository.class),
-                mock(DedupService.class), rabbitTemplate, users, restTemplate, mock(ReadingConversationService.class));
+                mock(DedupService.class), rabbitTemplate, users, restTemplate, mock(ReadingConversationService.class), mock(org.springframework.transaction.support.TransactionTemplate.class));
             ReflectionTestUtils.setField(service, "aiBaseUrl", "http://127.0.0.1");
             ReflectionTestUtils.setField(service, "extractionEnabled", true);
         }

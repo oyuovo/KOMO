@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
   listKnowledgeBases,
   createKnowledgeBase,
@@ -12,6 +12,7 @@ import {
   type CategoryData,
 } from '@komo/shared/api-client';
 import styles from './KnowledgeBaseSidebar.module.css';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 
 interface Props {
   selectedId: string | null;
@@ -31,18 +32,33 @@ export default function KnowledgeBaseSidebar({
   const [newName, setNewName] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
-  const [categories, setCategories] = useState<CategoryData[]>([]);
+  const [categoryData, setCategories] = useState<CategoryData[]>([]);
+  const [categoryKb, setCategoryKb] = useState<string | null>(null);
+  const categories = categoryKb === selectedId ? categoryData : [];
+  const beginCategories = useLatestRequest(selectedId ?? '');
+  const selectedRef = useRef(selectedId);
+  selectedRef.current = selectedId;
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchKBs();
+    let cancelled = false;
+    listKnowledgeBases().then(data => {
+      if (cancelled) return;
+      setKbs(data);
+      if (data.length > 0 && !selectedRef.current) onSelect(data.find(kb => kb.type === 'DEFAULT') || data[0]);
+    }).catch(() => { /* 加载失败不覆盖现有列表。 */ });
+    return () => { cancelled = true; };
   }, []);
 
   const fetchCategories = async (kbId: string) => {
+    const isCurrent = beginCategories();
     try {
       const data = await listCategories(kbId);
+      if (!isCurrent()) return;
+      setCategoryKb(kbId);
       setCategories(data);
     } catch {
-      setCategories([]);
+      if (isCurrent()) { setCategoryKb(kbId); setCategories([]); }
     }
   };
 
@@ -53,20 +69,6 @@ export default function KnowledgeBaseSidebar({
       setCategories([]);
     }
   }, [selectedId]);
-
-  const fetchKBs = async () => {
-    try {
-      const data = await listKnowledgeBases();
-      setKbs(data);
-      // 自动选中第一个（默认知识库）
-      if (data.length > 0 && !selectedId) {
-        const defaultKb = data.find((kb) => kb.type === 'DEFAULT') || data[0];
-        onSelect(defaultKb);
-      }
-    } catch {
-      // ignore
-    }
-  };
 
   const handleCreate = async () => {
     if (!newName.trim()) return;
@@ -93,7 +95,8 @@ export default function KnowledgeBaseSidebar({
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('确定删除此知识库？其中的知识条目不会被删除。')) return;
+    if (!confirm('确定删除此知识库？仅可删除没有文章、分类和会话的空知识库。')) return;
+    setDeleteError(null);
     try {
       await deleteKnowledgeBase(id);
       setKbs((prev) => prev.filter((kb) => kb.id !== id));
@@ -101,8 +104,8 @@ export default function KnowledgeBaseSidebar({
         const remaining = kbs.filter((kb) => kb.id !== id);
         onSelect(remaining.length > 0 ? remaining[0] : null);
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      setDeleteError((err as Error).message || '删除失败，请稍后重试');
     }
   };
 
@@ -116,6 +119,7 @@ export default function KnowledgeBaseSidebar({
 
   return (
     <div className={styles.sidebar}>
+      {deleteError && <p className={styles.errorMsg} role="alert">{deleteError}</p>}
       <div className={styles.header}>
         <span className={styles.title}>知识库</span>
         <button

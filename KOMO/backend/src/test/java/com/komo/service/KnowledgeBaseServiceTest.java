@@ -31,7 +31,9 @@ class KnowledgeBaseServiceTest {
         when(repository.saveAndFlush(org.mockito.ArgumentMatchers.any(KnowledgeBase.class)))
             .thenAnswer(invocation -> invocation.getArgument(0));
 
-        KnowledgeBaseService service = new KnowledgeBaseService(repository);
+        KnowledgeBaseService service = new KnowledgeBaseService(repository,
+            mock(com.komo.repository.KnowledgeRepository.class), mock(com.komo.repository.CategoryRepository.class),
+            mock(com.komo.repository.ConversationRepository.class), mock(com.komo.repository.DailyRecommendationRepository.class));
 
         service.ensureSystemBases(userId);
 

@@ -6,7 +6,7 @@ import {
   listKnowledge,
   listCategories,
   deleteKnowledge,
-  updateKnowledge,
+  moveKnowledgeToCategory,
   ApiError,
   type KnowledgeItem,
   type PageData,
@@ -17,6 +17,7 @@ import BatchDeleteOverlay, {
 } from '@/components/BatchDeleteOverlay/BatchDeleteOverlay';
 import CategoryPickerModal from '@/components/CategoryPickerModal/CategoryPickerModal';
 import styles from './KnowledgeList.module.css';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 
 // ---- Types ----
 
@@ -42,10 +43,10 @@ function sanitizeLtreeLabel(uuid: string): string {
   return uuid.replace(/-/g, '_');
 }
 
-/** ltree path depth: "root" = 0, "root.xxx" = 1, etc. */
-function getDepth(cat: CategoryData): number {
-  if (!cat.path || cat.path === 'root') return 0;
-  return cat.path.split('.').length;
+/** path 记录祖先节点；比较完整段，避免相似 ID 被误认成祖先。 */
+function isDescendantOf(category: CategoryData, ancestor: CategoryData): boolean {
+  const prefix = ancestor.path + '.' + sanitizeLtreeLabel(ancestor.id);
+  return category.path === prefix || category.path.startsWith(prefix + '.');
 }
 
 /**
@@ -55,11 +56,10 @@ function getDepth(cat: CategoryData): number {
 function getSubtreeCategoryIds(rootId: string, allCategories: CategoryData[]): Set<string> {
   const root = allCategories.find((c) => c.id === rootId);
   if (!root) return new Set([rootId]);
-  const prefix = root.path + '.' + sanitizeLtreeLabel(rootId);
   const ids = new Set<string>();
   ids.add(rootId);
   for (const cat of allCategories) {
-    if (cat.path === prefix || cat.path.startsWith(prefix + '.')) {
+    if (isDescendantOf(cat, root)) {
       ids.add(cat.id);
     }
   }
@@ -68,8 +68,7 @@ function getSubtreeCategoryIds(rootId: string, allCategories: CategoryData[]): S
 
 /**
  * Build a flat render list mixing categories and articles.
- * Categories are sorted by ltree path; expanded categories reveal
- * their direct articles indented underneath.
+ * Walk each expanded subtree in order, with articles and children directly below their parent.
  */
 function buildFlatRows(
   categories: CategoryData[],
@@ -77,7 +76,20 @@ function buildFlatRows(
   expandedSet: Set<string>
 ): FlatRow[] {
   const rows: FlatRow[] = [];
-  const sorted = [...categories].sort((a, b) => a.path.localeCompare(b.path));
+  const sorted = [...categories].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  const categoryPaths = new Set(categories.map(cat => cat.path + '.' + sanitizeLtreeLabel(cat.id)));
+  const childrenByPath = new Map<string, CategoryData[]>();
+  const roots: CategoryData[] = [];
+  for (const cat of sorted) {
+    if (!categoryPaths.has(cat.path)) {
+      // 缺失父分类的历史节点也作为根展示，避免整支内容消失。
+      roots.push(cat);
+    } else {
+      const siblings = childrenByPath.get(cat.path) ?? [];
+      siblings.push(cat);
+      childrenByPath.set(cat.path, siblings);
+    }
+  }
 
   // Map: categoryId → articles
   const articlesByCategory = new Map<string, KnowledgeItem[]>();
@@ -89,29 +101,32 @@ function buildFlatRows(
     }
   }
 
-  for (const cat of sorted) {
-    const depth = getDepth(cat);
+  const appendCategory = (cat: CategoryData, depth: number) => {
     const directArticles = articlesByCategory.get(cat.id) ?? [];
     const catPathPrefix = cat.path + '.' + sanitizeLtreeLabel(cat.id);
-    const hasChildren = sorted.some((c) => c.path.startsWith(catPathPrefix));
+    const children = childrenByPath.get(catPathPrefix) ?? [];
 
     rows.push({
       kind: 'category',
       category: cat,
       depth,
       articleCount: directArticles.length,
-      hasChildren,
+      hasChildren: children.length > 0,
     });
 
     if (expandedSet.has(cat.id)) {
       for (const article of directArticles) {
         rows.push({ kind: 'article', article, depth: depth + 1 });
       }
+      for (const child of children) appendCategory(child, depth + 1);
     }
-  }
+  };
+  for (const root of roots) appendCategory(root, 0);
 
   // Uncategorized articles at the bottom
-  const uncategorized = articles.filter((a) => !a.categoryId);
+  const knownCategoryIds = new Set(categories.map((category) => category.id));
+  // 兼容历史失效引用：分类不存在的文章仍显示在无分类区域，不能静默丢掉。
+  const uncategorized = articles.filter((a) => !a.categoryId || !knownCategoryIds.has(a.categoryId));
   for (const article of uncategorized) {
     rows.push({ kind: 'article', article, depth: 0 });
   }
@@ -122,8 +137,13 @@ function buildFlatRows(
 // ---- Component ----
 
 export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId, onStatsChange }: Props) {
-  const [articles, setArticles] = useState<KnowledgeItem[]>([]);
-  const [categories, setCategories] = useState<CategoryData[]>([]);
+  const scope = JSON.stringify([knowledgeBaseId, searchQuery]);
+  const beginRequest = useLatestRequest(scope);
+  const [dataScope, setDataScope] = useState<string | null>(null);
+  const [loadedArticles, setArticles] = useState<KnowledgeItem[]>([]);
+  const [loadedCategories, setCategories] = useState<CategoryData[]>([]);
+  const articles = useMemo(() => dataScope === scope ? loadedArticles : [], [dataScope, scope, loadedArticles]);
+  const categories = useMemo(() => dataScope === scope ? loadedCategories : [], [dataScope, scope, loadedCategories]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -144,6 +164,8 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
   // ---- Data fetching ----
 
   const fetchData = useCallback(async () => {
+    const isCurrent = beginRequest();
+    if (!isCurrent()) return;
     setLoading(true);
     setError(null);
     try {
@@ -157,6 +179,8 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
           ? listCategories(knowledgeBaseId)
           : (Promise.resolve([]) as Promise<CategoryData[]>),
       ]);
+      if (!isCurrent()) return;
+      setDataScope(scope);
       setArticles(articlePage.content);
       setCategories(catData);
 
@@ -168,12 +192,13 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
         onStatsChange({ count: articlePage.totalElements, latestDate });
       }
     } catch (err) {
+      if (!isCurrent()) return;
       if ((err as ApiError).code === 401) return;
       setError((err as Error).message);
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [searchQuery, knowledgeBaseId]);
+  }, [searchQuery, knowledgeBaseId, beginRequest, scope]);
 
   useEffect(() => {
     fetchData();
@@ -189,14 +214,13 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
     if (categoryId && categories.length > 0) {
       const target = categories.find((c) => c.id === categoryId);
       if (target) {
-        const newExpanded = new Set(expandedCategories);
-        for (const cat of categories) {
-          const catPrefix = cat.path + '.' + sanitizeLtreeLabel(cat.id);
-          if (target.path.startsWith(catPrefix) || target.id === cat.id) {
-            newExpanded.add(cat.id);
+        setExpandedCategories(prev => {
+          const next = new Set(prev);
+          for (const cat of categories) {
+            if (isDescendantOf(target, cat) || target.id === cat.id) next.add(cat.id);
           }
-        }
-        setExpandedCategories(newExpanded);
+          return next;
+        });
       }
     }
   }, [categoryId, categories]);
@@ -230,17 +254,35 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
     return set;
   }, [flatRows]);
 
+  const visibleSelectedIds = useMemo(
+    () => new Set([...selectedIds].filter(id => articleIds.has(id))),
+    [selectedIds, articleIds]
+  );
+  // 折叠或筛选隐藏的文章取消勾选，防止批量操作触及不可见内容。
+  useEffect(() => {
+    setSelectedIds(prev => {
+      const next = new Set([...prev].filter(id => articleIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [articleIds]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setMovePickerOpen(false);
+  }, [knowledgeBaseId, categoryId, searchQuery]);
+
   // ---- Handlers ----
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (!confirm('确定要删除这篇文章吗？')) return;
+    const isCurrent = beginRequest();
     try {
       await deleteKnowledge(id);
-      fetchData();
+      if (isCurrent()) void fetchData();
     } catch (err) {
-      setError((err as Error).message);
+      if (isCurrent()) { setError((err as Error).message); setLoading(false); }
     }
   };
 
@@ -254,7 +296,7 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === articleIds.size) {
+    if (visibleSelectedIds.size === articleIds.size) {
       setSelectedIds(new Set());
     } else {
       setSelectedIds(new Set(articleIds));
@@ -262,7 +304,8 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
   };
 
   const toggleSelect = (id: string) => {
-    const next = new Set(selectedIds);
+    if (!articleIds.has(id)) return;
+    const next = new Set(visibleSelectedIds);
     if (next.has(id)) next.delete(id);
     else next.add(id);
     setSelectedIds(next);
@@ -276,7 +319,7 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
   // ---- Batch operations ----
 
   const handleBatchDelete = async () => {
-    const ids = Array.from(selectedIds);
+    const ids = Array.from(visibleSelectedIds);
     if (ids.length === 0) return;
     if (!confirm(`确定要删除选中的 ${ids.length} 篇文章吗？此操作不可撤销。`)) return;
 
@@ -300,8 +343,9 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
 
   const handleMoveToCategory = async (targetCategoryId: string | null) => {
     setMovePickerOpen(false);
-    const ids = Array.from(selectedIds);
+    const ids = Array.from(visibleSelectedIds);
     if (ids.length === 0) return;
+    const isCurrent = beginRequest();
 
     let moved = 0;
     let failed = 0;
@@ -309,26 +353,20 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
       const article = articles.find((a) => a.id === id);
       if (!article) { failed++; continue; }
       try {
-        await updateKnowledge(id, {
-          title: article.title,
-          content: article.content,
-          entryType: article.entryType,
-          categoryId: targetCategoryId || undefined,
-        });
+        await moveKnowledgeToCategory(id, targetCategoryId);
         moved++;
       } catch { failed++; }
     }
 
+    if (!isCurrent()) return;
     exitSelectMode();
-    fetchData();
+    void fetchData();
     if (failed > 0) {
       setError(`移动完成: ${moved} 成功, ${failed} 失败`);
     }
   };
 
   // ---- Render helpers ----
-
-  const renderedCount = articleIds.size;
 
   return (
     <>
@@ -359,27 +397,27 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
                 <input
                   type="checkbox"
                   className={styles.checkbox}
-                  checked={articleIds.size > 0 && selectedIds.size === articleIds.size}
+                  checked={articleIds.size > 0 && visibleSelectedIds.size === articleIds.size}
                   onChange={toggleSelectAll}
                 />
-                <span>全选</span>
+                <span>全选可见文章</span>
               </label>
               <span className={styles.selectedCount}>
-                已选 {selectedIds.size} 项
+                已选 {visibleSelectedIds.size} 项
               </span>
             </div>
             <div className={styles.toolbarRight}>
               <button
                 className={styles.btnMoveToCategory}
                 onClick={() => setMovePickerOpen(true)}
-                disabled={selectedIds.size === 0}
+                disabled={visibleSelectedIds.size === 0}
               >
                 移动到分类
               </button>
               <button
                 className={styles.btnBatchDelete}
                 onClick={handleBatchDelete}
-                disabled={selectedIds.size === 0}
+                disabled={visibleSelectedIds.size === 0}
               >
                 批量删除
               </button>
@@ -411,20 +449,11 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
                 className={styles.categoryRow}
                 style={{ paddingLeft: 8 + row.depth * 24 }}
               >
-                {selectMode && (
-                  <label className={styles.checkboxCell}>
-                    <input
-                      type="checkbox"
-                      className={styles.checkbox}
-                      checked={selectedIds.has(cat.id)}
-                      onChange={() => toggleSelect(cat.id)}
-                    />
-                  </label>
-                )}
                 <button
                   className={styles.categoryToggle}
                   onClick={() => toggleExpand(cat.id)}
                   aria-label={isExpanded ? '折叠' : '展开'}
+                  aria-expanded={isExpanded}
                 >
                   <span className={styles.categoryIcon}>
                     {row.hasChildren ? (isExpanded ? '📂' : '📁') : '📁'}
@@ -449,7 +478,7 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
                   <input
                     type="checkbox"
                     className={styles.checkbox}
-                    checked={selectedIds.has(article.id)}
+                    checked={visibleSelectedIds.has(article.id)}
                     onChange={() => toggleSelect(article.id)}
                   />
                 </label>

@@ -443,6 +443,7 @@ export function register(req: RegisterRequest): Promise<AuthData> {
 
 export interface KnowledgeItem {
   id: string;
+  version: number;
   title: string;
   content: string;
   source: string;
@@ -499,10 +500,12 @@ export async function getKnowledge(id: string): Promise<KnowledgeItem> {
 }
 
 export interface KnowledgeUpdateRequest {
+  version: number;
   title: string;
   content: string;
   entryType?: string;
-  categoryId?: string;
+  knowledgeBaseId?: string;
+  categoryId?: string | null;
   tags?: string;
 }
 
@@ -518,6 +521,13 @@ export async function updateKnowledge(
 ): Promise<KnowledgeItem> {
   const result = await put<KnowledgeItem>(`/knowledge/${id}`, req);
   invalidateCache('knowledge', id); // 写后失效对应离线缓存，降低陈旧概率
+  return result;
+}
+
+/** 分类操作不重传列表中的旧正文、标题或标签。null 表示移入无分类。 */
+export async function moveKnowledgeToCategory(id: string, categoryId: string | null): Promise<KnowledgeItem> {
+  const result = await put<KnowledgeItem>(`/knowledge/${id}/category`, { categoryId });
+  invalidateCache('knowledge', id);
   return result;
 }
 

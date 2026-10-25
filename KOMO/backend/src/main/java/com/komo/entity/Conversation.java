@@ -10,10 +10,12 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.DynamicUpdate;
 
 import java.util.UUID;
 
 @Entity
+@DynamicUpdate // 修改标题时不把并发切换过的知识库引用写回旧值。
 @Table(name = "conversations")
 @Getter
 @Setter

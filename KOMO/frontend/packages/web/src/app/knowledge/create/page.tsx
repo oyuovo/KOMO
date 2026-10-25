@@ -37,23 +37,30 @@ export default function CreateKnowledgePage() {
   const [needsAuth, setNeedsAuth] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     getMe().then((u) => {
+      if (cancelled) return;
       if (!u) { setNeedsAuth(true); return; }
       listKnowledgeBases()
         .then((list) => {
+          if (cancelled) return;
           setKbs(list);
           const defaultKb = list.find((kb) => kb.type === 'DEFAULT') || list[0];
           if (defaultKb) setSelectedKbId(defaultKb.id);
         })
         .catch(() => {});
-    }).catch((err) => { setError(err.message); });
+    }).catch((err) => { if (!cancelled) setError(err.message); });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
-    if (!selectedKbId) { setCategories([]); return; }
+    let cancelled = false;
+    setCategories([]);
+    if (!selectedKbId) return;
     listCategories(selectedKbId)
-      .then(setCategories)
-      .catch(() => setCategories([]));
+      .then(data => { if (!cancelled) setCategories(data); })
+      .catch(() => { if (!cancelled) setCategories([]); });
+    return () => { cancelled = true; };
   }, [selectedKbId]);
 
   const handleSave = async () => {
@@ -134,7 +141,7 @@ export default function CreateKnowledgePage() {
           <select
             className={styles.select}
             value={selectedKbId}
-            onChange={(e) => { setSelectedKbId(e.target.value); setCategoryId(''); }}
+            onChange={(e) => { setSelectedKbId(e.target.value); setCategoryId(''); setCategories([]); }}
           >
             {kbs.map((kb) => (
               <option key={kb.id} value={kb.id}>{kb.name}</option>

@@ -16,6 +16,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -26,7 +28,7 @@ import java.util.regex.Pattern;
  * [[wiki 链接]] 解析服务。
  *
  * 解析文章 content 中的 [[标题]] 引用，按标题解析目标文章并建立 RELATED 关联。
- * 全量重建策略：每次同步先删除该文章的旧 wiki 链接再重建（幂等，简单可靠）。
+ * 按目标文章增量同步：保留已有关系，仅删除失效 RELATED、补建缺失关系。
  * 只操作 RELATED 类型，不影响 SUPPLEMENTS 等系统创建的关联（嵌入/合并/草稿确认）。
  *
  * 目标标题解析规则：
@@ -47,7 +49,7 @@ public class WikiLinkService {
     private final KnowledgeRepository knowledgeRepository;
     private final KnowledgeLinkRepository knowledgeLinkRepository;
 
-    /** 解析 content 中的 [[标题]] 并同步 RELATED 链接（全量重建，幂等）。 */
+    /** 解析正文引用并同步链接；与调用方的正文/草稿写入共用事务。 */
     @Transactional
     public void syncLinks(UUID userId, UUID entryId) {
         KnowledgeEntry entry = knowledgeRepository.findByIdAndUserId(entryId, userId)
@@ -60,26 +62,35 @@ public class WikiLinkService {
         Matcher matcher = WIKI_LINK.matcher(content);
         while (matcher.find()) {
             String title = matcher.group(1).trim();
-            if (!title.isEmpty() && seen.add(title.toLowerCase())) {
+            if (!title.isEmpty() && seen.add(title.toLowerCase(Locale.ROOT))) {
                 titles.add(title);
             }
         }
 
-        // 2. 删除旧 wiki 链接（只删 RELATED，不动系统关联）
-        List<KnowledgeLink> oldLinks = knowledgeLinkRepository
-            .findAllBySourceEntryIdAndRelation(entryId, KnowledgeLink.RelationType.RELATED);
-        if (!oldLinks.isEmpty()) {
-            knowledgeLinkRepository.deleteAllInBatch(oldLinks);
-        }
-
-        // 3. 解析目标并建链
-        int created = 0;
+        // 2. 先解析目标并按 ID 去重，同一文章只能保留一条出链。
+        Set<UUID> desiredTargets = new LinkedHashSet<>();
         for (String title : titles) {
             UUID targetId = resolveTarget(userId, entry, title);
             if (targetId == null) {
                 log.debug("[wikilink] 未命中目标文章，保持纯文本: \"{}\" entryId={}", title, entryId);
                 continue;
             }
+            desiredTargets.add(targetId);
+        }
+
+        List<KnowledgeLink> existing = knowledgeLinkRepository.findAllBySourceEntryIdAndUserId(entryId, userId);
+        List<KnowledgeLink> obsolete = existing.stream()
+            .filter(link -> link.getRelation() == KnowledgeLink.RelationType.RELATED
+                && !desiredTargets.contains(link.getTargetEntryId()))
+            .toList();
+        if (!obsolete.isEmpty()) knowledgeLinkRepository.deleteAllInBatch(obsolete);
+
+        // 3. 已有 SUPPLEMENTS 等关联也可供 Wiki 跳转使用，不覆盖其类型或重复插入。
+        Set<UUID> linkedTargets = new HashSet<>();
+        existing.forEach(link -> linkedTargets.add(link.getTargetEntryId()));
+        int created = 0;
+        for (UUID targetId : desiredTargets) {
+            if (!linkedTargets.add(targetId)) continue;
             knowledgeLinkRepository.save(KnowledgeLink.builder()
                 .sourceEntryId(entryId)
                 .targetEntryId(targetId)
@@ -88,8 +99,8 @@ public class WikiLinkService {
             created++;
         }
 
-        if (created > 0 || !oldLinks.isEmpty()) {
-            log.info("[wikilink] 同步完成 entryId={} removed={} created={}", entryId, oldLinks.size(), created);
+        if (created > 0 || !obsolete.isEmpty()) {
+            log.info("[wikilink] 同步完成 entryId={} removed={} created={}", entryId, obsolete.size(), created);
         }
     }
 

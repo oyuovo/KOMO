@@ -19,6 +19,30 @@ const credentials = { email: user.email, password: 'test-only-password' };
 const reply = (status, data = null) => Response.json({ code: status === 200 ? 0 : status, message: 'test response', data }, { status });
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
+test('category move sends only the category and never resubmits cached article content', async () => {
+  const { api } = harness(async (url, options) => {
+    assert.ok(url.endsWith('/knowledge/article-1/category'));
+    assert.equal(options.method, 'PUT');
+    assert.deepEqual(JSON.parse(options.body), { categoryId: null });
+    return reply(200, { id: 'article-1', version: 4, content: 'latest body', tags: 'keep' });
+  });
+  const result = await api.moveKnowledgeToCategory('article-1', null);
+  assert.equal(result.content, 'latest body');
+  assert.equal(result.version, 4);
+});
+
+test('article update sends the editor version and surfaces conflicts without retrying the write', async () => {
+  let calls = 0;
+  const { api } = harness(async (_, options) => {
+    calls++;
+    assert.equal(JSON.parse(options.body).version, 2);
+    return reply(409);
+  });
+  await assert.rejects(api.updateKnowledge('article-1', { title: 'title', content: 'old body', version: 2 }),
+    error => error.code === 409);
+  assert.equal(calls, 1);
+});
+
 test('registration config is public, uncached and independent of token initialization', async () => {
   const store = memoryStore();
   store.ready = new Promise(() => {});

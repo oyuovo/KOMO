@@ -5,7 +5,7 @@ import com.komo.entity.Category;
 import com.komo.exception.BusinessException;
 import com.komo.exception.ErrorCode;
 import com.komo.repository.CategoryRepository;
-import com.komo.repository.KnowledgeBaseRepository;
+import com.komo.repository.KnowledgeRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,11 +15,13 @@ import java.util.UUID;
 @Service
 public class CategoryService extends BaseService<Category, CategoryRepository> {
 
-    private final KnowledgeBaseRepository knowledgeBaseRepository;
+    private final KnowledgeBaseService knowledgeBaseService;
+    private final KnowledgeRepository entries;
 
-    public CategoryService(CategoryRepository repository, KnowledgeBaseRepository knowledgeBaseRepository) {
+    public CategoryService(CategoryRepository repository, KnowledgeBaseService knowledgeBaseService, KnowledgeRepository entries) {
         super(repository);
-        this.knowledgeBaseRepository = knowledgeBaseRepository;
+        this.knowledgeBaseService = knowledgeBaseService;
+        this.entries = entries;
     }
 
     @Override
@@ -40,9 +42,7 @@ public class CategoryService extends BaseService<Category, CategoryRepository> {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "知识库不能为空");
         }
         // 验证知识库归属
-        knowledgeBaseRepository.findById(request.getKnowledgeBaseId())
-            .filter(kb -> kb.getUserId().equals(getCurrentUserId()))
-            .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "知识库不存在"));
+        knowledgeBaseService.lockForReference(request.getKnowledgeBaseId(), getCurrentUserId());
 
         Category category = Category.builder()
             .userId(getCurrentUserId())
@@ -51,7 +51,8 @@ public class CategoryService extends BaseService<Category, CategoryRepository> {
             .build();
 
         if (request.getParentId() != null) {
-            Category parent = findByIdOrThrow(request.getParentId());
+            Category parent = repository.findByIdAndUserIdForUpdate(request.getParentId(), getCurrentUserId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.CATEGORY_NOT_FOUND));
             // 父分类必须在同一个知识库
             if (!parent.getKnowledgeBaseId().equals(request.getKnowledgeBaseId())) {
                 throw new BusinessException(ErrorCode.BAD_REQUEST, "父分类不属于该知识库");
@@ -73,13 +74,15 @@ public class CategoryService extends BaseService<Category, CategoryRepository> {
 
     @Transactional
     public void delete(UUID id) {
-        Category category = findByIdOrThrow(id);
-        long childCount = repository.countByPathStartingWithAndUserIdAndKnowledgeBaseId(
+        Category category = repository.findByIdAndUserIdForUpdate(id, getCurrentUserId())
+            .orElseThrow(() -> new BusinessException(ErrorCode.CATEGORY_NOT_FOUND));
+        long childCount = repository.countDescendantsByUserIdAndKnowledgeBaseId(
             category.getPath() + "." + sanitizeLtreeLabel(id.toString()), getCurrentUserId(), category.getKnowledgeBaseId()
         );
         if (childCount > 0) {
             throw new BusinessException(ErrorCode.CATEGORY_HAS_CHILDREN);
         }
+        entries.clearCategoryByCategoryIdAndUserId(id, getCurrentUserId());
         repository.delete(category);
     }
 

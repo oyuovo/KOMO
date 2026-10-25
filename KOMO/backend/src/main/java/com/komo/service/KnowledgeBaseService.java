@@ -5,18 +5,47 @@ import com.komo.entity.KnowledgeBase.KnowledgeBaseType;
 import com.komo.exception.BusinessException;
 import com.komo.exception.ErrorCode;
 import com.komo.repository.KnowledgeBaseRepository;
+import com.komo.repository.KnowledgeRepository;
+import com.komo.repository.CategoryRepository;
+import com.komo.repository.ConversationRepository;
+import com.komo.repository.DailyRecommendationRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
 public class KnowledgeBaseService extends BaseService<KnowledgeBase, KnowledgeBaseRepository> {
 
-    public KnowledgeBaseService(KnowledgeBaseRepository repository) {
+    private final KnowledgeRepository entries;
+    private final CategoryRepository categories;
+    private final ConversationRepository conversations;
+    private final DailyRecommendationRepository recommendations;
+
+    public KnowledgeBaseService(KnowledgeBaseRepository repository, KnowledgeRepository entries,
+                                CategoryRepository categories, ConversationRepository conversations,
+                                DailyRecommendationRepository recommendations) {
         super(repository);
+        this.entries = entries;
+        this.categories = categories;
+        this.conversations = conversations;
+        this.recommendations = recommendations;
+    }
+
+    /** 引用方必须在自己的写事务内持锁，防止检查后知识库被删除。 */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<KnowledgeBase> findForReference(UUID id, UUID userId) {
+        return repository.findByIdAndUserIdForUpdate(id, userId).filter(kb -> userId.equals(kb.getUserId()));
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public KnowledgeBase lockForReference(UUID id, UUID userId) {
+        return findForReference(id, userId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "知识库不存在或已删除"));
     }
 
     @Override
@@ -72,11 +101,22 @@ public class KnowledgeBaseService extends BaseService<KnowledgeBase, KnowledgeBa
     /** 删除知识库（系统库不可删除，有内容的知识库需要先清空或转移） */
     @Transactional
     public void delete(UUID id) {
-        KnowledgeBase kb = findByIdOrThrow(id);
+        UUID userId = getCurrentUserId();
+        KnowledgeBase kb = lockForReference(id, userId);
         if (!kb.isDeletable()) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "系统知识库不可删除");
         }
-        // 注意：有知识条目的库暂时不限制删除，条目变成孤立（后续可加转移逻辑）
+        List<String> contents = new ArrayList<>();
+        if (entries.existsByKnowledgeBaseIdAndUserIdAndDeletedAtIsNull(id, userId)) contents.add("文章");
+        if (categories.existsByKnowledgeBaseIdAndUserId(id, userId)) contents.add("分类");
+        conversations.detachStaleReadingByKnowledgeBaseIdAndUserId(id, userId, com.komo.entity.Conversation.ConversationType.READING);
+        if (conversations.existsByKnowledgeBaseIdAndUserId(id, userId)) contents.add("会话（含阅读问答）");
+        if (!contents.isEmpty()) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                "知识库中仍有" + String.join("、", contents) + "，请先处理后再删除");
+        }
+        entries.detachDeletedByKnowledgeBaseIdAndUserId(id, userId);
+        recommendations.clearSuggestedBaseByUserId(id, userId);
         repository.delete(kb);
     }
 
