@@ -80,14 +80,22 @@ export async function writeCache<T>(key: string, value: T): Promise<void> {
 }
 
 /**
- * 删除单条缓存（写操作后失效对应只读缓存，降低离线回退时的陈旧概率）。
+ * 删除指定账号/资源前缀下的缓存，包含该资源的所有分页和筛选结果。
  * 任何异常均静默忽略。
  */
-export async function deleteCache(key: string): Promise<void> {
+export async function deleteCachePrefixes(prefixes: readonly string[]): Promise<void> {
   try {
     const db = await getDb();
     if (!db) return;
-    await db.delete(STORE_NAME, key);
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    // 所有匹配项在同一事务中删除，避免列表的不同分页只失效一部分。
+    let cursor = await tx.store.openCursor();
+    while (cursor) {
+      const key = cursor.key;
+      if (prefixes.some(prefix => key.startsWith(prefix))) await cursor.delete();
+      cursor = await cursor.continue();
+    }
+    await tx.done;
   } catch {
     // 静默降级
   }

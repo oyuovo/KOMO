@@ -3,7 +3,7 @@
 // CSRF 通过 Double Submit Cookie (XSRF-TOKEN → X-XSRF-TOKEN) 防护。
 
 // 离线阅读缓存的 IndexedDB 存储层（仅桌面 / bearer 模式经守卫后启用）。
-import { readCache, writeCache, deleteCache } from './offline-cache';
+import { readCache, writeCache, deleteCachePrefixes } from './offline-cache';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081/api';
 
@@ -512,28 +512,23 @@ export interface KnowledgeUpdateRequest {
 export async function createKnowledge(
   req: KnowledgeCreateRequest
 ): Promise<KnowledgeItem> {
-  return post('/knowledge', req);
+  return withCacheInvalidation(KNOWLEDGE_CACHES, () => post('/knowledge', req));
 }
 
 export async function updateKnowledge(
   id: string,
   req: KnowledgeUpdateRequest
 ): Promise<KnowledgeItem> {
-  const result = await put<KnowledgeItem>(`/knowledge/${id}`, req);
-  invalidateCache('knowledge', id); // 写后失效对应离线缓存，降低陈旧概率
-  return result;
+  return withCacheInvalidation(KNOWLEDGE_CACHES, () => put(`/knowledge/${id}`, req));
 }
 
 /** 分类操作不重传列表中的旧正文、标题或标签。null 表示移入无分类。 */
 export async function moveKnowledgeToCategory(id: string, categoryId: string | null): Promise<KnowledgeItem> {
-  const result = await put<KnowledgeItem>(`/knowledge/${id}/category`, { categoryId });
-  invalidateCache('knowledge', id);
-  return result;
+  return withCacheInvalidation(KNOWLEDGE_CACHES, () => put(`/knowledge/${id}/category`, { categoryId }));
 }
 
 export async function deleteKnowledge(id: string): Promise<void> {
-  await del(`/knowledge/${id}`);
-  invalidateCache('knowledge', id);
+  await withCacheInvalidation(KNOWLEDGE_CACHES, () => del(`/knowledge/${id}`));
 }
 
 export interface BatchDeleteResult {
@@ -543,7 +538,7 @@ export interface BatchDeleteResult {
 }
 
 export async function batchDeleteKnowledge(ids: string[]): Promise<BatchDeleteResult> {
-  return del('/knowledge/batch', { ids });
+  return withCacheInvalidation(KNOWLEDGE_CACHES, () => del('/knowledge/batch', { ids }));
 }
 
 /** 手动重建 ES 索引（从数据库全量回填） */
@@ -574,17 +569,17 @@ export async function addLink(
   targetEntryId: string,
   relation: string
 ): Promise<KnowledgeLinkData> {
-  return post(`/knowledge/${entryId}/links`, { targetEntryId, relation });
+  return withCacheInvalidation(['links'], () => post(`/knowledge/${entryId}/links`, { targetEntryId, relation }));
 }
 
 /** 将知识条目嵌入到目标文章（软关联） */
 export async function embedInto(entryId: string, targetEntryId: string): Promise<KnowledgeLinkData> {
-  return post(`/knowledge/${entryId}/embed/${targetEntryId}`, {});
+  return withCacheInvalidation(KNOWLEDGE_CACHES, () => post(`/knowledge/${entryId}/embed/${targetEntryId}`, {}));
 }
 
 /** 将碎片内容合并进目标文章（内容级合并） */
 export async function mergeInto(entryId: string, targetEntryId: string): Promise<KnowledgeItem> {
-  return post(`/knowledge/${entryId}/merge/${targetEntryId}`, {});
+  return withCacheInvalidation(KNOWLEDGE_CACHES, () => post(`/knowledge/${entryId}/merge/${targetEntryId}`, {}));
 }
 
 // ===== HTTP methods =====
@@ -650,11 +645,39 @@ function cacheKey(userId: string, resource: string, id: string): string {
   return `${userId}:${resource}:${id}`;
 }
 
+const KNOWLEDGE_CACHES = ['knowledge', 'knowledge-list', 'links'] as const;
+const cacheRevisions = new Map<string, number>();
+let cacheWrites: Promise<void> = Promise.resolve();
+
+/** 顺序执行缓存写入和失效，保证已经开始的旧写入不会越过删除事务。 */
+function queueCacheWrite(task: () => Promise<void>): Promise<void> {
+  cacheWrites = cacheWrites.then(task).catch(() => {
+    // 缓存不可用不改变已成功的服务器写入结果。
+  });
+  return cacheWrites;
+}
+
+/** 按资源清除当前账号的全部分页/筛选缓存；其他账号缓存不受影响。 */
+async function withCacheInvalidation<T>(resources: readonly string[], mutate: () => Promise<T>): Promise<T> {
+  if (!offlineCacheEnabled()) return mutate();
+  await waitForAuthReady();
+  const version = sessionVersion;
+  const userId = currentUserId();
+  const result = await mutate();
+  if (userId) {
+    const prefixes = resources.map(resource => cacheKey(userId, resource, ''));
+    for (const prefix of prefixes) cacheRevisions.set(prefix, (cacheRevisions.get(prefix) ?? 0) + 1);
+    await queueCacheWrite(() => deleteCachePrefixes(prefixes));
+  }
+  assertSession(version);
+  return result;
+}
+
 /**
  * 网络优先的只读缓存包裹：
  * 1. 守卫未启用（Web cookie 模式）→ 直接执行 fetcher，完全不触碰 IndexedDB；
  * 2. 无法确定 userId → 同样直接走网络，避免跨用户串数据；
- * 3. 网络成功 → 异步写缓存后返回最新数据（写失败不阻断返回）；
+ * 3. 网络成功 → 顺序写缓存（写失败不阻断返回）；发生后续写入的旧读取不再缓存；
  * 4. 网络失败 → 回退读缓存；命中返回缓存，未命中则抛出原始错误（保持既有错误语义）。
  */
 async function cachedGet<T>(
@@ -668,28 +691,29 @@ async function cachedGet<T>(
   const userId = currentUserId();
   if (!userId) return fetcher();
   const key = cacheKey(userId, resource, id);
+  const prefix = cacheKey(userId, resource, '');
+  const revision = cacheRevisions.get(prefix) ?? 0;
+  const isCurrent = () => revision === (cacheRevisions.get(prefix) ?? 0);
   try {
     const data = await fetcher();
-    void writeCache(key, data);
+    assertSession(version);
+    await queueCacheWrite(async () => {
+      if (isCurrent() && version === sessionVersion) await writeCache(key, data);
+    });
+    assertSession(version);
     return data;
   } catch (err) {
     // 退出或切换账号后，不允许旧请求通过缓存回退重新展示原账号内容。
     assertSession(version);
     // 仅连接失败或服务暂时不可用允许降级；权限、删除、限流及格式错误必须交给界面。
     if (!(err instanceof ApiError) || !(err.code === 0 || err.code >= 500 && err.code < 600)) throw err;
+    await cacheWrites;
+    if (!isCurrent()) throw err;
     const cached = await readCache<T>(key);
     assertSession(version);
-    if (cached !== undefined) return cached;
+    if (isCurrent() && cached !== undefined) return cached;
     throw err;
   }
-}
-
-/** 写操作后失效指定只读缓存（守卫未启用 / 无 userId 时为 no-op，不影响 Web）。 */
-function invalidateCache(resource: string, id: string): void {
-  if (!offlineCacheEnabled()) return;
-  const userId = currentUserId();
-  if (!userId) return;
-  void deleteCache(cacheKey(userId, resource, id));
 }
 
 // ===== Conversations =====
@@ -787,7 +811,7 @@ export async function confirmDraft(
   const body: Record<string, string> = {};
   if (knowledgeBaseId) body.knowledgeBaseId = knowledgeBaseId;
   if (parentEntryId) body.parentEntryId = parentEntryId;
-  return post(`/drafts/${id}/confirm`, body);
+  return withCacheInvalidation(KNOWLEDGE_CACHES, () => post(`/drafts/${id}/confirm`, body));
 }
 
 export async function editAndConfirmDraft(
@@ -800,7 +824,7 @@ export async function editAndConfirmDraft(
   const body: Record<string, string> = { title, content };
   if (knowledgeBaseId) body.knowledgeBaseId = knowledgeBaseId;
   if (parentEntryId) body.parentEntryId = parentEntryId;
-  return post(`/drafts/${id}/edit`, body);
+  return withCacheInvalidation(KNOWLEDGE_CACHES, () => post(`/drafts/${id}/edit`, body));
 }
 
 export async function rejectDraft(id: string): Promise<void> {
@@ -808,7 +832,7 @@ export async function rejectDraft(id: string): Promise<void> {
 }
 
 export async function batchConfirmDrafts(ids: string[]): Promise<{ confirmed: number }> {
-  return post('/drafts/batch-confirm', { ids });
+  return withCacheInvalidation(KNOWLEDGE_CACHES, () => post('/drafts/batch-confirm', { ids }));
 }
 
 export async function batchRejectDrafts(ids: string[]): Promise<{ rejected: number }> {
@@ -833,15 +857,15 @@ export async function listKnowledgeBases(): Promise<KnowledgeBaseData[]> {
 }
 
 export async function createKnowledgeBase(name: string): Promise<KnowledgeBaseData> {
-  return post('/knowledge-bases', { name });
+  return withCacheInvalidation(['knowledge-bases'], () => post('/knowledge-bases', { name }));
 }
 
 export async function renameKnowledgeBase(id: string, name: string): Promise<KnowledgeBaseData> {
-  return put(`/knowledge-bases/${id}`, { name });
+  return withCacheInvalidation(['knowledge-bases'], () => put(`/knowledge-bases/${id}`, { name }));
 }
 
 export async function deleteKnowledgeBase(id: string): Promise<void> {
-  return del(`/knowledge-bases/${id}`);
+  return withCacheInvalidation(['knowledge-bases', 'categories'], () => del(`/knowledge-bases/${id}`));
 }
 
 // ===== Categories =====
@@ -868,15 +892,15 @@ export async function listCategories(kbId: string): Promise<CategoryData[]> {
 }
 
 export async function createCategory(req: CategoryCreateRequest): Promise<CategoryData> {
-  return post('/categories', req);
+  return withCacheInvalidation(['categories'], () => post('/categories', req));
 }
 
 export async function updateCategory(id: string, name: string): Promise<CategoryData> {
-  return put(`/categories/${id}`, { name });
+  return withCacheInvalidation(['categories'], () => put(`/categories/${id}`, { name }));
 }
 
 export async function deleteCategory(id: string): Promise<void> {
-  return del(`/categories/${id}`);
+  return withCacheInvalidation(['categories', ...KNOWLEDGE_CACHES], () => del(`/categories/${id}`));
 }
 
 // ===== Export =====

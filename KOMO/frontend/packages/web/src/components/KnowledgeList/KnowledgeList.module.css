@@ -280,3 +280,13 @@
 }
 .badgePublished { background: var(--komo-link-soft); color: var(--komo-link); }
 .badgeDraft { background: var(--komo-accent-soft); color: var(--komo-accent); }
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 16px;
+  color: var(--komo-text-secondary);
+  font-size: var(--komo-text-sm);
+}

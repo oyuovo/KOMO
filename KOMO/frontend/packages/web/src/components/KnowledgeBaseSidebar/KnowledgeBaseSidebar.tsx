@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import {
   listKnowledgeBases,
   createKnowledgeBase,
@@ -13,6 +13,7 @@ import {
 } from '@komo/shared/api-client';
 import styles from './KnowledgeBaseSidebar.module.css';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
+import { flattenCategoryTree } from '@/lib/categoryTree';
 
 interface Props {
   selectedId: string | null;
@@ -38,27 +39,49 @@ export default function KnowledgeBaseSidebar({
   const beginCategories = useLatestRequest(selectedId ?? '');
   const selectedRef = useRef(selectedId);
   selectedRef.current = selectedId;
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const beginBases = useLatestRequest('knowledge-bases');
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
 
-  useEffect(() => {
-    let cancelled = false;
-    listKnowledgeBases().then(data => {
-      if (cancelled) return;
+  const fetchBases = useCallback(async () => {
+    if (savingRef.current) return;
+    const isCurrent = beginBases();
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const data = await listKnowledgeBases();
+      if (!isCurrent()) return;
       setKbs(data);
-      if (data.length > 0 && !selectedRef.current) onSelect(data.find(kb => kb.type === 'DEFAULT') || data[0]);
-    }).catch(() => { /* 加载失败不覆盖现有列表。 */ });
-    return () => { cancelled = true; };
-  }, []);
+      if (data.length > 0 && !selectedRef.current) onSelectRef.current(data.find(kb => kb.type === 'DEFAULT') || data[0]);
+    } catch (err) {
+      if (isCurrent()) setLoadError((err as Error).message || '知识库加载失败，请重试');
+    } finally {
+      if (isCurrent()) setLoading(false);
+    }
+  }, [beginBases]);
+
+  useEffect(() => { void fetchBases(); }, [fetchBases]);
 
   const fetchCategories = async (kbId: string) => {
     const isCurrent = beginCategories();
+    setCategoriesLoading(true);
+    setCategoryError(null);
     try {
       const data = await listCategories(kbId);
       if (!isCurrent()) return;
       setCategoryKb(kbId);
       setCategories(data);
-    } catch {
-      if (isCurrent()) { setCategoryKb(kbId); setCategories([]); }
+    } catch (err) {
+      if (isCurrent()) setCategoryError((err as Error).message || '分类加载失败，请重试');
+    } finally {
+      if (isCurrent()) setCategoriesLoading(false);
     }
   };
 
@@ -67,46 +90,58 @@ export default function KnowledgeBaseSidebar({
       fetchCategories(selectedId);
     } else {
       setCategories([]);
+      setCategoryError(null);
+      setCategoriesLoading(false);
     }
   }, [selectedId]);
 
+  const runMutation = async <T,>(request: () => Promise<T>, onSuccess: (value: T) => void, fallback: string) => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    setActionError(null);
+    const isCurrent = beginBases();
+    try {
+      const value = await request();
+      if (isCurrent()) onSuccess(value);
+    } catch (err) {
+      if (isCurrent()) setActionError((err as Error).message || fallback);
+    } finally {
+      savingRef.current = false;
+      if (isCurrent()) { setSaving(false); setLoading(false); }
+    }
+  };
+
   const handleCreate = async () => {
     if (!newName.trim()) return;
-    try {
-      const kb = await createKnowledgeBase(newName.trim());
+    const selectedAtStart = selectedRef.current;
+    await runMutation(() => createKnowledgeBase(newName.trim()), kb => {
       setKbs((prev) => [...prev, kb]);
       setNewName('');
       setCreating(false);
-      onSelect(kb);
-    } catch {
-      // ignore
-    }
+      if (selectedRef.current === selectedAtStart) onSelectRef.current(kb);
+    }, '创建失败，请重试');
   };
 
   const handleRename = async (id: string) => {
     if (!editName.trim()) return;
-    try {
-      const updated = await renameKnowledgeBase(id, editName.trim());
+    await runMutation(() => renameKnowledgeBase(id, editName.trim()), updated => {
       setKbs((prev) => prev.map((kb) => (kb.id === id ? updated : kb)));
       setEditingId(null);
-    } catch {
-      // ignore
-    }
+      if (selectedRef.current === id) onSelectRef.current(updated);
+    }, '重命名失败，请重试');
   };
 
   const handleDelete = async (id: string) => {
+    if (savingRef.current) return;
     if (!confirm('确定删除此知识库？仅可删除没有文章、分类和会话的空知识库。')) return;
-    setDeleteError(null);
-    try {
-      await deleteKnowledgeBase(id);
+    await runMutation(() => deleteKnowledgeBase(id), () => {
       setKbs((prev) => prev.filter((kb) => kb.id !== id));
-      if (selectedId === id) {
+      if (selectedRef.current === id) {
         const remaining = kbs.filter((kb) => kb.id !== id);
-        onSelect(remaining.length > 0 ? remaining[0] : null);
+        onSelectRef.current(remaining.length > 0 ? remaining[0] : null);
       }
-    } catch (err) {
-      setDeleteError((err as Error).message || '删除失败，请稍后重试');
-    }
+    }, '删除失败，请稍后重试');
   };
 
   const getIcon = (type: string) => {
@@ -119,13 +154,17 @@ export default function KnowledgeBaseSidebar({
 
   return (
     <div className={styles.sidebar}>
-      {deleteError && <p className={styles.errorMsg} role="alert">{deleteError}</p>}
+      {actionError && <p className={styles.errorMsg} role="alert">{actionError}</p>}
+      {loadError && <div className={styles.errorMsg} role="alert">{loadError}
+        <button className={styles.createConfirm} disabled={loading || saving} onClick={() => void fetchBases()}>重试知识库</button>
+      </div>}
       <div className={styles.header}>
         <span className={styles.title}>知识库</span>
         <button
           className={styles.addBtn}
           onClick={() => setCreating(!creating)}
           title="新建知识库"
+          disabled={saving || loading || !!loadError}
         >
           +
         </button>
@@ -139,6 +178,7 @@ export default function KnowledgeBaseSidebar({
             type="text"
             placeholder="知识库名称"
             value={newName}
+            disabled={saving}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') handleCreate();
@@ -146,7 +186,7 @@ export default function KnowledgeBaseSidebar({
             }}
             autoFocus
           />
-          <button className={styles.createConfirm} onClick={handleCreate}>
+          <button className={styles.createConfirm} disabled={saving || !newName.trim()} onClick={handleCreate}>
             创建
           </button>
         </div>
@@ -167,6 +207,7 @@ export default function KnowledgeBaseSidebar({
                   className={styles.editInput}
                   type="text"
                   value={editName}
+                  disabled={saving}
                   onChange={(e) => setEditName(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleRename(kb.id);
@@ -199,6 +240,7 @@ export default function KnowledgeBaseSidebar({
                     setEditName(kb.name);
                   }}
                   title="重命名"
+                  disabled={saving}
                 >
                   ✎
                 </button>
@@ -209,6 +251,7 @@ export default function KnowledgeBaseSidebar({
                     handleDelete(kb.id);
                   }}
                   title="删除"
+                  disabled={saving}
                 >
                   ×
                 </button>
@@ -218,8 +261,8 @@ export default function KnowledgeBaseSidebar({
         ))}
       </div>
 
-      {kbs.length === 0 && (
-        <p className={styles.empty}>加载中...</p>
+      {kbs.length === 0 && !loadError && (
+        <p className={styles.empty}>{loading ? '加载中...' : '暂无知识库'}</p>
       )}
 
       {/* Category Tree — only when a KB is selected */}
@@ -229,9 +272,12 @@ export default function KnowledgeBaseSidebar({
             <span className={styles.catTitle}>分类</span>
             <Link href="/categories" className={styles.catManageLink}>管理</Link>
           </div>
-          {categories.length === 0 ? (
-            <p className={styles.catEmpty}>暂无分类</p>
-          ) : (
+          {categoryError && <div className={styles.errorMsg} role="alert">{categoryError}
+            <button className={styles.createConfirm} disabled={categoriesLoading} onClick={() => void fetchCategories(selectedId)}>重试分类</button>
+          </div>}
+          {categoriesLoading && <p className={styles.catEmpty}>分类加载中...</p>}
+          {categories.length === 0 && !categoriesLoading && !categoryError && <p className={styles.catEmpty}>暂无分类</p>}
+          {categories.length > 0 && (
             <div className={styles.catList}>
               {/* "全部" 选项 */}
               <button
@@ -240,10 +286,7 @@ export default function KnowledgeBaseSidebar({
               >
                 全部
               </button>
-              {[...categories]
-                .sort((a, b) => a.path.localeCompare(b.path))
-                .map((cat) => {
-                  const depth = cat.path === 'root' ? 0 : cat.path.split('.').length - 1;
+              {flattenCategoryTree(categories).map(({ category: cat, depth }) => {
                   return (
                     <button
                       key={cat.id}

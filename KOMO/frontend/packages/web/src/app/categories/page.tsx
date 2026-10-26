@@ -14,13 +14,7 @@ import {
 } from '@komo/shared/api-client';
 import styles from './page.module.css';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
-
-/** 从 flat category list 计算缩进层级（基于 ltree path 中的 . 数量） */
-function getDepth(cat: CategoryData): number {
-  // path 格式: "root" = 0, "root.xxx" = 1, "root.xxx.yyy" = 2
-  if (!cat.path || cat.path === 'root') return 0;
-  return cat.path.split('.').length - 1;
-}
+import { flattenCategoryTree } from '@/lib/categoryTree';
 
 export default function CategoriesPage() {
   const [needsAuth, setNeedsAuth] = useState(false);
@@ -138,8 +132,7 @@ export default function CategoriesPage() {
     );
   }
 
-  // Sort by path for tree order
-  const sorted = [...categories].sort((a, b) => a.path.localeCompare(b.path));
+  const rows = flattenCategoryTree(categories);
 
   return (
     <div className={styles.page}>
@@ -201,8 +194,7 @@ export default function CategoriesPage() {
               onChange={(e) => setNewParentId(e.target.value)}
             >
               <option value="">根级</option>
-              {sorted.map((c) => {
-                const depth = getDepth(c);
+              {rows.map(({ category: c, depth }) => {
                 const prefix = '  '.repeat(depth);
                 return (
                   <option key={c.id} value={c.id}>
@@ -217,11 +209,10 @@ export default function CategoriesPage() {
         )}
 
         {/* Tree nodes */}
-        {sorted.length === 0 && !creating ? (
+        {rows.length === 0 && !creating ? (
           <p className={styles.emptyTree}>暂无分类，点击上方按钮创建</p>
         ) : (
-          sorted.map((cat) => {
-            const depth = getDepth(cat);
+          rows.map(({ category: cat, depth }) => {
             const indent = depth * 24;
             return (
               <div key={cat.id} className={styles.treeNode}>

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { CategoryData } from '@komo/shared/api-client';
+import { flattenCategoryTree } from '@/lib/categoryTree';
 import styles from './CategoryPickerModal.module.css';
 
 interface Props {
@@ -10,15 +11,10 @@ interface Props {
   onCancel: () => void;
 }
 
-function getDepth(cat: CategoryData): number {
-  if (!cat.path || cat.path === 'root') return 0;
-  return cat.path.split('.').length;
-}
-
 export default function CategoryPickerModal({ categories, onConfirm, onCancel }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const sorted = [...categories].sort((a, b) => a.path.localeCompare(b.path));
+  const rows = flattenCategoryTree(categories);
 
   return (
     <div className={styles.backdrop} onClick={onCancel}>
@@ -35,8 +31,7 @@ export default function CategoryPickerModal({ categories, onConfirm, onCancel }:
             <span className={styles.optionName}>无分类</span>
           </button>
 
-          {sorted.map((cat) => {
-            const depth = getDepth(cat);
+          {rows.map(({ category: cat, depth }) => {
             return (
               <button
                 key={cat.id}

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import * as categoryTree from '../src/lib/categoryTree.ts';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => {
@@ -49,7 +50,7 @@ function componentHarness(path, componentName, api, extras = {}) {
   const exports = {};
   const jsx = (type, props) => ({ type, props });
   const mocks = { react, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' },
-    '@komo/shared/api-client': api, ...extras };
+    '@komo/shared/api-client': api, '@/lib/categoryTree': categoryTree, ...extras };
   const hookExports = {};
   const hookCode = ts.transpileModule(readFileSync(new URL('../src/hooks/useLatestRequest.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
@@ -102,6 +103,174 @@ function treeHarness(api = {}) {
 }
 const categoryNames = tree => nodes(tree, n => n.props?.className === 'categoryName').map(n => n.props.children);
 const articleLinks = tree => nodes(tree, n => n.type === 'next/link').map(n => n.props.href);
+const buttonNamed = (tree, name) => nodes(tree, n => n.type === 'button' && n.props.children === name)[0];
+
+test('category move picker groups children beneath parents with one indent per level and preserves selected IDs', () => {
+  const confirmed = [], props = { categories: [...treeCategories].reverse(),
+    onConfirm: id => confirmed.push(id), onCancel() {} };
+  const harness = componentHarness('../src/components/CategoryPickerModal/CategoryPickerModal.tsx', 'CategoryPickerModal', {});
+  let tree = harness.render(props);
+  const labels = nodes(tree, n => n.props?.className === 'optionName').map(n => n.props.children);
+  assert.deepEqual(labels, ['无分类', '父分类', '子分类', '孙分类', '兄弟分类', '另一分支']);
+  const options = nodes(tree, n => n.type === 'button' && n.props.style?.paddingLeft !== undefined);
+  assert.deepEqual(options.map(n => n.props.style.paddingLeft), [20, 40, 60, 20, 40]);
+  buttonNamed(tree, '确认移动').props.onClick();
+  options[1].props.onClick(); tree = harness.render(props);
+  buttonNamed(tree, '确认移动').props.onClick();
+  assert.deepEqual(confirmed, [null, 'child']);
+});
+
+test('sidebar uses parent-first order and the same category depths as the move picker', async () => {
+  const selected = [], props = { selectedId: 'kb-1', selectedCategoryId: null,
+    onSelect() {}, onCategorySelect: id => selected.push(id) };
+  const harness = componentHarness('../src/components/KnowledgeBaseSidebar/KnowledgeBaseSidebar.tsx', 'KnowledgeBaseSidebar', {
+    listKnowledgeBases: async () => [{ id: 'kb-1', name: '库' }],
+    listCategories: async () => [...treeCategories].reverse(),
+  });
+  harness.render(props); const tree = await harness.flush(props);
+  const buttons = nodes(tree, n => n.type === 'button' && n.props.style?.paddingLeft !== undefined);
+  assert.deepEqual(buttons.map(n => n.props.children), ['父分类', '子分类', '孙分类', '兄弟分类', '另一分支']);
+  assert.deepEqual(buttons.map(n => n.props.style.paddingLeft), [20, 36, 52, 20, 36]);
+  buttons[2].props.onClick(); assert.deepEqual(selected, ['grandchild']);
+});
+
+for (const [path, name] of [
+  ['../src/app/categories/page.tsx', 'CategoriesPage'],
+  ['../src/app/knowledge/create/page.tsx', 'CreateKnowledgePage'],
+  ['../src/app/article/edit/page.tsx', 'EditKnowledgeContent'],
+]) {
+  test(`${name} groups category options by parent with matching depth`, async () => {
+    const saved = [];
+    const harness = componentHarness(path, name, {
+      getMe: async () => ({ id: 'user' }), getKnowledge: async () => article,
+      listKnowledgeBases: async () => [{ id: 'kb-1', name: '库' }],
+      listCategories: async () => [...treeCategories].reverse(),
+      createCategory: async req => { saved.push(req); },
+    }, { 'next/navigation': { useRouter: () => ({ push() {} }),
+      useSearchParams: () => new URLSearchParams('id=article-1') } });
+    harness.render(); await harness.flush(); let tree = await harness.flush();
+    if (name === 'CategoriesPage') {
+      assert.deepEqual(nodes(tree, n => n.props?.className === 'treeName').map(n => n.props.children),
+        ['父分类', '子分类', '孙分类', '兄弟分类', '另一分支']);
+      assert.deepEqual(nodes(tree, n => n.props?.className === 'treeIndent').map(n => n.props.style.width), [0, 24, 48, 0, 24]);
+      buttonNamed(tree, '+ 新建分类').props.onClick(); tree = harness.render();
+    }
+    const options = nodes(tree, n => n.type === 'option' && treeCategories.some(c => c.id === n.props.value));
+    assert.deepEqual(options.map(n => n.props.value), ['root-a', 'child', 'grandchild', 'root-a-extra', 'other-child']);
+    assert.deepEqual(options.map(n => n.props.children.join('').replace(/\u00a0/g, ' ')),
+      ['父分类', '  └ 子分类', '    └ 孙分类', '兄弟分类', '  └ 另一分支']);
+    if (name === 'CategoriesPage') {
+      nodes(tree, n => n.type === 'select' && n.props.className === 'parentSelect')[0].props.onChange({ target: { value: 'grandchild' } });
+      nodes(tree, n => n.type === 'input')[0].props.onChange({ target: { value: '新分类' } });
+      tree = harness.render(); await buttonNamed(tree, '创建').props.onClick();
+      assert.equal(saved[0].parentId, 'grandchild'); assert.equal(saved[0].knowledgeBaseId, 'kb-1');
+    }
+  });
+}
+
+test('pagination reaches articles beyond 500, retaining previous pages and reporting the total', async () => {
+  const calls = [], stats = [];
+  const props = { ...treeProps, onStatsChange: value => stats.push(value) };
+  const harness = treeHarness({ listCategories: async () => [], listKnowledge: async params => {
+    calls.push(params);
+    const start = params.page * params.size;
+    return { content: Array.from({ length: Math.min(params.size, 501 - start) }, (_, i) =>
+      ({ ...article, id: `entry-${start + i}` })), page: params.page, totalPages: 6, totalElements: 501 };
+  } });
+  harness.render(props); let tree = await harness.flush(props);
+  for (let page = 1; page < 6; page++) {
+    buttonNamed(tree, '加载更多').props.onClick();
+    tree = await harness.flush(props);
+  }
+  assert.equal(articleLinks(tree).length, 501);
+  assert.ok(articleLinks(tree).includes('/article?id=entry-500'));
+  assert.deepEqual(calls.map(call => call.page), [0, 1, 2, 3, 4, 5]);
+  assert.equal(buttonNamed(tree, '加载更多'), undefined);
+  assert.equal(stats.length, 1); assert.equal(stats[0].count, 501);
+});
+
+test('failed next page retries the same page, keeps loaded articles and ignores repeated clicks', async () => {
+  const pending = deferred(), calls = [];
+  let attempts = 0;
+  const harness = treeHarness({ listCategories: async () => [], listKnowledge: params => {
+    calls.push(params.page);
+    if (params.page === 0) return Promise.resolve({ content: [article], totalPages: 2, totalElements: 2 });
+    if (++attempts === 1) return pending.promise;
+    return Promise.resolve({ content: [article, { ...article, id: 'second' }], totalPages: 2, totalElements: 2 });
+  } });
+  harness.render(treeProps); let tree = await harness.flush(treeProps);
+  const load = buttonNamed(tree, '加载更多'); load.props.onClick(); load.props.onClick();
+  assert.deepEqual(calls, [0, 1]);
+  pending.reject(new Error('下一页加载失败')); tree = await harness.flush(treeProps);
+  assert.deepEqual(articleLinks(tree), ['/article?id=article-1']);
+  buttonNamed(tree, '重试').props.onClick(); tree = await harness.flush(treeProps);
+  assert.deepEqual(calls, [0, 1, 1]);
+  assert.deepEqual(articleLinks(tree), ['/article?id=article-1', '/article?id=second']);
+});
+
+test('switching scope during pagination resets to page zero and rejects old page completion', async () => {
+  const pending = deferred(), calls = [];
+  const harness = treeHarness({ listCategories: async () => [], listKnowledge: params => {
+    calls.push([params.kb, params.page]);
+    if (params.page === 1) return pending.promise;
+    return Promise.resolve({ content: [{ ...article, id: params.kb }], totalPages: 2, totalElements: 2 });
+  } });
+  harness.render(treeProps); let tree = await harness.flush(treeProps);
+  buttonNamed(tree, '加载更多').props.onClick();
+  const next = { ...treeProps, knowledgeBaseId: 'kb-2' };
+  harness.render(next); await harness.flush(next);
+  pending.resolve({ content: [{ ...article, id: 'stale' }], totalPages: 2, totalElements: 2 });
+  tree = await harness.flush(next);
+  assert.deepEqual(calls, [['kb-1', 0], ['kb-1', 1], ['kb-2', 0]]);
+  assert.deepEqual(articleLinks(tree), ['/article?id=kb-2']);
+});
+
+test('sidebar failed loads show retry actions instead of permanent loading or empty categories', async () => {
+  let baseLoads = 0, categoryLoads = 0;
+  const props = { selectedId: 'kb-1', selectedCategoryId: null, onSelect() {}, onCategorySelect() {} };
+  const harness = componentHarness('../src/components/KnowledgeBaseSidebar/KnowledgeBaseSidebar.tsx', 'KnowledgeBaseSidebar', {
+    listKnowledgeBases: async () => {
+      if (++baseLoads === 1) throw new Error('知识库网络失败');
+      return [{ id: 'kb-1', name: '恢复的库' }];
+    },
+    listCategories: async () => {
+      if (++categoryLoads === 1) throw new Error('分类网络失败');
+      return [{ id: 'cat', name: '恢复的分类', path: 'root' }];
+    },
+  });
+  harness.render(props); let tree = await harness.flush(props);
+  assert.equal(nodes(tree, n => n.props?.children === '加载中...').length, 0);
+  assert.equal(nodes(tree, n => n.props?.children === '暂无分类').length, 0);
+  buttonNamed(tree, '重试知识库').props.onClick(); buttonNamed(tree, '重试分类').props.onClick();
+  tree = await harness.flush(props);
+  assert.equal(nodes(tree, n => n.props?.role === 'alert').length, 0);
+  assert.equal(nodes(tree, n => n.props?.children === '恢复的分类').length, 1);
+});
+
+for (const operation of ['create', 'rename']) {
+  test(`sidebar ${operation} failure retains entered name and prevents double submission`, async () => {
+    const pending = deferred(); let calls = 0;
+    const props = { selectedId: 'kb-1', selectedCategoryId: null, onSelect() {}, onCategorySelect() {} };
+    const harness = componentHarness('../src/components/KnowledgeBaseSidebar/KnowledgeBaseSidebar.tsx', 'KnowledgeBaseSidebar', {
+      listKnowledgeBases: async () => [{ id: 'kb-1', name: '原库', isDeletable: true }],
+      listCategories: async () => [],
+      createKnowledgeBase: () => { calls++; return pending.promise; },
+      renameKnowledgeBase: () => { calls++; return pending.promise; },
+    });
+    harness.render(props); let tree = await harness.flush(props);
+    nodes(tree, n => n.props?.title === (operation === 'create' ? '新建知识库' : '重命名'))[0]
+      .props.onClick({ stopPropagation() {} });
+    tree = harness.render(props);
+    nodes(tree, n => n.type === 'input')[0].props.onChange({ target: { value: '未保存名称' } });
+    tree = harness.render(props);
+    const input = nodes(tree, n => n.type === 'input')[0];
+    input.props.onKeyDown({ key: 'Enter' }); input.props.onKeyDown({ key: 'Enter' });
+    assert.equal(calls, 1);
+    pending.reject(new Error('保存失败')); tree = await harness.flush(props);
+    assert.equal(nodes(tree, n => n.type === 'input')[0].props.value, '未保存名称');
+    assert.equal(nodes(tree, n => n.props?.role === 'alert')[0].props.children, '保存失败');
+  });
+}
 function toggleCategory(tree, name) {
   const button = nodes(tree, n => n.props?.className === 'categoryToggle'
     && nodes(n, c => c.props?.className === 'categoryName' && c.props.children === name).length)[0];

@@ -116,6 +116,134 @@ function harness(fetch, { mode = 'bearer', store = memoryStore(), timers = {}, c
   return { api, store, window, ...load('persistent-token-store') };
 }
 
+const accountToken = name => `header.${Buffer.from(JSON.stringify({ sub: name })).toString('base64url')}.signature`;
+
+test('offline storage deletes every matching resource prefix in one transaction', async () => {
+  const data = new Map([
+    ['a:knowledge-list:page=0', 1], ['a:knowledge-list:page=1&q=x', 2],
+    ['a:knowledge:article', 3], ['ab:knowledge-list:page=0', 4], ['b:knowledge-list:page=0', 5],
+  ]);
+  let transactions = 0, committed = false;
+  const exports = {};
+  vm.runInNewContext(compiled.get('offline-cache'), { exports, indexedDB: {}, require: name => {
+    assert.equal(name, 'idb');
+    return { async openDB() { return { transaction(store, mode) {
+      assert.equal(store, 'responses'); assert.equal(mode, 'readwrite'); transactions++;
+      const keys = [...data.keys()]; let index = 0;
+      const cursor = () => index === keys.length ? null : {
+        key: keys[index], async delete() { data.delete(keys[index]); },
+        async continue() { index++; return cursor(); },
+      };
+      return { store: { async openCursor() { return cursor(); } },
+        get done() { committed = true; return Promise.resolve(); } };
+    } }; } };
+  } });
+  await exports.deleteCachePrefixes(['a:knowledge-list:']);
+  assert.equal(transactions, 1); assert.equal(committed, true);
+  assert.deepEqual([...data.keys()], ['a:knowledge:article', 'ab:knowledge-list:page=0', 'b:knowledge-list:page=0']);
+});
+
+function responseCache() {
+  const data = new Map();
+  return { data,
+    async readCache(key) { return data.get(key); },
+    async writeCache(key, value) { data.set(key, value); },
+    async deleteCachePrefixes(prefixes) {
+      for (const key of data.keys()) if (prefixes.some(prefix => key.startsWith(prefix))) data.delete(key);
+    },
+  };
+}
+
+const knowledgeResources = ['knowledge', 'knowledge-list', 'links'];
+for (const [operation, args, resources] of [
+  ['createKnowledge', [{ title: 'new', content: 'body' }], knowledgeResources],
+  ['updateKnowledge', ['article', { title: 'new', content: 'body', version: 1 }], knowledgeResources],
+  ['moveKnowledgeToCategory', ['article', null], knowledgeResources],
+  ['deleteKnowledge', ['article'], knowledgeResources],
+  ['batchDeleteKnowledge', [['article']], knowledgeResources],
+  ['embedInto', ['fragment', 'article'], knowledgeResources],
+  ['mergeInto', ['fragment', 'article'], knowledgeResources],
+  ['confirmDraft', ['draft'], knowledgeResources],
+  ['editAndConfirmDraft', ['draft', 'title', 'body'], knowledgeResources],
+  ['batchConfirmDrafts', [['draft']], knowledgeResources],
+  ['addLink', ['article', 'target', 'RELATED'], ['links']],
+  ['createKnowledgeBase', ['new'], ['knowledge-bases']],
+  ['renameKnowledgeBase', ['kb', 'new'], ['knowledge-bases']],
+  ['deleteKnowledgeBase', ['kb'], ['knowledge-bases', 'categories']],
+  ['createCategory', [{ name: 'new', knowledgeBaseId: 'kb' }], ['categories']],
+  ['updateCategory', ['cat', 'new'], ['categories']],
+  ['deleteCategory', ['cat'], ['categories', ...knowledgeResources]],
+]) {
+  test(`${operation} invalidates all affected cached pages only for the writing account`, async () => {
+    const cache = responseCache();
+    const allResources = [...knowledgeResources, 'knowledge-bases', 'categories'];
+    for (const owner of ['account-a', 'account-b']) for (const resource of allResources)
+      for (const key of ['page=0', 'page=1&q=search']) cache.data.set(`${owner}:${resource}:${key}`, {});
+    const { api } = harness(async () => reply(200, {}), { store: memoryStore(accountToken('account-a')), cache });
+    await api[operation](...args);
+    for (const resource of allResources) for (const key of ['page=0', 'page=1&q=search']) {
+      assert.equal(cache.data.has(`account-a:${resource}:${key}`), !resources.includes(resource));
+      assert.equal(cache.data.has(`account-b:${resource}:${key}`), true);
+    }
+  });
+}
+
+test('failed writes preserve usable offline cache and web writes never touch the cache', async () => {
+  const cache = responseCache(); cache.data.set('account-a:knowledge-list:', { content: ['keep'] });
+  const { api } = harness(async () => reply(409), { store: memoryStore(accountToken('account-a')), cache });
+  await assert.rejects(api.deleteKnowledge('article'), error => error.code === 409);
+  assert.equal(cache.data.size, 1);
+  const web = harness(async () => reply(200), { mode: 'cookie', cache: {
+    async deleteCachePrefixes() { assert.fail('Web must not access offline storage'); },
+  } });
+  await web.api.deleteKnowledge('article');
+});
+
+test('mutation clears cached lists before resolving and a late read cannot restore old data', async () => {
+  const oldRead = deferred(), deletion = deferred(), cache = responseCache();
+  let offline = false, reads = 0, invalidating = false;
+  const remove = cache.deleteCachePrefixes;
+  cache.deleteCachePrefixes = async prefixes => { invalidating = true; await deletion.promise; await remove(prefixes); };
+  cache.data.set('account-a:knowledge-list:page=0', { content: ['stale'] });
+  const { api } = harness(async (_, options) => {
+    if (options.method === 'DELETE') return reply(200);
+    reads++;
+    if (offline) throw new TypeError('offline');
+    return oldRead.promise;
+  }, { store: memoryStore(accountToken('account-a')), cache });
+  const pendingRead = api.listKnowledge({ page: 0 }); await tick();
+  let finished = false;
+  const mutation = api.deleteKnowledge('article').then(() => { finished = true; }); await tick();
+  assert.equal(invalidating, true); assert.equal(finished, false);
+  oldRead.resolve(reply(200, { content: ['stale'] }));
+  deletion.resolve(); await mutation; await pendingRead;
+  assert.equal(cache.data.size, 0);
+  offline = true;
+  await assert.rejects(api.listKnowledge({ page: 0 }), error => error.code === 0);
+  assert.equal(reads, 2);
+});
+
+test('a cache write already in progress finishes before mutation invalidation', async () => {
+  const cache = responseCache(), writing = deferred(); let started = false;
+  const save = cache.writeCache;
+  cache.writeCache = async (key, value) => { started = true; await writing.promise; await save(key, value); };
+  const { api } = harness(async () => reply(200, { content: ['old'] }), {
+    store: memoryStore(accountToken('account-a')), cache,
+  });
+  const read = api.listKnowledge(); await tick(); assert.equal(started, true);
+  const mutation = api.deleteKnowledge('article'); await tick();
+  writing.resolve(); await read; await mutation;
+  assert.equal(cache.data.size, 0);
+});
+
+test('storage failures do not report a successful server mutation as failed', async () => {
+  const { api } = harness(async () => reply(200, { id: 'saved' }), {
+    store: memoryStore(accountToken('account-a')),
+    cache: { async deleteCachePrefixes() { throw new Error('storage unavailable'); } },
+  });
+  assert.equal((await api.createKnowledge({ title: 'title', content: 'body' })).id, 'saved');
+});
+
 test('cold start waits for persisted tokens before sending /me', async () => {
   const hydration = deferred();
   const store = memoryStore(null, null);

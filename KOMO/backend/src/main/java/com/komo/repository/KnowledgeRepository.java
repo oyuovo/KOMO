@@ -53,7 +53,7 @@ public interface KnowledgeRepository extends JpaRepository<KnowledgeEntry, UUID>
          + "AND (:categoryId IS NULL OR k.categoryId = :categoryId) "
          + "AND (:knowledgeBaseId IS NULL OR k.knowledgeBaseId = :knowledgeBaseId) "
          + "AND (:query IS NULL OR lower(k.contentPlain) LIKE lower(concat('%', cast(:query as text), '%'))) "
-         + "ORDER BY k.updatedAt DESC")
+         + "ORDER BY k.updatedAt DESC, k.id DESC")
     Page<KnowledgeEntry> findByUserIdAndFilters(
         @Param("userId") UUID userId,
         @Param("categoryId") UUID categoryId,

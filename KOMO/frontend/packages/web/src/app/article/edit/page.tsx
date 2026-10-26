@@ -12,6 +12,7 @@ import {
   type CategoryData,
 } from '@komo/shared/api-client';
 import MarkdownRenderer from '@/components/MarkdownRenderer/MarkdownRenderer';
+import { flattenCategoryTree } from '@/lib/categoryTree';
 import styles from './page.module.css';
 
 const ENTRY_TYPES = [
@@ -171,10 +172,7 @@ function EditKnowledgeContent() {
             onChange={(e) => setCategoryId(e.target.value)}
           >
             <option value="">无分类</option>
-            {[...categories]
-              .sort((a, b) => a.path.localeCompare(b.path))
-              .map((cat) => {
-                const depth = cat.path === 'root' ? 0 : cat.path.split('.').length - 1;
+            {flattenCategoryTree(categories).map(({ category: cat, depth }) => {
                 const prefix = '  '.repeat(depth);
                 return (
                   <option key={cat.id} value={cat.id}>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import {
   listKnowledge,
@@ -18,6 +18,7 @@ import BatchDeleteOverlay, {
 import CategoryPickerModal from '@/components/CategoryPickerModal/CategoryPickerModal';
 import styles from './KnowledgeList.module.css';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
+import { flattenCategoryTree, getSubtreeCategoryIds, isCategoryDescendant } from '@/lib/categoryTree';
 
 // ---- Types ----
 
@@ -37,35 +38,6 @@ type FlatRow =
   | { kind: 'category'; category: CategoryData; depth: number; articleCount: number; hasChildren: boolean }
   | { kind: 'article'; article: KnowledgeItem; depth: number };
 
-// ---- ltree helpers ----
-
-function sanitizeLtreeLabel(uuid: string): string {
-  return uuid.replace(/-/g, '_');
-}
-
-/** path 记录祖先节点；比较完整段，避免相似 ID 被误认成祖先。 */
-function isDescendantOf(category: CategoryData, ancestor: CategoryData): boolean {
-  const prefix = ancestor.path + '.' + sanitizeLtreeLabel(ancestor.id);
-  return category.path === prefix || category.path.startsWith(prefix + '.');
-}
-
-/**
- * Given a root category ID and the full category list,
- * return the set of all category IDs in that subtree.
- */
-function getSubtreeCategoryIds(rootId: string, allCategories: CategoryData[]): Set<string> {
-  const root = allCategories.find((c) => c.id === rootId);
-  if (!root) return new Set([rootId]);
-  const ids = new Set<string>();
-  ids.add(rootId);
-  for (const cat of allCategories) {
-    if (isDescendantOf(cat, root)) {
-      ids.add(cat.id);
-    }
-  }
-  return ids;
-}
-
 /**
  * Build a flat render list mixing categories and articles.
  * Walk each expanded subtree in order, with articles and children directly below their parent.
@@ -76,20 +48,6 @@ function buildFlatRows(
   expandedSet: Set<string>
 ): FlatRow[] {
   const rows: FlatRow[] = [];
-  const sorted = [...categories].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-  const categoryPaths = new Set(categories.map(cat => cat.path + '.' + sanitizeLtreeLabel(cat.id)));
-  const childrenByPath = new Map<string, CategoryData[]>();
-  const roots: CategoryData[] = [];
-  for (const cat of sorted) {
-    if (!categoryPaths.has(cat.path)) {
-      // 缺失父分类的历史节点也作为根展示，避免整支内容消失。
-      roots.push(cat);
-    } else {
-      const siblings = childrenByPath.get(cat.path) ?? [];
-      siblings.push(cat);
-      childrenByPath.set(cat.path, siblings);
-    }
-  }
 
   // Map: categoryId → articles
   const articlesByCategory = new Map<string, KnowledgeItem[]>();
@@ -101,27 +59,23 @@ function buildFlatRows(
     }
   }
 
-  const appendCategory = (cat: CategoryData, depth: number) => {
+  for (const { category: cat, depth, hasChildren } of flattenCategoryTree(categories, expandedSet)) {
     const directArticles = articlesByCategory.get(cat.id) ?? [];
-    const catPathPrefix = cat.path + '.' + sanitizeLtreeLabel(cat.id);
-    const children = childrenByPath.get(catPathPrefix) ?? [];
 
     rows.push({
       kind: 'category',
       category: cat,
       depth,
       articleCount: directArticles.length,
-      hasChildren: children.length > 0,
+      hasChildren,
     });
 
     if (expandedSet.has(cat.id)) {
       for (const article of directArticles) {
         rows.push({ kind: 'article', article, depth: depth + 1 });
       }
-      for (const child of children) appendCategory(child, depth + 1);
     }
-  };
-  for (const root of roots) appendCategory(root, 0);
+  }
 
   // Uncategorized articles at the bottom
   const knownCategoryIds = new Set(categories.map((category) => category.id));
@@ -146,6 +100,11 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
   const categories = useMemo(() => dataScope === scope ? loadedCategories : [], [dataScope, scope, loadedCategories]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [nextPage, setNextPage] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [failedPage, setFailedPage] = useState(0);
+  const pageRequest = useRef<(() => boolean) | null>(null);
 
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
@@ -163,9 +122,12 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
 
   // ---- Data fetching ----
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (page = 0) => {
+    // A rapid second click must not skip or duplicate a page before React renders.
+    if (page > 0 && pageRequest.current?.()) return;
     const isCurrent = beginRequest();
     if (!isCurrent()) return;
+    pageRequest.current = isCurrent;
     setLoading(true);
     setError(null);
     try {
@@ -173,7 +135,8 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
         listKnowledge({
           kb: knowledgeBaseId || undefined,
           q: searchQuery || undefined,
-          size: 500,
+          page,
+          size: 100,
         }) as Promise<PageData<KnowledgeItem>>,
         knowledgeBaseId
           ? listCategories(knowledgeBaseId)
@@ -181,10 +144,14 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
       ]);
       if (!isCurrent()) return;
       setDataScope(scope);
-      setArticles(articlePage.content);
+      setArticles(previous => page === 0 ? articlePage.content :
+        Array.from(new Map([...previous, ...articlePage.content].map(article => [article.id, article])).values()));
       setCategories(catData);
+      setNextPage(page + 1);
+      setTotalElements(articlePage.totalElements);
+      setHasMore(page + 1 < articlePage.totalPages);
 
-      if (onStatsChange) {
+      if (onStatsChange && page === 0) {
         const latestDate = articlePage.content.length > 0
           ? new Date(Math.max(...articlePage.content.map((a) => new Date(a.updatedAt).getTime())))
               .toLocaleDateString('zh-CN')
@@ -194,9 +161,13 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
     } catch (err) {
       if (!isCurrent()) return;
       if ((err as ApiError).code === 401) return;
+      setFailedPage(page);
       setError((err as Error).message);
     } finally {
-      if (isCurrent()) setLoading(false);
+      if (isCurrent()) {
+        pageRequest.current = null;
+        setLoading(false);
+      }
     }
   }, [searchQuery, knowledgeBaseId, beginRequest, scope]);
 
@@ -217,7 +188,7 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
         setExpandedCategories(prev => {
           const next = new Set(prev);
           for (const cat of categories) {
-            if (isDescendantOf(target, cat) || target.id === cat.id) next.add(cat.id);
+            if (isCategoryDescendant(target, cat) || target.id === cat.id) next.add(cat.id);
           }
           return next;
         });
@@ -282,7 +253,7 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
       await deleteKnowledge(id);
       if (isCurrent()) void fetchData();
     } catch (err) {
-      if (isCurrent()) { setError((err as Error).message); setLoading(false); }
+      if (isCurrent()) { setError((err as Error).message); setFailedPage(0); setLoading(false); }
     }
   };
 
@@ -362,6 +333,7 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
     exitSelectMode();
     void fetchData();
     if (failed > 0) {
+      setFailedPage(0);
       setError(`移动完成: ${moved} 成功, ${failed} 失败`);
     }
   };
@@ -432,10 +404,12 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
       {/* Tree / List */}
       <div className={styles.treeList}>
         {loading && <p className={styles.statusMsg}>加载中...</p>}
-        {error && <p className={styles.errorMsg}>{error}</p>}
-        {!loading && flatRows.length === 0 && (
+        {error && <p className={styles.errorMsg} role="alert">{error}
+          <button className={styles.btnSelectMode} onClick={() => void fetchData(failedPage)} disabled={loading}>重试</button>
+        </p>}
+        {!loading && !error && flatRows.length === 0 && (
           <p className={styles.statusMsg}>
-            还没有文章。开始一次 AI 对话来创建你的第一条知识。
+            {hasMore && dataScope === scope ? '已加载的文章中暂无匹配内容，可继续加载。' : '暂无匹配文章。'}
           </p>
         )}
 
@@ -459,7 +433,7 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
                     {row.hasChildren ? (isExpanded ? '📂' : '📁') : '📁'}
                   </span>
                   <span className={styles.categoryName}>{cat.name}</span>
-                  <span className={styles.categoryCount}>({row.articleCount})</span>
+                  <span className={styles.categoryCount}>({row.articleCount}{hasMore ? ' 已加载' : ''})</span>
                 </button>
               </div>
             );
@@ -514,6 +488,13 @@ export default function KnowledgeList({ searchQuery, knowledgeBaseId, categoryId
           );
         })}
       </div>
+      {dataScope === scope && (
+        <div className={styles.pagination}>
+          <span>已加载 {articles.length} / {totalElements} 篇{categoryId ? '（当前知识库或搜索范围）' : ''}</span>
+          {hasMore && <button className={styles.btnSelectMode} disabled={loading}
+            onClick={() => void fetchData(nextPage)}>加载更多</button>}
+        </div>
+      )}
     </>
   );
 }
